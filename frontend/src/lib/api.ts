@@ -602,3 +602,65 @@ export interface ShipmentsAnalytics {
   byType: { type: ShipmentType; count: number }[];
   daily: { date: string; count: number }[];
 }
+
+export interface PaymentsAnalytics {
+  range: { from: string; to: string };
+  breakdown: {
+    type: PaymentType;
+    status: PaymentStatus;
+    count: number;
+    amount: string;
+  }[];
+}
+
+export interface DriversAnalytics {
+  range: { from: string; to: string };
+  drivers: {
+    driverId: string | null;
+    name: string | null;
+    codCount: number;
+    codAmount: string;
+  }[];
+}
+
+export type CarrierType = "COURIER" | "AIRLINE" | "OCEAN" | "GROUND";
+
+export interface Carrier {
+  id: string;
+  name: string;
+  code: string;
+  type: CarrierType;
+  trackingUrlTemplate: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NotificationChannel = "SMS" | "EMAIL" | "PUSH" | "WHATSAPP";
+export type NotificationStatus = "PENDING" | "SENT" | "FAILED";
+
+export interface NotificationRow {
+  id: string;
+  shipmentId: string | null;
+  channel: NotificationChannel;
+  recipient: string;
+  type: string;
+  title: string | null;
+  body: string;
+  status: NotificationStatus;
+  provider: string;
+  error: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  actorUserId: string | null;
+  actorRole: Role | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}

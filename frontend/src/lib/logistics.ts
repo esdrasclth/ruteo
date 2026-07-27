@@ -1,7 +1,10 @@
 import type {
+  CarrierType,
   CustomsStatus,
   DriverStatus,
   LockerStatus,
+  NotificationChannel,
+  NotificationStatus,
   PackageStatus,
   PaymentMethod,
   PaymentStatus,
@@ -198,6 +201,62 @@ export function subscriptionStatusBadgeClass(
       return "bg-destructive/10 text-destructive border border-destructive/30";
   }
 }
+
+export const CARRIER_TYPE_LABELS: Record<CarrierType, string> = {
+  COURIER: "Courier",
+  AIRLINE: "Aerolínea",
+  OCEAN: "Naviera",
+  GROUND: "Terrestre",
+};
+
+export const NOTIFICATION_CHANNEL_LABELS: Record<NotificationChannel, string> =
+  {
+    SMS: "SMS",
+    EMAIL: "Correo",
+    PUSH: "Push",
+    WHATSAPP: "WhatsApp",
+  };
+
+export const NOTIFICATION_STATUS_LABELS: Record<NotificationStatus, string> = {
+  PENDING: "Pendiente",
+  SENT: "Enviada",
+  FAILED: "Fallida",
+};
+
+export function notificationStatusBadgeClass(status: NotificationStatus) {
+  switch (status) {
+    case "SENT":
+      return "bg-primary text-primary-foreground";
+    case "FAILED":
+      return "bg-destructive/10 text-destructive border border-destructive/30";
+    case "PENDING":
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+// Acciones que el backend registra hoy en `audit_logs`. Si aparece una nueva sin
+// traducir, la UI muestra el identificador crudo en vez de romperse.
+export const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "shipment.status_changed": "Cambio de estado de envío",
+  "payment.collected": "Pago cobrado",
+  "payment.remitted": "Pago remitido",
+  "api_key.created": "API key creada",
+  "api_key.revoked": "API key revocada",
+  "subscription.changed": "Suscripción actualizada",
+  "subscription.canceled": "Suscripción cancelada",
+  "user.created": "Usuario creado",
+  "user.updated": "Usuario actualizado",
+  "user.password_reset": "Contraseña restablecida",
+  "user.password_changed": "Contraseña cambiada",
+};
+
+export const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  shipment: "Envío",
+  payment: "Pago",
+  api_key: "API key",
+  subscription: "Suscripción",
+  user: "Usuario",
+};
 
 export const CUSTOMS_STATUS_LABELS: Record<CustomsStatus, string> = {
   PENDING: "Pendiente",

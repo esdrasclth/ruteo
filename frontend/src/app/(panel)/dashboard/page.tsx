@@ -1,11 +1,37 @@
 "use client";
 
-import { ComponentType, useEffect, useState } from "react";
+import { ComponentType, useCallback, useEffect, useState } from "react";
 import { Bell, DollarSign, Package, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
-import { api, ApiError, Overview, ShipmentsAnalytics } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  DriversAnalytics,
+  Overview,
+  PaymentsAnalytics,
+  ShipmentsAnalytics,
+} from "@/lib/api";
+import {
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_TYPE_LABELS,
+  paymentStatusBadgeClass,
+} from "@/lib/logistics";
 import { STATUS_LABELS, TYPE_LABELS } from "@/lib/shipment-status";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const RANGOS = [
+  { dias: 7, label: "Últimos 7 días" },
+  { dias: 30, label: "Últimos 30 días" },
+  { dias: 90, label: "Últimos 90 días" },
+];
 
 function Kpi({
   title,
@@ -39,26 +65,41 @@ function Kpi({
 }
 
 export default function DashboardPage() {
+  const [dias, setDias] = useState("30");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [shipments, setShipments] = useState<ShipmentsAnalytics | null>(null);
+  const [payments, setPayments] = useState<PaymentsAnalytics | null>(null);
+  const [drivers, setDrivers] = useState<DriversAnalytics | null>(null);
+
+  const load = useCallback(async () => {
+    const desde = new Date();
+    desde.setDate(desde.getDate() - Number(dias));
+    const qs = `?from=${desde.toISOString()}`;
+
+    setOverview(null);
+    try {
+      const [o, s, p, d] = await Promise.all([
+        api<Overview>(`/analytics/overview${qs}`),
+        api<ShipmentsAnalytics>(`/analytics/shipments${qs}`),
+        api<PaymentsAnalytics>(`/analytics/payments${qs}`),
+        api<DriversAnalytics>(`/analytics/drivers${qs}`),
+      ]);
+      setOverview(o);
+      setShipments(s);
+      setPayments(p);
+      setDrivers(d);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Error cargando analítica",
+      );
+    }
+  }, [dias]);
 
   useEffect(() => {
-    Promise.all([
-      api<Overview>("/analytics/overview"),
-      api<ShipmentsAnalytics>("/analytics/shipments"),
-    ])
-      .then(([o, s]) => {
-        setOverview(o);
-        setShipments(s);
-      })
-      .catch((err) =>
-        toast.error(
-          err instanceof ApiError ? err.message : "Error cargando analítica",
-        ),
-      );
-  }, []);
+    load();
+  }, [load]);
 
-  if (!overview || !shipments) {
+  if (!overview || !shipments || !payments || !drivers) {
     return (
       <div className="flex flex-col gap-6">
         <div className="grid gap-4 md:grid-cols-4">
@@ -78,9 +119,25 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Últimos 30 días</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            {RANGOS.find((r) => String(r.dias) === dias)?.label}
+          </p>
+        </div>
+        <Select value={dias} onValueChange={setDias}>
+          <SelectTrigger className="w-48" aria-label="Rango de fechas">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RANGOS.map((r) => (
+              <SelectItem key={r.dias} value={String(r.dias)}>
+                {r.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -178,6 +235,80 @@ export default function DashboardPage() {
               </div>
             ) : null}
           </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="glass-card rounded-2xl p-6">
+          <h2 className="text-base font-semibold text-primary">
+            Pagos por tipo y estado
+          </h2>
+          {payments.breakdown.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Sin pagos en el rango.
+            </p>
+          ) : (
+            <div className="mt-4 flex flex-col gap-2">
+              {payments.breakdown.map((row) => (
+                <div
+                  key={`${row.type}-${row.status}`}
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-foreground/80">
+                      {PAYMENT_TYPE_LABELS[row.type]}
+                    </span>
+                    <Badge className={paymentStatusBadgeClass(row.status)}>
+                      {PAYMENT_STATUS_LABELS[row.status]}
+                    </Badge>
+                  </span>
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {row.count}
+                    </span>
+                    <span className="font-semibold text-primary">
+                      {row.amount}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="glass-card rounded-2xl p-6">
+          <h2 className="text-base font-semibold text-primary">
+            COD por repartidor
+          </h2>
+          {drivers.drivers.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Ningún repartidor registró cobros en el rango. El COD que se cobra
+              solo al marcar entregado no queda asignado a nadie.
+            </p>
+          ) : (
+            <div className="mt-4 flex flex-col gap-2">
+              {[...drivers.drivers]
+                .sort((a, b) => Number(b.codAmount) - Number(a.codAmount))
+                .map((row) => (
+                  <div
+                    key={row.driverId ?? "sin-driver"}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="text-foreground/80">
+                      {row.name ?? "Sin nombre"}
+                    </span>
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {row.codCount} cobro{row.codCount === 1 ? "" : "s"}
+                      </span>
+                      <span className="font-semibold text-primary">
+                        {row.codAmount}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

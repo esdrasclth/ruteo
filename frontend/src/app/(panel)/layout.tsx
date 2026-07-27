@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Archive,
+  Bell,
   CreditCard,
   DollarSign,
   Contact,
@@ -13,8 +14,10 @@ import {
   LogOut,
   Package,
   PackageCheck,
+  Plane,
   Receipt,
   Route as RouteIcon,
+  ScrollText,
   Truck,
   Users,
   UserCog,
@@ -40,13 +43,23 @@ const NAV: NavItem[] = [
   { href: "/lockers", label: "Casilleros", icon: Archive },
   { href: "/customers", label: "Clientes", icon: Contact },
   { href: "/intake", label: "Recepción", icon: PackageCheck },
+  { href: "/carriers", label: "Transportistas", icon: Plane },
   { href: "/pricing", label: "Zonas y tarifas", icon: DollarSign },
   { href: "/payments", label: "Pagos", icon: CreditCard },
   { href: "/billing", label: "Facturación", icon: Receipt },
+  { href: "/notifications", label: "Notificaciones", icon: Bell },
   {
     href: "/team",
     label: "Equipo",
     icon: UserCog,
+    roles: ["OWNER", "ADMIN"],
+  },
+  // El backend restringe `GET /audit` a OWNER/ADMIN; el NAV refleja lo mismo
+  // para no ofrecer una pantalla que responderá 403.
+  {
+    href: "/audit",
+    label: "Auditoría",
+    icon: ScrollText,
     roles: ["OWNER", "ADMIN"],
   },
   { href: "/integrations", label: "Integraciones", icon: KeyRound },
