@@ -297,7 +297,37 @@ Dos sondas separadas, pensadas para orquestadores (k8s / balanceadores):
   paralelo. Responde `200` con `{ ready: true, checks: { db, redis } }` cuando todo está `up`;
   si alguna dependencia falla devuelve `503` con `status: "degraded"` y el detalle por check.
 
-## Pruebas de aislamiento multi-tenant
+## Pruebas de lógica de negocio (unitarias)
+
+```bash
+npm test                      # sin base de datos ni Docker
+```
+
+Cubren las dos piezas de lógica pura donde un error se traduce en daño directo —
+un envío en un estado imposible, o un cobro aduanal equivocado:
+
+- **`src/modules/shipments/shipment-status.spec.ts`** — la máquina de estados. Recorre
+  los dos flujos felices paso a paso (local e internacional USA→HN), y verifica que los
+  hitos **no se crucen entre tipos** (un envío local nunca llega a `IN_CUSTOMS_HN`, uno
+  internacional nunca a `LABEL_GENERATED`), que no se salten ni se retrocedan pasos, que
+  `DELIVERED`/`RETURNED`/`CANCELLED` sean terminales y que ningún estado transicione a sí
+  mismo. Fija las **reglas de cancelación** (local: hasta antes de salir a reparto;
+  internacional: solo hasta `CONSOLIDATED` — una vez despachado solo cabe devolver), y
+  recorre el grafo para comprobar que cada tipo alcanza exactamente sus estados (9 y 13)
+  y que **ningún estado deja el envío atrapado** sin poder llegar a un terminal.
+- **`src/modules/customs/customs-calc.spec.ts`** — el cálculo de arancel + ISV + manejo.
+  Fija el caso de referencia (valor 250 → 90.625) y la regla que más fácil se implementa
+  mal: **el ISV grava valor + arancel**, no solo el valor. Cubre tasa `0` explícita (que
+  no debe caer al 15% por defecto — el bug clásico de `||` en vez de `??`), valor o cuota
+  ausentes, entradas como `number`/`string`/`Decimal`, y que el cálculo **no redondea**:
+  los 2 decimales los impone la columna `Decimal(12,2)` al persistir.
+
+El panel web mantiene una **copia** de las tablas de transición en
+`frontend/src/lib/shipment-status.ts` para pintar el selector de estados sin llamar a la
+API. Una prueba lee ese archivo y lo compara contra el backend, de modo que si divergen
+falla el build en vez de que la UI ofrezca transiciones que la API rechaza con `400`.
+
+## Pruebas de aislamiento multi-tenant (e2e)
 
 ```bash
 npm run test:e2e              # requiere `docker compose up -d` (Postgres + Redis)
