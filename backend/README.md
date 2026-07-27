@@ -297,6 +297,41 @@ Dos sondas separadas, pensadas para orquestadores (k8s / balanceadores):
   paralelo. Responde `200` con `{ ready: true, checks: { db, redis } }` cuando todo está `up`;
   si alguna dependencia falla devuelve `503` con `status: "degraded"` y el detalle por check.
 
+## Pruebas de aislamiento multi-tenant
+
+```bash
+npm run test:e2e              # requiere `docker compose up -d` (Postgres + Redis)
+```
+
+Dos suites cubren la garantía central del SaaS — *un tenant no puede ver ni tocar los
+datos de otro* — desde los dos lados de la línea de defensa:
+
+- **`test/rls-isolation.e2e-spec.ts`** — las políticas RLS de Postgres. Corre con el rol
+  de aplicación (`ruteo_app`) y lo primero que verifica es que ese rol **no** sea
+  superusuario ni tenga `BYPASSRLS`; sin eso las demás pruebas no probarían nada.
+  Comprueba, para 17 tablas tenant-scoped, que una lectura por id desde otro tenant
+  devuelve `null` (con un control que confirma que la fila sí existe en su propio
+  tenant), y que `update`/`delete`/`updateMany`/`deleteMany` no alcanzan filas ajenas.
+  Añade los casos que suelen romperse en silencio: búsqueda por `tracking_number`
+  (único **global**, no por tenant), relaciones anidadas, agregados, `INSERT` marcado
+  con el `tenant_id` de otro, reasignar una fila propia a otro tenant, ausencia de
+  contexto (**fail-closed**: sin `app.current_tenant_id` no se ve ninguna fila) y que
+  el contexto no sobrevive a la transacción.
+- **`test/api-tenant-isolation.e2e-spec.ts`** — la misma garantía por HTTP, levantando
+  el `AppModule` real con el cableado de `main.ts`. Registra dos tenants, y verifica que
+  con token o con **API key** de uno los recursos del otro respondan `404` (nunca `403`,
+  que confirmaría su existencia), que el listado y el `total` paginado no crucen datos,
+  que las credenciales de un tenant no sirvan en el slug de otro y que el rastreo público
+  no exponga ids internos, COD, valor declarado ni teléfono.
+
+Una prueba estructural recorre `pg_class`/`pg_policies` y falla si **cualquier** tabla con
+columna `tenant_id` queda sin `ENABLE`/`FORCE ROW LEVEL SECURITY` o sin política — la red
+de seguridad para cuando una migración nueva agregue una tabla y olvide su `*_rls`.
+
+Los tests usan la base de desarrollo. Todo lo que crean cuelga de tenants con slug
+`test-iso-*` y se purga al empezar y al terminar (el borrado en cascada arrastra las filas
+hijas); nunca truncan tablas ni tocan datos ajenos a ese prefijo.
+
 ## Build / producción
 
 ```bash
