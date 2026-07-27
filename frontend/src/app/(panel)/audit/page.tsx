@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { api, ApiError, AuditLog, Paginated } from "@/lib/api";
 import {
@@ -20,6 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 import {
   Table,
   TableBody,
@@ -36,6 +39,27 @@ const ACCIONES = Object.keys(AUDIT_ACTION_LABELS);
 const ENTIDADES = Object.keys(AUDIT_ENTITY_LABELS);
 
 const fmtDateTime = (v: string) => new Date(v).toLocaleString("es-HN");
+
+// Lleva de la entrada de bitácora al objeto que se tocó. Solo los tipos con
+// pantalla propia son navegables; el resto se queda como texto para no ofrecer
+// un enlace que no lleva a ningún lado.
+function hrefDeEntidad(entityType: string, entityId: string | null) {
+  if (!entityId) return null;
+  switch (entityType) {
+    case "shipment":
+      return `/shipments/${entityId}`;
+    case "payment":
+      return `/payments`;
+    case "user":
+      return `/team`;
+    case "subscription":
+      return `/billing`;
+    case "api_key":
+      return `/integrations`;
+    default:
+      return null;
+  }
+}
 
 // El backend guarda `metadata` como JSON libre por acción (ej. from/to en un
 // cambio de estado). Se aplana a "clave: valor" para leerlo de un vistazo.
@@ -86,12 +110,10 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Auditoría</h1>
-        <p className="text-sm text-muted-foreground">
-          Registro inmutable de acciones sensibles: quién hizo qué y cuándo.
-        </p>
-      </div>
+      <PageHeader
+        title="Auditoría"
+        description="Registro inmutable de acciones sensibles: quién hizo qué y cuándo."
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -139,9 +161,11 @@ export default function AuditPage() {
           {!data ? (
             <Skeleton className="h-24 w-full" />
           ) : data.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay registros con esos filtros.
-            </p>
+            <EmptyState
+              icon={ScrollText}
+              title="Sin registros"
+              description="No hay acciones auditadas que coincidan con los filtros seleccionados."
+            />
           ) : (
             <>
               <Table>
@@ -164,18 +188,38 @@ export default function AuditPage() {
                         {AUDIT_ACTION_LABELS[log.action] ?? log.action}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">
-                          {AUDIT_ENTITY_LABELS[log.entityType] ??
-                            log.entityType}
-                        </Badge>
-                        {log.entityId ? (
-                          <code
-                            className="ml-1.5 text-xs text-muted-foreground"
-                            title={log.entityId}
-                          >
-                            {log.entityId.slice(0, 8)}
-                          </code>
-                        ) : null}
+                        {(() => {
+                          const etiqueta =
+                            AUDIT_ENTITY_LABELS[log.entityType] ??
+                            log.entityType;
+                          const href = hrefDeEntidad(
+                            log.entityType,
+                            log.entityId,
+                          );
+                          const contenido = (
+                            <>
+                              <Badge variant="secondary">{etiqueta}</Badge>
+                              {log.entityId ? (
+                                <code
+                                  className="ml-1.5 text-xs text-muted-foreground"
+                                  title={log.entityId}
+                                >
+                                  {log.entityId.slice(0, 8)}
+                                </code>
+                              ) : null}
+                            </>
+                          );
+                          return href ? (
+                            <Link
+                              href={href}
+                              className="inline-flex items-center rounded transition-opacity hover:opacity-70"
+                            >
+                              {contenido}
+                            </Link>
+                          ) : (
+                            contenido
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-sm">
                         {log.actorRole ? (

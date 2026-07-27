@@ -1,7 +1,16 @@
 "use client";
 
 import { FormEvent, use, useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ExternalLink, FileDown } from "lucide-react";
+import {
+  Archive,
+  Bell,
+  ChevronRight,
+  Contact,
+  CreditCard,
+  ExternalLink,
+  FileDown,
+  Route as RouteIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -22,7 +31,12 @@ import {
 import {
   CUSTOMS_STATUS_LABELS,
   customsStatusBadgeClass,
+  NOTIFICATION_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
+  ROUTE_STATUS_LABELS,
+  STOP_STATUS_LABELS,
 } from "@/lib/logistics";
+import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +62,128 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-sm">{value}</p>
+    </div>
+  );
+}
+
+// Tarjeta de enlace a otro módulo. Es el mecanismo que convierte el detalle del
+// envío en el centro de la operación: desde aquí se salta a su cliente, su
+// ruta, sus cobros o sus avisos sin volver al menú.
+function LinkCard({
+  href,
+  icon: Icon,
+  label,
+  title,
+  detail,
+}: {
+  href: string;
+  icon: typeof Contact;
+  label: string;
+  title: string;
+  detail?: string | null;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-3 rounded-xl border border-border/70 bg-white/70 px-3.5 py-3 transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:bg-white hover:shadow-[0_8px_24px_-16px_rgba(4,21,31,0.4)]"
+    >
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/5 text-primary/80 ring-1 ring-primary/10">
+        <Icon className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        <span className="block truncate text-sm font-medium">{title}</span>
+        {detail ? (
+          <span className="block truncate text-xs text-muted-foreground">
+            {detail}
+          </span>
+        ) : null}
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+    </Link>
+  );
+}
+
+// Fila de accesos al contexto del envío. Solo aparecen los que existen: un
+// envío sin ruta asignada no muestra una tarjeta de ruta vacía.
+function ContextoDelEnvio({ shipment }: { shipment: ShipmentDetail }) {
+  const parada = shipment.routeStops[0] ?? null;
+  const pagos = shipment.payments;
+  const totalPagos = pagos.reduce((acc, p) => acc + Number(p.amount), 0);
+  const avisos = shipment.notifications;
+  const fallidos = avisos.filter((n) => n.status === "FAILED").length;
+  const paquete = shipment.packages.find((p) => p.locker) ?? null;
+
+  const tarjetas = [
+    shipment.customer && {
+      key: "cliente",
+      href: `/customers/${shipment.customer.id}`,
+      icon: Contact,
+      label: "Cliente",
+      title: shipment.customer.name,
+      detail: shipment.customer.phone ?? shipment.customer.email,
+    },
+    parada && {
+      key: "ruta",
+      href: `/routes/${parada.route.id}`,
+      icon: RouteIcon,
+      label: "Ruta",
+      title: parada.route.code,
+      detail: [
+        parada.route.driver?.name,
+        `parada ${parada.sequence} · ${STOP_STATUS_LABELS[parada.status]}`,
+        ROUTE_STATUS_LABELS[parada.route.status],
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    },
+    pagos.length > 0 && {
+      key: "pagos",
+      href: `/payments?shipmentId=${shipment.id}`,
+      icon: CreditCard,
+      label: "Cobros",
+      title: `${totalPagos.toFixed(2)} ${shipment.currency}`,
+      detail: pagos
+        .map((p) => PAYMENT_STATUS_LABELS[p.status])
+        .join(" · "),
+    },
+    avisos.length > 0 && {
+      key: "avisos",
+      href: `/notifications?shipmentId=${shipment.id}`,
+      icon: Bell,
+      label: "Avisos",
+      title: `${avisos.length} notificación${avisos.length === 1 ? "" : "es"}`,
+      detail:
+        fallidos > 0
+          ? `${fallidos} fallida${fallidos === 1 ? "" : "s"}`
+          : NOTIFICATION_STATUS_LABELS[avisos[0].status],
+    },
+    paquete?.locker && {
+      key: "casillero",
+      href: `/lockers/${paquete.locker.id}`,
+      icon: Archive,
+      label: "Casillero",
+      title: paquete.locker.code,
+      detail: `${shipment.packages.length} paquete${shipment.packages.length === 1 ? "" : "s"} consolidado${shipment.packages.length === 1 ? "" : "s"}`,
+    },
+  ].filter(Boolean) as {
+    key: string;
+    href: string;
+    icon: typeof Contact;
+    label: string;
+    title: string;
+    detail?: string | null;
+  }[];
+
+  if (tarjetas.length === 0) return null;
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {tarjetas.map(({ key, ...props }) => (
+        <LinkCard key={key} {...props} />
+      ))}
     </div>
   );
 }
@@ -386,42 +522,39 @@ export default function ShipmentDetailPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/shipments">
-              <ArrowLeft className="size-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="font-mono text-xl font-semibold">
-              {shipment.trackingNumber}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {TYPE_LABELS[shipment.type]} ·{" "}
-              {new Date(shipment.createdAt).toLocaleString("es-HN")}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge className={statusBadgeClass(shipment.status)}>
-            {STATUS_LABELS[shipment.status]}
-          </Badge>
-          <Button variant="outline" onClick={onLabel}>
-            <FileDown className="size-4" />
-            Etiqueta
-          </Button>
-          <Button variant="outline" asChild>
-            <Link
-              href={`/track/${shipment.trackingNumber}`}
-              target="_blank"
-            >
-              <ExternalLink className="size-4" />
-              Rastreo público
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Envíos", href: "/shipments" },
+          { label: shipment.trackingNumber },
+        ]}
+        title={
+          <span className="flex items-center gap-3">
+            <span className="font-mono">{shipment.trackingNumber}</span>
+            <Badge className={statusBadgeClass(shipment.status)}>
+              {STATUS_LABELS[shipment.status]}
+            </Badge>
+          </span>
+        }
+        description={`${TYPE_LABELS[shipment.type]} · creado el ${new Date(
+          shipment.createdAt,
+        ).toLocaleString("es-HN")}`}
+        actions={
+          <>
+            <Button variant="outline" onClick={onLabel}>
+              <FileDown className="size-4" />
+              Etiqueta
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/track/${shipment.trackingNumber}`} target="_blank">
+                <ExternalLink className="size-4" />
+                Rastreo público
+              </Link>
+            </Button>
+          </>
+        }
+      />
+
+      <ContextoDelEnvio shipment={shipment} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

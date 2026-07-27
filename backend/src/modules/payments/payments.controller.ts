@@ -29,13 +29,20 @@ export class PaymentsController {
   @ApiQuery({ name: 'status', enum: PaymentStatus, required: false })
   @ApiQuery({ name: 'type', enum: PaymentType, required: false })
   @ApiQuery({ name: 'driverId', required: false })
+  @ApiQuery({ name: 'shipmentId', required: false })
   list(
     @CurrentUser() user: AuthUser,
     @Query('status') status?: PaymentStatus,
     @Query('type') type?: PaymentType,
     @Query('driverId') driverId?: string,
+    @Query('shipmentId') shipmentId?: string,
   ) {
-    return this.payments.list(user.tenantId, { status, type, driverId });
+    return this.payments.list(user.tenantId, {
+      status,
+      type,
+      driverId,
+      shipmentId,
+    });
   }
 
   @Get('summary')

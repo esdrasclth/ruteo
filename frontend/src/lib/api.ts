@@ -183,9 +183,63 @@ export interface ShipmentLeg {
   eta: string | null;
 }
 
+// El detalle trae el contexto operativo del envío (cliente, ruta, cobros,
+// avisos) para que la pantalla funcione como centro de la operación y no haya
+// que ir saltando de módulo en módulo.
 export interface ShipmentDetail extends Shipment {
   legs: ShipmentLeg[];
   events: ShipmentEvent[];
+  customer: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  customs: CustomsRecord | null;
+  routeStops: {
+    id: string;
+    sequence: number;
+    type: StopType;
+    status: StopStatus;
+    arrivedAt: string | null;
+    completedAt: string | null;
+    route: {
+      id: string;
+      code: string;
+      status: RouteStatus;
+      scheduledDate: string;
+      driver: { id: string; name: string; phone: string | null } | null;
+    };
+    pod: ProofOfDelivery | null;
+  }[];
+  payments: Payment[];
+  notifications: NotificationRow[];
+  packages: {
+    id: string;
+    externalTracking: string | null;
+    merchant: string | null;
+    description: string | null;
+    weightKg: string | null;
+    status: PackageStatus;
+    locker: { id: string; code: string } | null;
+  }[];
+}
+
+export interface SearchHit {
+  id: string;
+  titulo: string;
+  subtitulo: string | null;
+  href: string;
+}
+
+export interface SearchResults {
+  query: string;
+  total: number;
+  envios: SearchHit[];
+  clientes: SearchHit[];
+  casilleros: SearchHit[];
+  rutas: SearchHit[];
+  repartidores: SearchHit[];
 }
 
 export interface Paginated<T> {

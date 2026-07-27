@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   api,
@@ -44,6 +45,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/page-header";
 
 const ALL = "ALL";
 
@@ -51,8 +53,20 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// `useSearchParams` exige frontera Suspense para no romper el build estatico.
 export default function RoutesPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <RoutesContent />
+    </Suspense>
+  );
+}
+
+function RoutesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Llega desde el listado de repartidores: "ver las rutas de este repartidor".
+  const driverId = searchParams.get("driverId");
   const [routes, setRoutes] = useState<RouteSummary[] | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [status, setStatus] = useState<string>(ALL);
@@ -63,6 +77,7 @@ export default function RoutesPage() {
   const load = useCallback(async () => {
     const params = new URLSearchParams();
     if (status !== ALL) params.set("status", status);
+    if (driverId) params.set("driverId", driverId);
     try {
       setRoutes(await api<RouteSummary[]>(`/routes?${params}`));
     } catch (err) {
@@ -70,7 +85,7 @@ export default function RoutesPage() {
         err instanceof ApiError ? err.message : "Error cargando rutas",
       );
     }
-  }, [status]);
+  }, [status, driverId]);
 
   useEffect(() => {
     load();
@@ -110,13 +125,32 @@ export default function RoutesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Rutas</h1>
-          <p className="text-sm text-muted-foreground">
-            {routes ? `${routes.length} rutas` : "Cargando…"}
-          </p>
-        </div>
+      <PageHeader
+        breadcrumbs={
+          driverId
+            ? [
+                { label: "Repartidores", href: "/drivers" },
+                { label: "Rutas asignadas" },
+              ]
+            : undefined
+        }
+        title="Rutas"
+        description={
+          routes
+            ? `${routes.length} ruta${routes.length === 1 ? "" : "s"}${
+                driverId ? " de este repartidor" : ""
+              }`
+            : "Cargando…"
+        }
+        actions={
+          driverId ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/routes">Ver todas</Link>
+            </Button>
+          ) : null
+        }
+      />
+      <div className="flex items-center justify-end">
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>

@@ -1,7 +1,9 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CreditCard, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -42,6 +44,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 import {
   Table,
   TableBody,
@@ -54,7 +58,19 @@ import {
 const STATUS_FILTERS = ["PENDING", "COLLECTED", "REMITTED", "CANCELLED"];
 const TYPE_FILTERS = ["COD", "SUBSCRIPTION"];
 
+// `useSearchParams` exige frontera Suspense para no romper el build estatico.
 export default function PaymentsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <PaymentsContent />
+    </Suspense>
+  );
+}
+
+function PaymentsContent() {
+  const searchParams = useSearchParams();
+  // Llega desde el detalle de un envio: "ver los cobros de este envio".
+  const shipmentId = searchParams.get("shipmentId");
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [summary, setSummary] = useState<PaymentSummaryRow[] | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -71,6 +87,7 @@ export default function PaymentsPage() {
     const params = new URLSearchParams();
     if (status !== "ALL") params.set("status", status);
     if (type !== "ALL") params.set("type", type);
+    if (shipmentId) params.set("shipmentId", shipmentId);
     const qs = params.toString();
     try {
       const [list, sum] = await Promise.all([
@@ -84,7 +101,7 @@ export default function PaymentsPage() {
         err instanceof ApiError ? err.message : "Error cargando pagos",
       );
     }
-  }, [status, type]);
+  }, [status, type, shipmentId]);
 
   useEffect(() => {
     load();
@@ -148,12 +165,29 @@ export default function PaymentsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Pagos</h1>
-        <p className="text-sm text-muted-foreground">
-          COD y suscripciones del período
-        </p>
-      </div>
+      <PageHeader
+        breadcrumbs={
+          shipmentId
+            ? [
+                { label: "Envíos", href: "/shipments" },
+                { label: "Envío", href: `/shipments/${shipmentId}` },
+                { label: "Cobros" },
+              ]
+            : undefined
+        }
+        title="Pagos"
+        description="Cobros contra entrega y suscripciones del período."
+        actions={
+          shipmentId ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/payments">
+                <X className="size-4" />
+                Quitar filtro de envío
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
         {["PENDING", "COLLECTED", "REMITTED"].map((s) => {
@@ -220,9 +254,15 @@ export default function PaymentsPage() {
               ))}
             </div>
           ) : payments.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              Sin pagos con estos filtros.
-            </p>
+            <EmptyState
+              icon={CreditCard}
+              title="Sin pagos"
+              description={
+                shipmentId
+                  ? "Este envío no tiene cobros registrados."
+                  : "No hay pagos que coincidan con los filtros seleccionados."
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

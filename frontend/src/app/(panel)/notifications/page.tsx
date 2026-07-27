@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Send } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Bell, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -45,6 +46,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 
 const CHANNELS: NotificationChannel[] = ["SMS", "EMAIL", "PUSH", "WHATSAPP"];
 const STATUSES: NotificationStatus[] = ["PENDING", "SENT", "FAILED"];
@@ -64,7 +67,21 @@ const EMPTY_FORM = {
   body: "",
 };
 
+// `useSearchParams` obliga a una frontera Suspense: en producción una página
+// estática que lo llame sin ella rompe el build (en desarrollo no se nota).
 export default function NotificationsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <NotificationsContent />
+    </Suspense>
+  );
+}
+
+function NotificationsContent() {
+  const searchParams = useSearchParams();
+  // Llega desde el detalle de un envío: "ver los avisos de este envío".
+  const shipmentId = searchParams.get("shipmentId");
+
   const [rows, setRows] = useState<NotificationRow[] | null>(null);
   const [status, setStatus] = useState<string>(TODOS);
   const [channel, setChannel] = useState<string>(TODOS);
@@ -76,6 +93,7 @@ export default function NotificationsPage() {
     const params = new URLSearchParams();
     if (status !== TODOS) params.set("status", status);
     if (channel !== TODOS) params.set("channel", channel);
+    if (shipmentId) params.set("shipmentId", shipmentId);
     const qs = params.toString();
     try {
       setRows(await api<NotificationRow[]>(`/notifications${qs ? `?${qs}` : ""}`));
@@ -84,7 +102,7 @@ export default function NotificationsPage() {
         err instanceof ApiError ? err.message : "Error cargando notificaciones",
       );
     }
-  }, [status, channel]);
+  }, [status, channel, shipmentId]);
 
   useEffect(() => {
     load();
@@ -121,13 +139,29 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Notificaciones</h1>
-        <p className="text-sm text-muted-foreground">
-          Historial de avisos enviados a clientes y destinatarios. Los que
-          dispara un cambio de estado se entregan por cola y se reintentan solos.
-        </p>
-      </div>
+      <PageHeader
+        breadcrumbs={
+          shipmentId
+            ? [
+                { label: "Envíos", href: "/shipments" },
+                { label: "Envío", href: `/shipments/${shipmentId}` },
+                { label: "Avisos" },
+              ]
+            : undefined
+        }
+        title="Notificaciones"
+        description="Historial de avisos enviados a clientes y destinatarios. Los que dispara un cambio de estado se entregan por cola y se reintentan solos."
+        actions={
+          shipmentId ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/notifications">
+                <X className="size-4" />
+                Quitar filtro de envío
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -176,9 +210,15 @@ export default function NotificationsPage() {
           {!rows ? (
             <Skeleton className="h-24 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay notificaciones con esos filtros.
-            </p>
+            <EmptyState
+              icon={Bell}
+              title="Sin notificaciones"
+              description={
+                shipmentId
+                  ? "Este envío todavía no ha generado avisos."
+                  : "No hay avisos que coincidan con los filtros seleccionados."
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

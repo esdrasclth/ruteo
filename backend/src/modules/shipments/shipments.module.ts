@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SearchModule } from '../search/search.module';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { JwtOrApiKeyGuard } from '../../common/guards/jwt-or-api-key.guard';
@@ -15,6 +16,7 @@ import { ShipmentsService } from './shipments.service';
 
 @Module({
   imports: [
+    SearchModule,
     RealtimeModule,
     PaymentsModule,
     WebhooksModule,

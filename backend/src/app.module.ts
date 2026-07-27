@@ -27,6 +27,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AuditModule } from './modules/audit/audit.module';
     NotificationsModule,
     AnalyticsModule,
     AuditModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

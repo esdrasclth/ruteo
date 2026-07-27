@@ -20,6 +20,7 @@ import { WebhooksService } from '../webhooks/webhooks.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BillingService } from '../billing/billing.service';
 import { AuditService } from '../audit/audit.service';
+import { SearchService } from '../search/search.service';
 import { parseShipmentCsv } from './csv-import';
 import { CreateLegDto } from './dto/create-leg.dto';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
@@ -32,9 +33,51 @@ import { canTransition } from './shipment-status';
 import { statusMessage } from './status-message';
 import { generateTrackingNumber } from './tracking-number';
 
+// El detalle del envío es el punto donde converge toda la operación, así que
+// trae también su contexto: quién lo recibe, en qué ruta va, qué se le cobró y
+// qué se le avisó. Sin esto el panel obliga a saltar entre módulos a mano.
 const shipmentDetail = {
   legs: { orderBy: { sequence: 'asc' } },
   events: { orderBy: { occurredAt: 'asc' } },
+  customer: { select: { id: true, name: true, email: true, phone: true } },
+  customs: true,
+  routeStops: {
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      sequence: true,
+      type: true,
+      status: true,
+      arrivedAt: true,
+      completedAt: true,
+      route: {
+        select: {
+          id: true,
+          code: true,
+          status: true,
+          scheduledDate: true,
+          driver: { select: { id: true, name: true, phone: true } },
+        },
+      },
+      pod: true,
+    },
+  },
+  payments: { orderBy: { createdAt: 'desc' } },
+  notifications: {
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  },
+  packages: {
+    select: {
+      id: true,
+      externalTracking: true,
+      merchant: true,
+      description: true,
+      weightKg: true,
+      status: true,
+      locker: { select: { id: true, code: true } },
+    },
+  },
 } satisfies Prisma.ShipmentInclude;
 
 @Injectable()
@@ -48,6 +91,7 @@ export class ShipmentsService {
     private readonly notifications: NotificationsService,
     private readonly billing: BillingService,
     private readonly audit: AuditService,
+    private readonly search: SearchService,
   ) {}
 
   async create(user: AuthUser, dto: CreateShipmentDto) {
@@ -166,7 +210,10 @@ export class ShipmentsService {
       return { shipment, tenantName: tenant?.name ?? null };
     });
 
-    const base = this.config.get<string>('PUBLIC_APP_URL', 'http://localhost:3000');
+    const base = this.config.get<string>(
+      'PUBLIC_APP_URL',
+      'http://localhost:3000',
+    );
     const num = (v: unknown) => (v == null ? null : Number(v));
 
     return buildLabelSvg({
@@ -184,11 +231,21 @@ export class ShipmentsService {
   }
 
   async list(tenantId: string, query: QueryShipmentsDto) {
-    const where: Prisma.ShipmentWhereInput = {
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.type ? { type: query.type } : {}),
-    };
+    const search = query.search?.trim();
     return this.prisma.withTenant(tenantId, async (tx) => {
+      // El texto se resuelve con `unaccent` (igual que la busqueda global) y
+      // luego se pagina sobre esos ids: asi "lopez" encuentra "Lopez" con
+      // tilde, cosa que `mode: 'insensitive'` no hace.
+      const idsPorTexto = search
+        ? await this.search.shipmentIdsMatching(tx, search)
+        : null;
+
+      const where: Prisma.ShipmentWhereInput = {
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.type ? { type: query.type } : {}),
+        ...(idsPorTexto ? { id: { in: idsPorTexto } } : {}),
+      };
+
       const [total, items] = await Promise.all([
         tx.shipment.count({ where }),
         tx.shipment.findMany({
@@ -405,7 +462,11 @@ export class ShipmentsService {
         recipient: shipment.recipientPhone,
         type: 'shipment.leg_updated',
         title: `Envío ${shipment.trackingNumber}`,
-        body: legStatusMessage(shipment.trackingNumber, updated.status, updated),
+        body: legStatusMessage(
+          shipment.trackingNumber,
+          updated.status,
+          updated,
+        ),
         shipmentId,
       });
     }

@@ -74,7 +74,12 @@ export class PaymentsService {
 
   list(
     tenantId: string,
-    filters: { status?: PaymentStatus; type?: PaymentType; driverId?: string },
+    filters: {
+      status?: PaymentStatus;
+      type?: PaymentType;
+      driverId?: string;
+      shipmentId?: string;
+    },
   ) {
     return this.prisma.withTenant(tenantId, (tx) =>
       tx.payment.findMany({
@@ -84,10 +89,13 @@ export class PaymentsService {
           ...(filters.driverId
             ? { collectedByDriverId: filters.driverId }
             : {}),
+          ...(filters.shipmentId ? { shipmentId: filters.shipmentId } : {}),
         },
         orderBy: { createdAt: 'desc' },
         include: {
           shipment: { select: { trackingNumber: true, recipientName: true } },
+          // El panel muestra quien cobro; sin esto solo tendria el id.
+          driver: { select: { id: true, name: true } },
         },
       }),
     );

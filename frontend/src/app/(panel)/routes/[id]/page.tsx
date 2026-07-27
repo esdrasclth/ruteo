@@ -328,9 +328,14 @@ export default function RouteDetailPage({
                     <TableCell>{stop.sequence}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-mono text-xs">
+                        {/* La parada es el punto donde el repartidor necesita
+                            abrir el envio; sin este enlace hay que buscarlo. */}
+                        <Link
+                          href={`/shipments/${stop.shipmentId}`}
+                          className="font-mono text-xs text-primary underline-offset-2 hover:underline"
+                        >
                           {stop.shipment.trackingNumber}
-                        </span>
+                        </Link>
                         <Badge
                           className={`${statusBadgeClass(stop.shipment.status)} mt-1 w-fit`}
                         >

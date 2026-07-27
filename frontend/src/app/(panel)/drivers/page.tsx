@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 , Route as RouteIcon } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   api,
@@ -272,13 +273,22 @@ export default function DriversPage() {
                       </Select>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(d)}
-                      >
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {/* Salto al trabajo real del repartidor: sus rutas. */}
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/routes?driverId=${d.id}`}>
+                            <RouteIcon className="size-4" />
+                            Rutas
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(d)}
+                        >
+                          <Trash2 className="size-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

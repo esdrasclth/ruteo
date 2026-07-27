@@ -27,6 +27,9 @@ import {
   testSlug,
 } from './tenant-fixtures';
 
+// Destinatario del envio de prueba: los avisos de estado van aqui.
+const TELEFONO = '+50499990000';
+
 interface WebhookRecibido {
   event: string;
   signature: string;
@@ -37,13 +40,29 @@ interface WebhookRecibido {
 // para observar los reintentos de BullMQ sin depender de un servicio externo.
 class ProveedorControlable implements NotificationProvider {
   readonly name = 'test';
-  fallosPendientes = 0;
   envios: NotificationMessage[] = [];
+  // Los fallos se programan POR DESTINATARIO. Con un contador global, una
+  // entrega en vuelo de un test anterior (dispatch es fire-and-forget) consumia
+  // el fallo que este test acababa de preparar, y la prueba fallaba sin motivo.
+  private fallosPorDestinatario = new Map<string, number>();
+
+  programarFallos(recipient: string, veces: number) {
+    this.fallosPorDestinatario.set(recipient, veces);
+  }
+
+  fallosRestantes(recipient: string): number {
+    return this.fallosPorDestinatario.get(recipient) ?? 0;
+  }
+
+  enviosA(recipient: string): NotificationMessage[] {
+    return this.envios.filter((e) => e.recipient === recipient);
+  }
 
   send(message: NotificationMessage): Promise<NotificationSendResult> {
     this.envios.push(message);
-    if (this.fallosPendientes > 0) {
-      this.fallosPendientes--;
+    const pendientes = this.fallosPorDestinatario.get(message.recipient) ?? 0;
+    if (pendientes > 0) {
+      this.fallosPorDestinatario.set(message.recipient, pendientes - 1);
       return Promise.resolve({ ok: false, error: 'fallo simulado' });
     }
     return Promise.resolve({ ok: true });
@@ -88,9 +107,6 @@ describe('Entrega asíncrona por BullMQ', () => {
   beforeAll(async () => {
     admin = createAdminPrisma();
     await purgeTestTenants(admin, 'queue');
-
-    // Namespace propio en Redis para no compartir jobs con la app de desarrollo.
-    process.env.QUEUE_PREFIX = `bull-test-${randomUUID().slice(0, 8)}`;
 
     receptor = await levantarReceptor();
     const { port } = receptor.address() as AddressInfo;
@@ -177,7 +193,7 @@ describe('Entrega asíncrona por BullMQ', () => {
       .send({
         type: 'LOCAL',
         recipientName: 'Destinatario',
-        recipientPhone: '+50499990000',
+        recipientPhone: TELEFONO,
       })
       .expect(201);
 
@@ -325,42 +341,43 @@ describe('Entrega asíncrona por BullMQ', () => {
 
   describe('notificaciones', () => {
     it('el cambio de estado deja la notificación en SENT vía worker', async () => {
-      proveedor.envios = [];
       // Los cambios de estado anteriores ya dejaron notificaciones enviadas;
       // hay que esperar una *nueva*, no cualquiera que esté en SENT.
-      const previas = new Set(
-        (await admin.notification.findMany({ where: { tenantId } })).map(
-          (n) => n.id,
-        ),
-      );
+      const antes = proveedor.enviosA(TELEFONO).length;
 
       await cambiarEstado('IN_TRANSIT');
+
+      // Contar entregas a ESE destinatario es estable aunque queden avisos de
+      // pasos anteriores todavia en vuelo.
+      await esperarA(
+        () =>
+          Promise.resolve(
+            proveedor.enviosA(TELEFONO).length > antes ? true : null,
+          ),
+        'el proveedor recibe el aviso del cambio de estado',
+      );
 
       const notificacion = await esperarA(
         async () =>
           (await admin.notification.findFirst({
-            where: {
-              tenantId,
-              status: NotificationStatus.SENT,
-              id: { notIn: [...previas] },
-            },
+            where: { tenantId, shipmentId, status: NotificationStatus.SENT },
+            orderBy: { createdAt: 'desc' },
           })) ?? null,
         'la notificación llega a SENT',
       );
 
       expect(notificacion.channel).toBe(NotificationChannel.SMS);
-      expect(notificacion.recipient).toBe('+50499990000');
+      expect(notificacion.recipient).toBe(TELEFONO);
       expect(notificacion.sentAt).not.toBeNull();
-      expect(proveedor.envios.length).toBeGreaterThanOrEqual(1);
     }, 40_000);
 
     it('un fallo del proveedor se reintenta hasta enviarse', async () => {
-      proveedor.envios = [];
-      proveedor.fallosPendientes = 1;
+      const destinatario = 'reintento@ejemplo.test';
+      proveedor.programarFallos(destinatario, 1); // el primer envio falla
 
       notifications.dispatch(tenantId, {
         channel: NotificationChannel.EMAIL,
-        recipient: 'cliente@ejemplo.test',
+        recipient: destinatario,
         type: 'test.retry',
         body: 'reintento',
       });
@@ -380,19 +397,20 @@ describe('Entrega asíncrona por BullMQ', () => {
         return fila.status === NotificationStatus.SENT ? fila : null;
       }, 'la notificación se reintenta y llega a SENT');
 
-      expect(proveedor.envios.length).toBe(2);
-      expect(proveedor.fallosPendientes).toBe(0);
+      // Dos entregas a ESE destinatario: el intento fallido y el reintento.
+      expect(proveedor.enviosA(destinatario)).toHaveLength(2);
+      expect(proveedor.fallosRestantes(destinatario)).toBe(0);
     }, 40_000);
 
     it('la fila se persiste como PENDING antes de intentar el envío', async () => {
       // Es lo que hace que una caída de Redis no pierda la notificación: queda
       // registrada en Postgres y es reintentable.
-      proveedor.envios = [];
-      proveedor.fallosPendientes = 99; // nunca se entrega
+      const destinatario = 'pendiente@ejemplo.test';
+      proveedor.programarFallos(destinatario, 99); // nunca se entrega
 
       notifications.dispatch(tenantId, {
         channel: NotificationChannel.EMAIL,
-        recipient: 'cliente@ejemplo.test',
+        recipient: destinatario,
         type: 'test.pending',
         body: 'pendiente',
       });
@@ -407,13 +425,11 @@ describe('Entrega asíncrona por BullMQ', () => {
 
       expect(fila.status).toBe(NotificationStatus.PENDING);
       expect(fila.sentAt).toBeNull();
-      proveedor.fallosPendientes = 0;
     }, 40_000);
 
     it('el envío manual por API sigue siendo síncrono y definitivo', async () => {
       // `POST /notifications` devuelve el resultado final, no un PENDING: el
       // contrato de ese endpoint no cambia al introducir la cola.
-      proveedor.fallosPendientes = 0;
 
       const res = await request(http)
         .post('/api/notifications')

@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Plus, Upload } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Package, Plus, Search, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -37,16 +37,44 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 
 const ALL = "ALL";
 const PAGE_SIZE = 20;
 
+// `useSearchParams` exige frontera Suspense para no romper el build estatico.
 export default function ShipmentsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <ShipmentsContent />
+    </Suspense>
+  );
+}
+
+function ShipmentsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // El dashboard enlaza aqui con un estado ya aplicado (ej. ?status=DELIVERED),
+  // de modo que un KPI lleve directo a la lista que lo explica.
+  const statusInicial = searchParams.get("status") ?? ALL;
+
   const [data, setData] = useState<Paginated<Shipment> | null>(null);
-  const [status, setStatus] = useState<string>(ALL);
+  const [status, setStatus] = useState<string>(statusInicial);
   const [type, setType] = useState<string>(ALL);
+  const [search, setSearch] = useState("");
+  const [busqueda, setBusqueda] = useState("");
   const [page, setPage] = useState(1);
+
+  // Debounce del buscador: sin esto se lanza una consulta por tecla.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setBusqueda(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({
@@ -55,6 +83,7 @@ export default function ShipmentsPage() {
     });
     if (status !== ALL) params.set("status", status);
     if (type !== ALL) params.set("type", type);
+    if (busqueda) params.set("search", busqueda);
     try {
       setData(await api<Paginated<Shipment>>(`/shipments?${params}`));
     } catch (err) {
@@ -62,7 +91,7 @@ export default function ShipmentsPage() {
         err instanceof ApiError ? err.message : "Error cargando envíos",
       );
     }
-  }, [page, status, type]);
+  }, [page, status, type, busqueda]);
 
   useEffect(() => {
     load();
@@ -72,30 +101,54 @@ export default function ShipmentsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Envíos</h1>
-          <p className="text-sm text-muted-foreground">
-            {data ? `${data.total} en total` : "Cargando…"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/shipments/import">
-              <Upload className="size-4" />
-              Importar CSV
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/shipments/new">
-              <Plus className="size-4" />
-              Nuevo envío
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Envíos"
+        description={
+          data
+            ? `${data.total} envío${data.total === 1 ? "" : "s"}${
+                busqueda ? ` para “${busqueda}”` : ""
+              }`
+            : "Cargando…"
+        }
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/shipments/import">
+                <Upload className="size-4" />
+                Importar CSV
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/shipments/new">
+                <Plus className="size-4" />
+                Nuevo envío
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative min-w-64 flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Guía, destinatario, teléfono o destino…"
+            className="bg-card pl-9"
+            aria-label="Buscar envíos"
+          />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              aria-label="Limpiar búsqueda"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
         <Select
           value={status}
           onValueChange={(v) => {
@@ -145,9 +198,23 @@ export default function ShipmentsPage() {
               ))}
             </div>
           ) : data.items.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              No hay envíos con esos filtros.
-            </p>
+            <EmptyState
+              icon={Package}
+              title="Sin envíos"
+              description={
+                busqueda
+                  ? `Ningún envío coincide con “${busqueda}”.`
+                  : "No hay envíos que coincidan con los filtros seleccionados."
+              }
+              action={
+                <Button asChild size="sm">
+                  <Link href="/shipments/new">
+                    <Plus className="size-4" />
+                    Nuevo envío
+                  </Link>
+                </Button>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

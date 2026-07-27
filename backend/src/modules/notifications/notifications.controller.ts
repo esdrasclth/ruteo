@@ -23,12 +23,18 @@ export class NotificationsController {
   @Get()
   @ApiQuery({ name: 'status', enum: NotificationStatus, required: false })
   @ApiQuery({ name: 'channel', enum: NotificationChannel, required: false })
+  @ApiQuery({ name: 'shipmentId', required: false })
   list(
     @CurrentUser() user: AuthUser,
     @Query('status') status?: NotificationStatus,
     @Query('channel') channel?: NotificationChannel,
+    @Query('shipmentId') shipmentId?: string,
   ) {
-    return this.notifications.list(user.tenantId, { status, channel });
+    return this.notifications.list(user.tenantId, {
+      status,
+      channel,
+      shipmentId,
+    });
   }
 
   @Post()

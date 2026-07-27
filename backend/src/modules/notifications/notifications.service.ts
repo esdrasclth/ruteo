@@ -138,13 +138,18 @@ export class NotificationsService {
 
   list(
     tenantId: string,
-    filters: { status?: NotificationStatus; channel?: NotificationChannel },
+    filters: {
+      status?: NotificationStatus;
+      channel?: NotificationChannel;
+      shipmentId?: string;
+    },
   ) {
     return this.prisma.withTenant(tenantId, (tx) =>
       tx.notification.findMany({
         where: {
           ...(filters.status ? { status: filters.status } : {}),
           ...(filters.channel ? { channel: filters.channel } : {}),
+          ...(filters.shipmentId ? { shipmentId: filters.shipmentId } : {}),
         },
         orderBy: { createdAt: 'desc' },
         take: 100,

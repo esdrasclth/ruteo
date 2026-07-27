@@ -1,7 +1,8 @@
 "use client";
 
 import { ComponentType, useCallback, useEffect, useState } from "react";
-import { Bell, DollarSign, Package, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Bell, DollarSign, Package, TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   api,
@@ -19,6 +20,7 @@ import {
 import { STATUS_LABELS, TYPE_LABELS } from "@/lib/shipment-status";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/page-header";
 import {
   Select,
   SelectContent,
@@ -33,19 +35,27 @@ const RANGOS = [
   { dias: 90, label: "Últimos 90 días" },
 ];
 
+// Cada KPI es un enlace a la lista que lo explica: ver "12 entregados" y no
+// poder abrir esos 12 es el tipo de callejon sin salida que hace sentir el
+// panel como modulos sueltos.
 function Kpi({
   title,
   value,
   hint,
   icon: Icon,
+  href,
 }: {
   title: string;
   value: string;
   hint?: string;
   icon: ComponentType<{ className?: string }>;
+  href: string;
 }) {
   return (
-    <div className="glass-card group relative overflow-hidden rounded-2xl p-5 transition-transform duration-200 hover:-translate-y-0.5">
+    <Link
+      href={href}
+      className="glass-card group relative overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-24px_rgba(4,21,31,0.45)]"
+    >
       <div className="flex items-start justify-between">
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {title}
@@ -54,13 +64,14 @@ function Kpi({
           <Icon className="size-5" />
         </span>
       </div>
-      <p className="mt-4 text-3xl font-semibold tracking-tight text-primary">
+      <p className="mt-4 flex items-baseline gap-1.5 text-3xl font-semibold tracking-tight text-primary">
         {value}
+        <ArrowUpRight className="size-4 shrink-0 self-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
       </p>
       {hint ? (
         <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       ) : null}
-    </div>
+    </Link>
   );
 }
 
@@ -119,26 +130,24 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            {RANGOS.find((r) => String(r.dias) === dias)?.label}
-          </p>
-        </div>
-        <Select value={dias} onValueChange={setDias}>
-          <SelectTrigger className="w-48" aria-label="Rango de fechas">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {RANGOS.map((r) => (
-              <SelectItem key={r.dias} value={String(r.dias)}>
-                {r.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description={RANGOS.find((r) => String(r.dias) === dias)?.label}
+        actions={
+          <Select value={dias} onValueChange={setDias}>
+            <SelectTrigger className="w-48" aria-label="Rango de fechas">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RANGOS.map((r) => (
+                <SelectItem key={r.dias} value={String(r.dias)}>
+                  {r.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Kpi
@@ -146,24 +155,28 @@ export default function DashboardPage() {
           value={String(overview.shipments.total)}
           hint={`${overview.shipments.delivered} entregados`}
           icon={Package}
+          href="/shipments"
         />
         <Kpi
           title="Tasa de entrega"
           value={`${(overview.shipments.deliveryRate * 100).toFixed(1)}%`}
           hint={`${overview.shipments.failed} intentos fallidos`}
           icon={TrendingUp}
+          href="/shipments?status=DELIVERED"
         />
         <Kpi
           title="COD cobrado"
           value={overview.cod.collected}
           hint={`Pendiente: ${overview.cod.pending} · Remitido: ${overview.cod.remitted}`}
           icon={DollarSign}
+          href="/payments"
         />
         <Kpi
           title="Notificaciones"
           value={String(overview.notifications.sent)}
           hint={`${overview.notifications.failed} fallidas`}
           icon={Bell}
+          href="/notifications"
         />
       </div>
 
@@ -208,9 +221,10 @@ export default function DashboardPage() {
               <p className="text-sm text-muted-foreground">Sin datos.</p>
             ) : (
               shipments.byStatus.map((row) => (
-                <div
+                <Link
                   key={row.status}
-                  className="flex items-center justify-between text-sm"
+                  href={`/shipments?status=${row.status}`}
+                  className="-mx-2 flex items-center justify-between rounded-lg px-2 py-1 text-sm transition-colors hover:bg-primary/5"
                 >
                   <span className="text-foreground/80">
                     {STATUS_LABELS[row.status] ?? row.status}
@@ -218,7 +232,7 @@ export default function DashboardPage() {
                   <span className="font-semibold text-primary">
                     {row.count}
                   </span>
-                </div>
+                </Link>
               ))
             )}
             {shipments.byType.length > 0 ? (

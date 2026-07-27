@@ -71,7 +71,18 @@ class EnvironmentVariables {
 }
 
 export function validateEnv(config: Record<string, unknown>) {
-  const validated = plainToInstance(EnvironmentVariables, config, {
+  // `config` solo trae lo que se leyó del archivo `.env`. El objeto validado que
+  // devolvemos tiene prioridad en `ConfigService`, así que si no mezclamos aquí
+  // las variables de entorno reales, sus valores quedan tapados por los
+  // defaults de esta clase: en Docker/CI —donde se configura por entorno y no
+  // por archivo— la app arrancaría con PORT 3000 y el CORS apuntando a
+  // localhost sin avisar de nada.
+  //
+  // El entorno real gana sobre el archivo, que es el orden de 12-factor y el
+  // mismo que aplica dotenv al cargar `.env`.
+  const merged: Record<string, unknown> = { ...config, ...process.env };
+
+  const validated = plainToInstance(EnvironmentVariables, merged, {
     enableImplicitConversion: true,
   });
   const errors = validateSync(validated, { skipMissingProperties: false });
