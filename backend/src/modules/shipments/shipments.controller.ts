@@ -1,0 +1,126 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Role } from '@prisma/client';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtOrApiKeyGuard } from '../../common/guards/jwt-or-api-key.guard';
+import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
+import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
+import { CreateLegDto } from './dto/create-leg.dto';
+import { CreateShipmentDto } from './dto/create-shipment.dto';
+import { QueryShipmentsDto } from './dto/query-shipments.dto';
+import { UpdateLegDto } from './dto/update-leg.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
+import { ShipmentsService } from './shipments.service';
+
+@ApiTags('shipments')
+@ApiBearerAuth()
+@UseGuards(JwtOrApiKeyGuard, RolesGuard, RateLimitGuard)
+@RateLimit(120, 60)
+@Controller('shipments')
+export class ShipmentsController {
+  constructor(private readonly shipments: ShipmentsService) {}
+
+  @Post()
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @UseInterceptors(IdempotencyInterceptor)
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateShipmentDto) {
+    return this.shipments.create(user, dto);
+  }
+
+  @Post('import')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  import(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file?: { buffer: Buffer; originalname: string },
+  ) {
+    if (!file) {
+      throw new BadRequestException('CSV file is required (field "file")');
+    }
+    return this.shipments.importCsv(user, file.buffer.toString('utf8'));
+  }
+
+  @Get()
+  list(@CurrentUser() user: AuthUser, @Query() query: QueryShipmentsDto) {
+    return this.shipments.list(user.tenantId, query);
+  }
+
+  @Get(':id/label')
+  @Header('Content-Type', 'image/svg+xml')
+  label(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.shipments.buildLabel(user.tenantId, id);
+  }
+
+  @Get(':id')
+  findOne(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.shipments.findOne(user.tenantId, id);
+  }
+
+  @Patch(':id/status')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.DRIVER)
+  updateStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateStatusDto,
+  ) {
+    return this.shipments.updateStatus(user, id, dto);
+  }
+
+  @Post(':id/legs')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  addLeg(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateLegDto,
+  ) {
+    return this.shipments.addLeg(user.tenantId, id, dto);
+  }
+
+  @Patch(':id/legs/:legId')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  updateLeg(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('legId', ParseUUIDPipe) legId: string,
+    @Body() dto: UpdateLegDto,
+  ) {
+    return this.shipments.updateLeg(user.tenantId, id, legId, dto);
+  }
+}

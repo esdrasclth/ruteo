@@ -1,0 +1,755 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  OPERATOR
+  DRIVER
+  MERCHANT
+  SUPPORT
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ShipmentType {
+  LOCAL
+  INTERNATIONAL
+}
+
+enum ShipmentStatus {
+  CREATED
+  // local milestones
+  LABEL_GENERATED
+  PICKED_UP
+  IN_TRANSIT
+  // international milestones (USA -> HN)
+  RECEIVED_USA
+  CONSOLIDATED
+  IN_TRANSIT_INTL
+  IN_CUSTOMS_HN
+  CUSTOMS_CLEARED
+  IN_WAREHOUSE_HN
+  // shared last mile
+  OUT_FOR_DELIVERY
+  DELIVERED
+  // branches
+  FAILED_ATTEMPT
+  RETURNED
+  CANCELLED
+  ON_HOLD_CUSTOMS
+}
+
+enum LegMode {
+  AIR
+  SEA
+  GROUND
+}
+
+enum LegStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum CarrierType {
+  COURIER
+  AIRLINE
+  OCEAN
+  GROUND
+}
+
+enum LockerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PackageStatus {
+  PRE_ALERTED
+  RECEIVED
+  CONSOLIDATED
+  SHIPPED
+}
+
+enum CustomsStatus {
+  PENDING
+  IN_REVIEW
+  ON_HOLD
+  CLEARED
+  REJECTED
+}
+
+enum VehicleType {
+  MOTORCYCLE
+  CAR
+  VAN
+  TRUCK
+  BICYCLE
+}
+
+enum DriverStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum RouteStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum StopType {
+  PICKUP
+  DELIVERY
+}
+
+enum StopStatus {
+  PENDING
+  ARRIVED
+  COMPLETED
+  FAILED
+}
+
+enum PaymentType {
+  COD
+  SUBSCRIPTION
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  COLLECTED
+  REMITTED
+  CANCELLED
+}
+
+enum WebhookStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  PUSH
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Tenant {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String       @unique
+  plan      Plan         @default(FREE)
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  users          User[]
+  customers      Customer[]
+  shipments      Shipment[]
+  carriers       Carrier[]
+  lockers        Locker[]
+  lockerPackages LockerPackage[]
+  customsRecords CustomsRecord[]
+  zones          Zone[]
+  rates          Rate[]
+  drivers        Driver[]
+  routes         Route[]
+  routeStops     RouteStop[]
+  pods           ProofOfDelivery[]
+  payments       Payment[]
+  apiKeys        ApiKey[]
+  webhooks       WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
+  subscription   Subscription?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("tenants")
+}
+
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  tenantId         String     @map("tenant_id") @db.Uuid
+  email            String
+  name             String?
+  passwordHash     String     @map("password_hash")
+  role             Role       @default(OPERATOR)
+  status           UserStatus @default(ACTIVE)
+  refreshTokenHash String?    @map("refresh_token_hash")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  driver   Driver?
+  customer Customer?
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @unique @map("user_id") @db.Uuid
+  name       String
+  email      String?
+  phone      String?
+  documentId String?  @map("document_id")
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lockers   Locker[]
+  shipments Shipment[]
+
+  @@index([tenantId])
+  @@map("customers")
+}
+
+model Shipment {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  customerId     String?        @map("customer_id") @db.Uuid
+  trackingNumber String         @unique @map("tracking_number")
+  type           ShipmentType   @default(LOCAL)
+  status         ShipmentStatus @default(CREATED)
+
+  recipientName  String  @map("recipient_name")
+  recipientPhone String? @map("recipient_phone")
+
+  originLabel        String? @map("origin_label")
+  originCountry      String? @map("origin_country")
+  destinationLabel   String? @map("destination_label")
+  destinationCountry String? @map("destination_country")
+  destinationLat     Float?  @map("destination_lat")
+  destinationLng     Float?  @map("destination_lng")
+
+  weightKg      Decimal? @map("weight_kg") @db.Decimal(10, 3)
+  declaredValue Decimal? @map("declared_value") @db.Decimal(12, 2)
+  codAmount     Decimal? @map("cod_amount") @db.Decimal(12, 2)
+  currency      String   @default("USD")
+
+  carrierTrackingNumber String? @map("carrier_tracking_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer   Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  legs       ShipmentLeg[]
+  events     ShipmentEvent[]
+  packages   LockerPackage[]
+  customs    CustomsRecord?
+  routeStops RouteStop[]
+  pods       ProofOfDelivery[]
+  payments   Payment[]
+  notifications Notification[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([customerId])
+  @@map("shipments")
+}
+
+model ShipmentLeg {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  shipmentId       String    @map("shipment_id") @db.Uuid
+  sequence         Int
+  mode             LegMode
+  originLabel      String    @map("origin_label")
+  destinationLabel String    @map("destination_label")
+  originLat        Float?    @map("origin_lat")
+  originLng        Float?    @map("origin_lng")
+  destinationLat   Float?    @map("destination_lat")
+  destinationLng   Float?    @map("destination_lng")
+  status           LegStatus @default(PENDING)
+  carrier          String?
+  carrierId        String?   @map("carrier_id") @db.Uuid
+  externalTracking String?   @map("external_tracking")
+  etaAt            DateTime? @map("eta_at")
+  departedAt       DateTime? @map("departed_at")
+  arrivedAt        DateTime? @map("arrived_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  carrierRef  Carrier? @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+
+  @@unique([shipmentId, sequence])
+  @@index([tenantId])
+  @@index([shipmentId])
+  @@index([carrierId])
+  @@map("shipment_legs")
+}
+
+model ShipmentEvent {
+  id              String         @id @default(uuid()) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  shipmentId      String         @map("shipment_id") @db.Uuid
+  legId           String?        @map("leg_id") @db.Uuid
+  status          ShipmentStatus
+  description     String?
+  locationLabel   String?        @map("location_label")
+  lat             Float?
+  lng             Float?
+  createdByUserId String?        @map("created_by_user_id") @db.Uuid
+  occurredAt      DateTime       @default(now()) @map("occurred_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([shipmentId, occurredAt])
+  @@map("shipment_events")
+}
+
+model Carrier {
+  id                  String      @id @default(uuid()) @db.Uuid
+  tenantId            String      @map("tenant_id") @db.Uuid
+  name                String
+  code                String
+  type                CarrierType @default(COURIER)
+  trackingUrlTemplate String?     @map("tracking_url_template")
+  active              Boolean     @default(true)
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  legs   ShipmentLeg[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("carriers")
+}
+
+model Locker {
+  id            String       @id @default(uuid()) @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
+  customerId    String?      @map("customer_id") @db.Uuid
+  code          String
+  customerName  String       @map("customer_name")
+  customerEmail String?      @map("customer_email")
+  customerPhone String?      @map("customer_phone")
+  addressLine1  String       @map("address_line1")
+  addressLine2  String?      @map("address_line2")
+  city          String
+  state         String
+  postalCode    String       @map("postal_code")
+  country       String       @default("US")
+  status        LockerStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  packages LockerPackage[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([customerId])
+  @@map("lockers")
+}
+
+model LockerPackage {
+  id               String        @id @default(uuid()) @db.Uuid
+  tenantId         String        @map("tenant_id") @db.Uuid
+  lockerId         String        @map("locker_id") @db.Uuid
+  shipmentId       String?       @map("shipment_id") @db.Uuid
+  externalTracking String?       @map("external_tracking")
+  merchant         String?
+  description      String?
+  weightKg         Decimal?      @map("weight_kg") @db.Decimal(10, 3)
+  declaredValue    Decimal?      @map("declared_value") @db.Decimal(12, 2)
+  currency         String        @default("USD")
+  status           PackageStatus @default(PRE_ALERTED)
+  preAlertedAt     DateTime      @default(now()) @map("pre_alerted_at")
+  receivedAt       DateTime?     @map("received_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locker   Locker    @relation(fields: [lockerId], references: [id], onDelete: Cascade)
+  shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([lockerId])
+  @@index([shipmentId])
+  @@map("locker_packages")
+}
+
+model CustomsRecord {
+  id            String        @id @default(uuid()) @db.Uuid
+  tenantId      String        @map("tenant_id") @db.Uuid
+  shipmentId    String        @unique @map("shipment_id") @db.Uuid
+  status        CustomsStatus @default(PENDING)
+  declaredValue Decimal?      @map("declared_value") @db.Decimal(12, 2)
+  dutyAmount    Decimal?      @map("duty_amount") @db.Decimal(12, 2)
+  taxAmount     Decimal?      @map("tax_amount") @db.Decimal(12, 2)
+  handlingFee   Decimal?      @map("handling_fee") @db.Decimal(12, 2)
+  totalCharges  Decimal?      @map("total_charges") @db.Decimal(12, 2)
+  currency      String        @default("USD")
+  notes         String?
+  clearedAt     DateTime?     @map("cleared_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("customs_records")
+}
+
+model Zone {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  code        String
+  description String?
+  centerLat   Float?   @map("center_lat")
+  centerLng   Float?   @map("center_lng")
+  radiusKm    Float?   @map("radius_km")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rates   Rate[]
+  drivers Driver[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("zones")
+}
+
+model Rate {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  zoneId    String?  @map("zone_id") @db.Uuid
+  name      String
+  baseFee   Decimal  @default(0) @map("base_fee") @db.Decimal(12, 2)
+  perKg     Decimal  @default(0) @map("per_kg") @db.Decimal(12, 2)
+  perKm     Decimal  @default(0) @map("per_km") @db.Decimal(12, 2)
+  minCharge Decimal  @default(0) @map("min_charge") @db.Decimal(12, 2)
+  currency  String   @default("HNL")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  zone   Zone?  @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([zoneId])
+  @@map("rates")
+}
+
+model Driver {
+  id           String       @id @default(uuid()) @db.Uuid
+  tenantId     String       @map("tenant_id") @db.Uuid
+  userId       String?      @unique @map("user_id") @db.Uuid
+  zoneId       String?      @map("zone_id") @db.Uuid
+  name         String
+  phone        String?
+  vehicleType  VehicleType  @default(MOTORCYCLE) @map("vehicle_type")
+  vehiclePlate String?      @map("vehicle_plate")
+  status       DriverStatus @default(OFFLINE)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  zone     Zone?     @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  routes   Route[]
+  payments Payment[]
+
+  @@index([tenantId])
+  @@index([zoneId])
+  @@map("drivers")
+}
+
+model Route {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  driverId      String      @map("driver_id") @db.Uuid
+  code          String
+  status        RouteStatus @default(PLANNED)
+  scheduledDate DateTime    @map("scheduled_date") @db.Date
+  startedAt     DateTime?   @map("started_at")
+  completedAt   DateTime?   @map("completed_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  driver Driver      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  stops  RouteStop[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([driverId])
+  @@map("routes")
+}
+
+model RouteStop {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  routeId      String     @map("route_id") @db.Uuid
+  shipmentId   String     @map("shipment_id") @db.Uuid
+  sequence     Int
+  type         StopType   @default(DELIVERY)
+  status       StopStatus @default(PENDING)
+  addressLabel String?    @map("address_label")
+  lat          Float?
+  lng          Float?
+  notes        String?
+  arrivedAt    DateTime?  @map("arrived_at")
+  completedAt  DateTime?  @map("completed_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  route    Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  shipment Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  pod      ProofOfDelivery?
+
+  @@unique([routeId, sequence])
+  @@index([tenantId])
+  @@index([routeId])
+  @@index([shipmentId])
+  @@map("route_stops")
+}
+
+model ProofOfDelivery {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  shipmentId    String    @map("shipment_id") @db.Uuid
+  routeStopId   String?   @unique @map("route_stop_id") @db.Uuid
+  receivedBy    String?   @map("received_by")
+  signatureUrl  String?   @map("signature_url")
+  photoUrl      String?   @map("photo_url")
+  failureReason String?   @map("failure_reason")
+  lat           Float?
+  lng           Float?
+  capturedAt    DateTime  @default(now()) @map("captured_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment  Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  routeStop RouteStop? @relation(fields: [routeStopId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([shipmentId])
+  @@map("proof_of_deliveries")
+}
+
+model Payment {
+  id                  String         @id @default(uuid()) @db.Uuid
+  tenantId            String         @map("tenant_id") @db.Uuid
+  shipmentId          String?        @map("shipment_id") @db.Uuid
+  type                PaymentType    @default(COD)
+  amount              Decimal        @db.Decimal(12, 2)
+  currency            String         @default("HNL")
+  method              PaymentMethod?
+  status              PaymentStatus  @default(PENDING)
+  collectedByDriverId String?        @map("collected_by_driver_id") @db.Uuid
+  reference           String?
+  collectedAt         DateTime?      @map("collected_at")
+  remittedAt          DateTime?      @map("remitted_at")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  driver   Driver?   @relation(fields: [collectedByDriverId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([shipmentId])
+  @@map("payments")
+}
+
+model ApiKey {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  name       String
+  prefix     String    @unique
+  keyHash    String    @map("key_hash")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  url       String
+  secret    String
+  events    String[]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  endpointId     String        @map("endpoint_id") @db.Uuid
+  event          String
+  payload        Json          @db.JsonB
+  status         WebhookStatus @default(PENDING)
+  attempts       Int           @default(0)
+  responseStatus Int?          @map("response_status")
+  lastError      String?       @map("last_error")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([endpointId])
+  @@map("webhook_deliveries")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @unique @map("tenant_id") @db.Uuid
+  plan               Plan
+  status             SubscriptionStatus @default(ACTIVE)
+  provider           String             @default("manual")
+  providerRef        String?            @map("provider_ref")
+  amount             Decimal            @db.Decimal(12, 2)
+  currency           String             @default("HNL")
+  currentPeriodStart DateTime           @map("current_period_start")
+  currentPeriodEnd   DateTime           @map("current_period_end")
+  cancelAtPeriodEnd  Boolean            @default(false) @map("cancel_at_period_end")
+  canceledAt         DateTime?          @map("canceled_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+model Notification {
+  id         String              @id @default(uuid()) @db.Uuid
+  tenantId   String              @map("tenant_id") @db.Uuid
+  shipmentId String?             @map("shipment_id") @db.Uuid
+  channel    NotificationChannel
+  recipient  String
+  type       String
+  title      String?
+  body       String
+  status     NotificationStatus  @default(PENDING)
+  provider   String              @default("log")
+  error      String?
+  sentAt     DateTime?           @map("sent_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([shipmentId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  actorRole   String?  @map("actor_role")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, action])
+  @@map("audit_logs")
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  key            String
+  endpoint       String
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("idempotency_keys")
+}

@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ruteo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ruteo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ruteo}
+      POSTGRES_DB: ${POSTGRES_DB:-ruteo}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ruteo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ruteo} -d ${POSTGRES_DB:-ruteo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ruteo-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ruteo_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ruteo_pgdata:
+  ruteo_redisdata:

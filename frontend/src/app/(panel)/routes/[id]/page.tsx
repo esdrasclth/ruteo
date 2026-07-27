@@ -1,0 +1,500 @@
+"use client";
+
+import { FormEvent, use, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, MapPin, Plus, Wand2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  api,
+  ApiError,
+  Paginated,
+  RouteDetail,
+  RouteStop,
+  Shipment,
+} from "@/lib/api";
+import { STATUS_LABELS, statusBadgeClass } from "@/lib/shipment-status";
+import {
+  ROUTE_NEXT_STATUSES,
+  ROUTE_STATUS_LABELS,
+  STOP_STATUS_LABELS,
+  STOP_TYPE_LABELS,
+  routeStatusBadgeClass,
+  stopStatusBadgeClass,
+} from "@/lib/logistics";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+export default function RouteDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const [route, setRoute] = useState<RouteDetail | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [candidates, setCandidates] = useState<Shipment[]>([]);
+  const [shipmentId, setShipmentId] = useState("");
+
+  const [completeStop, setCompleteStop] = useState<RouteStop | null>(null);
+  const [receivedBy, setReceivedBy] = useState("");
+  const [failStop, setFailStop] = useState<RouteStop | null>(null);
+  const [failureReason, setFailureReason] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setRoute(await api<RouteDetail>(`/routes/${id}`));
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Error cargando la ruta",
+      );
+    }
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function openAddStop() {
+    setAddOpen(true);
+    try {
+      const res = await api<Paginated<Shipment>>(
+        "/shipments?page=1&pageSize=100",
+      );
+      const inRoute = new Set(route?.stops.map((s) => s.shipmentId));
+      setCandidates(
+        res.items.filter(
+          (s) =>
+            !inRoute.has(s.id) &&
+            !["DELIVERED", "CANCELLED", "RETURNED"].includes(s.status),
+        ),
+      );
+    } catch {
+      setCandidates([]);
+    }
+  }
+
+  async function onAddStop(e: FormEvent) {
+    e.preventDefault();
+    if (!shipmentId) return;
+    const shipment = candidates.find((s) => s.id === shipmentId);
+    setBusy(true);
+    try {
+      await api(`/routes/${id}/stops`, {
+        method: "POST",
+        body: JSON.stringify({
+          shipmentId,
+          addressLabel: shipment?.destinationLabel ?? undefined,
+          lat: shipment?.destinationLat ?? undefined,
+          lng: shipment?.destinationLng ?? undefined,
+        }),
+      });
+      toast.success("Parada agregada");
+      setAddOpen(false);
+      setShipmentId("");
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo agregar la parada",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onOptimize() {
+    setBusy(true);
+    try {
+      await api(`/routes/${id}/optimize`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      toast.success("Ruta optimizada");
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo optimizar",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRouteStatus(status: string) {
+    setBusy(true);
+    try {
+      await api(`/routes/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      toast.success("Estado de ruta actualizado");
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo cambiar el estado",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onArrive(stop: RouteStop) {
+    setBusy(true);
+    try {
+      await api(`/routes/${id}/stops/${stop.id}/arrive`, { method: "PATCH" });
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo marcar llegada",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onComplete(e: FormEvent) {
+    e.preventDefault();
+    if (!completeStop) return;
+    setBusy(true);
+    try {
+      await api(`/routes/${id}/stops/${completeStop.id}/complete`, {
+        method: "POST",
+        body: JSON.stringify(
+          receivedBy.trim() ? { receivedBy: receivedBy.trim() } : {},
+        ),
+      });
+      toast.success("Parada completada");
+      setCompleteStop(null);
+      setReceivedBy("");
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo completar",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onFail(e: FormEvent) {
+    e.preventDefault();
+    if (!failStop || !failureReason.trim()) return;
+    setBusy(true);
+    try {
+      await api(`/routes/${id}/stops/${failStop.id}/fail`, {
+        method: "POST",
+        body: JSON.stringify({ failureReason: failureReason.trim() }),
+      });
+      toast.success("Parada marcada como fallida");
+      setFailStop(null);
+      setFailureReason("");
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "No se pudo registrar el fallo",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!route) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  const nexts = ROUTE_NEXT_STATUSES[route.status];
+  const canEditStops = route.status === "PLANNED";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/routes">
+              <ArrowLeft className="size-4" />
+            </Link>
+          </Button>
+          <div>
+            <h1 className="font-mono text-xl font-semibold">{route.code}</h1>
+            <p className="text-sm text-muted-foreground">
+              {route.driver?.name} ·{" "}
+              {new Date(route.scheduledDate).toLocaleDateString("es-HN", {
+                timeZone: "UTC",
+              })}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge className={routeStatusBadgeClass(route.status)}>
+            {ROUTE_STATUS_LABELS[route.status]}
+          </Badge>
+          {nexts.map((s) => (
+            <Button
+              key={s}
+              variant={s === "CANCELLED" ? "outline" : "default"}
+              size="sm"
+              disabled={busy}
+              onClick={() => onRouteStatus(s)}
+            >
+              {ROUTE_STATUS_LABELS[s]}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">
+            Paradas ({route.stops.length})
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || route.stops.length < 2 || !canEditStops}
+              onClick={onOptimize}
+            >
+              <Wand2 className="size-4" />
+              Optimizar orden
+            </Button>
+            <Button
+              size="sm"
+              disabled={!canEditStops}
+              onClick={openAddStop}
+            >
+              <Plus className="size-4" />
+              Agregar parada
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {route.stops.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">
+              Sin paradas. Agrega envíos a la ruta.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">#</TableHead>
+                  <TableHead>Envío</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Dirección</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>POD</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {route.stops.map((stop) => (
+                  <TableRow key={stop.id}>
+                    <TableCell>{stop.sequence}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-mono text-xs">
+                          {stop.shipment.trackingNumber}
+                        </span>
+                        <Badge
+                          className={`${statusBadgeClass(stop.shipment.status)} mt-1 w-fit`}
+                        >
+                          {STATUS_LABELS[stop.shipment.status]}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>{STOP_TYPE_LABELS[stop.type]}</TableCell>
+                    <TableCell className="max-w-48">
+                      <span className="flex items-center gap-1 truncate text-sm">
+                        {stop.addressLabel ? (
+                          <>
+                            <MapPin className="size-3 shrink-0 text-muted-foreground" />
+                            {stop.addressLabel}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={stopStatusBadgeClass(stop.status)}>
+                        {STOP_STATUS_LABELS[stop.status]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-40 text-xs text-muted-foreground">
+                      {stop.pod
+                        ? (stop.pod.receivedBy ??
+                          stop.pod.failureReason ??
+                          "Registrada")
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {route.status === "IN_PROGRESS" ? (
+                        <div className="flex justify-end gap-1">
+                          {stop.status === "PENDING" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() => onArrive(stop)}
+                            >
+                              Llegué
+                            </Button>
+                          ) : null}
+                          {stop.status === "ARRIVED" ? (
+                            <>
+                              <Button
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => setCompleteStop(stop)}
+                              >
+                                Entregar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => setFailStop(stop)}
+                              >
+                                Falló
+                              </Button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agregar parada</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onAddStop} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Envío *</Label>
+              <Select value={shipmentId} onValueChange={setShipmentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un envío" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.trackingNumber} — {s.recipientName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {candidates.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No hay envíos elegibles (activos y fuera de esta ruta).
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={busy || !shipmentId}>
+                Agregar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!completeStop}
+        onOpenChange={(o) => !o && setCompleteStop(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Completar entrega — {completeStop?.shipment.trackingNumber}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onComplete} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="receivedBy">Recibido por (opcional)</Label>
+              <Input
+                id="receivedBy"
+                value={receivedBy}
+                onChange={(e) => setReceivedBy(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={busy}>
+                Confirmar entrega
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!failStop} onOpenChange={(o) => !o && setFailStop(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Registrar fallo — {failStop?.shipment.trackingNumber}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onFail} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="failureReason">Motivo *</Label>
+              <Input
+                id="failureReason"
+                required
+                placeholder="Destinatario ausente"
+                value={failureReason}
+                onChange={(e) => setFailureReason(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" variant="destructive" disabled={busy}>
+                Registrar fallo
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

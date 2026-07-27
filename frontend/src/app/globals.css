@@ -1,0 +1,124 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Paleta de marca Ruteo: #183a37 (primario), #04151f (tinta), blanco, negro. Solo tema claro. */
+:root {
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #04151f;
+  --card: #ffffff;
+  --card-foreground: #04151f;
+  --popover: #ffffff;
+  --popover-foreground: #04151f;
+  --primary: #183a37;
+  --primary-foreground: #ffffff;
+  --secondary: #eef3f2;
+  --secondary-foreground: #183a37;
+  --muted: #f4f7f6;
+  --muted-foreground: #4b5f5d;
+  --accent: #e2ecea;
+  --accent-foreground: #183a37;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #dde5e4;
+  --input: #dde5e4;
+  --ring: #183a37;
+  --sidebar: #04151f;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #183a37;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #10282f;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #10282f;
+  --sidebar-ring: #183a37;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@layer utilities {
+  /* Off-white panel surface with very subtle low-opacity teal radial gradients. */
+  .panel-surface {
+    background-color: #f7faf9;
+    background-image:
+      radial-gradient(60% 50% at 15% -8%, rgba(24, 58, 55, 0.055), transparent 72%),
+      radial-gradient(50% 45% at 100% 10%, rgba(24, 58, 55, 0.045), transparent 74%),
+      radial-gradient(45% 50% at 85% 112%, rgba(24, 58, 55, 0.035), transparent 72%);
+  }
+
+  /* Refined white glass card: mostly opaque so it reads clean, gentle blur,
+     hairline border and soft navy shadow with a faint top highlight. */
+  .glass-card {
+    background: color-mix(in srgb, #ffffff 82%, transparent);
+    backdrop-filter: blur(10px) saturate(125%);
+    -webkit-backdrop-filter: blur(10px) saturate(125%);
+    border: 1px solid rgba(24, 58, 55, 0.07);
+    box-shadow:
+      0 1px 2px rgba(4, 21, 31, 0.04),
+      0 10px 30px -20px rgba(4, 21, 31, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+
+  /* Translucent teal glass panel for chart areas — soft, not saturated. */
+  .glass-panel {
+    background: linear-gradient(
+      140deg,
+      color-mix(in srgb, #183a37 8%, rgba(255, 255, 255, 0.72)),
+      color-mix(in srgb, #183a37 3%, rgba(255, 255, 255, 0.86))
+    );
+    backdrop-filter: blur(12px) saturate(125%);
+    -webkit-backdrop-filter: blur(12px) saturate(125%);
+    border: 1px solid rgba(24, 58, 55, 0.08);
+    box-shadow:
+      0 1px 2px rgba(4, 21, 31, 0.04),
+      0 12px 34px -22px rgba(4, 21, 31, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  /* Frosted glass active state for the dark navy sidebar — subtle. */
+  .glass-active {
+    background: rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+}
