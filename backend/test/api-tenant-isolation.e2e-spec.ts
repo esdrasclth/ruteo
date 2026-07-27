@@ -34,7 +34,7 @@ describe('Aislamiento multi-tenant a través de la API', () => {
 
   beforeAll(async () => {
     admin = createAdminPrisma();
-    await purgeTestTenants(admin);
+    await purgeTestTenants(admin, 'api');
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -54,13 +54,13 @@ describe('Aislamiento multi-tenant a través de la API', () => {
     await app.init();
     http = app.getHttpServer();
 
-    tenantA = await registrarInquilino('a');
-    tenantB = await registrarInquilino('b');
+    tenantA = await registrarInquilino('api-a');
+    tenantB = await registrarInquilino('api-b');
   }, 120_000);
 
   afterAll(async () => {
     await app?.close();
-    await purgeTestTenants(admin);
+    await purgeTestTenants(admin, 'api');
     await admin.$disconnect();
   }, 30_000);
 
@@ -202,7 +202,7 @@ describe('Aislamiento multi-tenant a través de la API', () => {
         legs: unknown[];
       };
       expect(envio.status).toBe('CREATED');
-      expect(envio.recipientName).toBe('Destinatario de b');
+      expect(envio.recipientName).toBe('Destinatario de api-b');
       expect(envio.legs).toEqual([]);
     });
 

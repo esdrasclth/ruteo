@@ -49,11 +49,18 @@ export function testSlug(suffix: string): string {
   return `${TEST_SLUG_PREFIX}${suffix}-${randomUUID().slice(0, 8)}`;
 }
 
-// Borra cualquier tenant de prueba (incluidos los que dejó una corrida abortada).
-// El borrado en cascada del esquema arrastra todas las filas hijas.
-export async function purgeTestTenants(admin: PrismaClient): Promise<void> {
+// Borra los tenants de prueba de una suite (incluidos los que dejó una corrida
+// abortada). El borrado en cascada del esquema arrastra todas las filas hijas.
+//
+// `grupo` acota la purga a los tenants de la suite que llama: las suites e2e
+// pueden correr en paralelo, y sin este acotamiento el `beforeAll` de una
+// borraría los datos que otra está usando.
+export async function purgeTestTenants(
+  admin: PrismaClient,
+  grupo: string,
+): Promise<void> {
   await admin.tenant.deleteMany({
-    where: { slug: { startsWith: TEST_SLUG_PREFIX } },
+    where: { slug: { startsWith: `${TEST_SLUG_PREFIX}${grupo}-` } },
   });
 }
 

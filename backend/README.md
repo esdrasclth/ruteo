@@ -229,6 +229,44 @@ Notificaciones (`notifications`):
 - `POST /api/notifications` — envío manual `{ channel, recipient, type, title?, body, shipmentId? }`
   (roles OWNER/ADMIN/OPERATOR).
 
+## Colas de trabajo (BullMQ)
+
+Webhooks y notificaciones ya no se entregan dentro de la petición que los origina:
+se **encolan en BullMQ** (Redis) y los procesa un worker. El cambio importa porque
+antes un reintento vivía en un `setTimeout` del proceso — si el backend se reiniciaba
+a mitad, la entrega se perdía sin rastro.
+
+- Configuración raíz en `src/queue/queue.module.ts`: conexión propia a Redis
+  (BullMQ exige `maxRetriesPerRequest: null`, incompatible con el ajuste fail-open de
+  `RedisService`), **5 intentos** con backoff exponencial desde 1 s, y purga automática
+  de jobs (completados a la hora, fallidos al día).
+- `QUEUE_PREFIX` (opcional, default `bull`) aísla las colas por entorno cuando varios
+  comparten la misma instancia de Redis.
+
+**Webhooks** — dos etapas, para que un endpoint lento no bloquee ni reintente los demás:
+
+1. `webhook.fanout` resuelve qué endpoints del tenant escuchan el evento, crea una fila
+   `webhook_deliveries` en `PENDING` por cada uno y encola su entrega.
+2. `webhook.deliver` hace el POST firmado contra **un** endpoint y actualiza su fila
+   (`attempts`, `responseStatus`, `lastError`). Si falla lanza, y BullMQ reencola: la
+   entrega queda `PENDING` mientras queden intentos y solo pasa a `FAILED` al agotarlos.
+
+**Notificaciones** — `dispatch()` persiste la fila en Postgres (`PENDING`) y encola solo
+el envío. Así una caída de Redis no pierde la notificación: queda registrada y es
+reintentable. El worker la marca `SENT`, o `FAILED` cuando se agotan los intentos.
+
+Ambos workers son **idempotentes**: los jobs son at-least-once, así que una entrega ya
+en `SUCCESS`/`SENT` no se repite, y un job cuyo destino ya no existe (tenant borrado) se
+descarta con un warning en vez de reventar.
+
+`POST /api/notifications` (envío manual) **no cambia**: sigue siendo síncrono y devuelve
+el resultado definitivo, no un `PENDING`.
+
+**Límite conocido:** si Redis no está disponible, `dispatch()` no puede encolar y lo
+registra como error. Las notificaciones sobreviven (la fila queda `PENDING`), pero el
+fanout de webhooks de ese evento se pierde. Cerrar ese hueco requiere un patrón outbox
+en Postgres, no incluido aquí.
+
 ## Analítica y reportes (Fase 5)
 
 Agregaciones de solo lectura sobre los datos del tenant (envíos, pagos/COD, ingresos,
@@ -358,9 +396,19 @@ Una prueba estructural recorre `pg_class`/`pg_policies` y falla si **cualquier**
 columna `tenant_id` queda sin `ENABLE`/`FORCE ROW LEVEL SECURITY` o sin política — la red
 de seguridad para cuando una migración nueva agregue una tabla y olvide su `*_rls`.
 
+Una tercera suite, **`test/queue-delivery.e2e-spec.ts`**, cubre la entrega asíncrona por
+BullMQ: levanta un receptor HTTP local, provoca un cambio de estado y comprueba que el
+webhook llega **firmado** por la cola; que un `500` transitorio se reintenta hasta
+entregarse (con `attempts = 2`, prueba de que el reintento es un job nuevo y no un bucle en
+proceso); que una entrega sigue `PENDING` mientras queden intentos y solo pasa a `FAILED`
+al agotarlos; y que los workers son idempotentes. Para las notificaciones sustituye el
+proveedor por uno controlable que falla a demanda.
+
 Los tests usan la base de desarrollo. Todo lo que crean cuelga de tenants con slug
-`test-iso-*` y se purga al empezar y al terminar (el borrado en cascada arrastra las filas
-hijas); nunca truncan tablas ni tocan datos ajenos a ese prefijo.
+`test-iso-<suite>-*` y **cada suite purga solo su propio grupo**: las suites e2e corren en
+paralelo, y una purga global haría que el `beforeAll` de una borrase los datos que otra
+está usando. Nunca truncan tablas ni tocan datos ajenos a ese prefijo. La suite de colas
+usa además un `QUEUE_PREFIX` aleatorio para no compartir jobs con la app de desarrollo.
 
 ## Build / producción
 

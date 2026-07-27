@@ -22,13 +22,13 @@ describe('Aislamiento multi-tenant en la base de datos (RLS)', () => {
   beforeAll(async () => {
     admin = createAdminPrisma();
     prisma = createAppPrisma();
-    await purgeTestTenants(admin);
-    tenantA = await seedTenant(prisma, 'a');
-    tenantB = await seedTenant(prisma, 'b');
+    await purgeTestTenants(admin, 'rls');
+    tenantA = await seedTenant(prisma, 'rls-a');
+    tenantB = await seedTenant(prisma, 'rls-b');
   }, 60_000);
 
   afterAll(async () => {
-    await purgeTestTenants(admin);
+    await purgeTestTenants(admin, 'rls');
     await admin.$disconnect();
     await prisma.$disconnect();
   }, 30_000);
@@ -242,7 +242,7 @@ describe('Aislamiento multi-tenant en la base de datos (RLS)', () => {
       const intacto = await prisma.withTenant(tenantB.tenantId, (tx) =>
         tx.shipment.findUnique({ where: { id: tenantB.shipmentId } }),
       );
-      expect(intacto?.recipientName).toBe('Destinatario de b');
+      expect(intacto?.recipientName).toBe('Destinatario de rls-b');
     });
 
     it('un updateMany desde A no toca ninguna fila de B', async () => {
@@ -255,7 +255,7 @@ describe('Aislamiento multi-tenant en la base de datos (RLS)', () => {
       const deB = await prisma.withTenant(tenantB.tenantId, (tx) =>
         tx.shipment.findUnique({ where: { id: tenantB.shipmentId } }),
       );
-      expect(deB?.recipientName).toBe('Destinatario de b');
+      expect(deB?.recipientName).toBe('Destinatario de rls-b');
     });
 
     it('el tenant A no puede borrar un envío del tenant B', async () => {
@@ -296,7 +296,7 @@ describe('Aislamiento multi-tenant en la base de datos (RLS)', () => {
       const clientesDeB = await prisma.withTenant(tenantB.tenantId, (tx) =>
         tx.customer.findMany(),
       );
-      expect(clientesDeB.map((c) => c.name)).toEqual(['Cliente de b']);
+      expect(clientesDeB.map((c) => c.name)).toEqual(['Cliente de rls-b']);
     });
 
     it('el tenant A no puede reasignar su propio envío al tenant B', async () => {

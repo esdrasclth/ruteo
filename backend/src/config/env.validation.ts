@@ -58,6 +58,12 @@ class EnvironmentVariables {
   @IsNumber()
   REDIS_PORT: number = 6379;
 
+  // Namespace de las colas BullMQ en Redis; permite que varios entornos
+  // compartan la misma instancia sin pisarse los jobs.
+  @IsOptional()
+  @IsString()
+  QUEUE_PREFIX: string = 'bull';
+
   // Allowed CORS origin for the web panel.
   @IsOptional()
   @IsString()

@@ -1,12 +1,19 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { WebhookStatus } from '@prisma/client';
+import { Prisma, WebhookStatus } from '@prisma/client';
+import { Queue } from 'bullmq';
 import { createHmac, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  JOB_WEBHOOK_DELIVER,
+  JOB_WEBHOOK_FANOUT,
+  QUEUE_WEBHOOKS,
+  WebhookFanoutJob,
+} from '../../queue/queue.constants';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
 
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 5000;
 
 const endpointPublicSelect = {
   id: true,
@@ -21,7 +28,10 @@ const endpointPublicSelect = {
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue(QUEUE_WEBHOOKS) private readonly queue: Queue,
+  ) {}
 
   create(tenantId: string, dto: CreateWebhookDto) {
     const secret = `whsec_${randomBytes(24).toString('base64url')}`;
@@ -84,87 +94,142 @@ export class WebhooksService {
   }
 
   // Fire-and-forget entry point: called after a domain event (e.g. a shipment
-  // status change). Never throws — failures are logged and recorded as delivery
-  // rows so they don't break the originating request.
+  // status change). Solo encola; el envío HTTP y sus reintentos corren en el
+  // worker. Nunca lanza, para no romper la petición que originó el evento.
   dispatch(tenantId: string, event: string, payload: Record<string, unknown>) {
-    void this.deliver(tenantId, event, payload).catch((err) =>
-      this.logger.error(`Webhook dispatch failed: ${String(err)}`),
+    const job: WebhookFanoutJob = { tenantId, event, payload };
+    void this.queue.add(JOB_WEBHOOK_FANOUT, job).catch((err: Error) =>
+      // Sin Redis no hay entrega: se registra en alto para que sea visible en
+      // los logs, porque en este punto todavía no existe fila de delivery.
+      this.logger.error(
+        `No se pudo encolar el webhook ${event} del tenant ${tenantId}: ${err.message}`,
+      ),
     );
   }
 
-  private async deliver(
-    tenantId: string,
-    event: string,
-    payload: Record<string, unknown>,
-  ) {
+  // Etapa 1 (worker): resuelve los endpoints suscritos, deja una fila PENDING
+  // por cada uno —el registro durable del intento— y encola su entrega.
+  async fanOut(job: WebhookFanoutJob): Promise<{ queued: number }> {
+    const { tenantId, event, payload } = job;
     const endpoints = await this.prisma.withTenant(tenantId, (tx) =>
       tx.webhookEndpoint.findMany({
         where: { active: true, events: { has: event } },
-        select: { id: true, url: true, secret: true },
+        select: { id: true },
       }),
     );
 
     for (const endpoint of endpoints) {
-      const body = JSON.stringify({
-        event,
-        sentAt: new Date().toISOString(),
-        data: payload,
+      const delivery = await this.prisma.withTenant(tenantId, (tx) =>
+        tx.webhookDelivery.create({
+          data: {
+            tenantId,
+            endpointId: endpoint.id,
+            event,
+            payload: payload as Prisma.InputJsonValue,
+            status: WebhookStatus.PENDING,
+          },
+          select: { id: true },
+        }),
+      );
+      await this.queue.add(JOB_WEBHOOK_DELIVER, {
+        tenantId,
+        deliveryId: delivery.id,
       });
-      const signature = createHmac('sha256', endpoint.secret)
-        .update(body)
-        .digest('hex');
-
-      let attempts = 0;
-      let responseStatus: number | null = null;
-      let lastError: string | null = null;
-      let status: WebhookStatus = WebhookStatus.FAILED;
-
-      while (attempts < MAX_ATTEMPTS) {
-        attempts++;
-        try {
-          const res = await fetch(endpoint.url, {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'x-ruteo-event': event,
-              'x-ruteo-signature': `sha256=${signature}`,
-            },
-            body,
-            signal: AbortSignal.timeout(5000),
-          });
-          responseStatus = res.status;
-          if (res.ok) {
-            status = WebhookStatus.SUCCESS;
-            lastError = null;
-            break;
-          }
-          lastError = `HTTP ${res.status}`;
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : String(err);
-        }
-        if (attempts < MAX_ATTEMPTS) {
-          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempts));
-        }
-      }
-
-      await this.prisma
-        .withTenant(tenantId, (tx) =>
-          tx.webhookDelivery.create({
-            data: {
-              tenantId,
-              endpointId: endpoint.id,
-              event,
-              payload: payload as object,
-              status,
-              attempts,
-              responseStatus,
-              lastError,
-            },
-          }),
-        )
-        .catch((err) =>
-          this.logger.error(`Failed to record webhook delivery: ${String(err)}`),
-        );
     }
+
+    return { queued: endpoints.length };
+  }
+
+  // Etapa 2 (worker): un intento de entrega contra un endpoint. Lanza si falla
+  // para que BullMQ reintente; marca FAILED solo cuando ya no quedan intentos.
+  async attemptDelivery(
+    tenantId: string,
+    deliveryId: string,
+    attempt: number,
+    isLastAttempt: boolean,
+  ): Promise<void> {
+    const delivery = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.webhookDelivery.findUnique({
+        where: { id: deliveryId },
+        include: { endpoint: { select: { url: true, secret: true } } },
+      }),
+    );
+
+    if (!delivery) {
+      // El tenant o el endpoint se borró mientras el job esperaba en la cola.
+      this.logger.warn(`Delivery ${deliveryId} ya no existe; se descarta`);
+      return;
+    }
+    if (delivery.status === WebhookStatus.SUCCESS) {
+      return; // Ya entregado: los jobs son at-least-once, no repetimos el POST.
+    }
+
+    const body = JSON.stringify({
+      event: delivery.event,
+      sentAt: new Date().toISOString(),
+      data: delivery.payload,
+    });
+    const signature = createHmac('sha256', delivery.endpoint.secret)
+      .update(body)
+      .digest('hex');
+
+    let responseStatus: number | null = null;
+    let lastError: string | null = null;
+
+    try {
+      const res = await fetch(delivery.endpoint.url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-ruteo-event': delivery.event,
+          'x-ruteo-signature': `sha256=${signature}`,
+        },
+        body,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      responseStatus = res.status;
+      if (!res.ok) {
+        lastError = `HTTP ${res.status}`;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+
+    const entregado = lastError === null;
+    await this.recordAttempt(tenantId, deliveryId, {
+      status: entregado
+        ? WebhookStatus.SUCCESS
+        : isLastAttempt
+          ? WebhookStatus.FAILED
+          : WebhookStatus.PENDING,
+      attempts: attempt,
+      responseStatus,
+      lastError,
+    });
+
+    if (!entregado) {
+      throw new Error(lastError ?? 'Webhook delivery failed');
+    }
+  }
+
+  private async recordAttempt(
+    tenantId: string,
+    deliveryId: string,
+    data: {
+      status: WebhookStatus;
+      attempts: number;
+      responseStatus: number | null;
+      lastError: string | null;
+    },
+  ) {
+    await this.prisma
+      .withTenant(tenantId, (tx) =>
+        tx.webhookDelivery.update({ where: { id: deliveryId }, data }),
+      )
+      .catch((err: Error) =>
+        this.logger.error(
+          `No se pudo registrar el intento de entrega ${deliveryId}: ${err.message}`,
+        ),
+      );
   }
 }

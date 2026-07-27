@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
+import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -35,6 +36,7 @@ import { AuditModule } from './modules/audit/audit.module';
     }),
     PrismaModule,
     RedisModule,
+    QueueModule,
     TenantsModule,
     AuthModule,
     ShipmentsModule,
