@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Copias del worker de MapLibre: las genera `postinstall`
+# (scripts/copy-maplibre-worker.mjs). Commitearlas las deja obsoletas al
+# actualizar la dependencia.
+/public/maplibre-gl-*.mjs
