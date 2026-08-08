@@ -179,12 +179,114 @@ enum NotificationStatus {
   FAILED
 }
 
+/// Operador de la PLATAFORMA, no de una empresa.
+///
+/// Vive en su propia tabla y no en `User` a propósito: la identidad de tenant y
+/// la de plataforma no deben compartir almacén. Con una bandera en `User`, una
+/// cuenta OWNER comprometida quedaría a una columna de ver TODAS las empresas.
+/// Aquí no hay `tenantId` y por eso la tabla NO lleva política RLS: es la única
+/// del esquema que se consulta fuera del contexto de un tenant.
+model PlatformAdmin {
+  id         String     @id @default(uuid()) @db.Uuid
+  email      String     @unique
+  name       String?
+  /// Id en ZITADEL. Las credenciales viven allí, igual que las de tenant.
+  externalId String?    @unique @map("external_id")
+  status     UserStatus @default(ACTIVE)
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  @@map("platform_admins")
+}
+
+/// Registro de todo lo que hace un superadmin.
+///
+/// Va aparte de `AuditLog`, que es tenant-scoped y vive bajo RLS: estas acciones
+/// cruzan empresas y no pertenecen a ninguna, así que no se pueden guardar allí
+/// sin romper el aislamiento.
+///
+/// **Todo lo relevante se copia, no se referencia.** El correo del actor y el
+/// nombre de la empresa se guardan como texto y no como clave foránea: si se
+/// borra una empresa o se retira a un administrador, el registro tiene que
+/// seguir contando qué pasó. Un historial que se vacía cuando desaparece el
+/// implicado es inútil justo el día que hace falta.
+model PlatformAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// Id del admin, solo informativo: puede quedar apuntando a nada.
+  adminId     String?  @map("admin_id") @db.Uuid
+  /// Copia del correo del actor. Esto es lo que se lee en el panel.
+  adminEmail  String   @map("admin_email")
+  action      String
+  /// Qué se tocó: "tenant" o "platform_admin".
+  targetType  String   @map("target_type")
+  targetId    String?  @map("target_id")
+  /// Copia legible del objetivo (slug de la empresa, correo del admin).
+  targetLabel String?  @map("target_label")
+  /// Valor anterior y nuevo, para que "cambió el plan" diga de qué a qué.
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("platform_audit_logs")
+}
+
+/// Módulos del panel que se pueden activar o desactivar por empresa.
+/// Los valores coinciden con las secciones de navegación del panel.
+enum TenantModule {
+  SHIPMENTS
+  ROUTES
+  DRIVERS
+  INTAKE
+  LOCKERS
+  CARRIERS
+  CUSTOMERS
+  PRICING
+  PAYMENTS
+  BILLING
+  NOTIFICATIONS
+  AUDIT
+  INTEGRATIONS
+  CUSTOMS
+}
+
+/// Excepción al conjunto de módulos que trae el plan.
+///
+/// Solo se guarda lo que se DESVÍA del plan: así, al subir de plan, el tenant
+/// hereda lo nuevo sin tener que reescribir sus filas. Lo escribe el superadmin,
+/// lo lee el propio tenant, y por eso lleva RLS como cualquier tabla suya.
+model TenantModuleOverride {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  module    TenantModule
+  enabled   Boolean
+  /// Por qué se hizo la excepción. Sin esto, meses después nadie recuerda si
+  /// fue un acuerdo comercial o un apaño temporal.
+  reason    String?
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, module])
+  @@index([tenantId])
+  @@map("tenant_module_overrides")
+}
+
 model Tenant {
   id        String       @id @default(uuid()) @db.Uuid
   name      String
   slug      String       @unique
   plan      Plan         @default(FREE)
   status    TenantStatus @default(ACTIVE)
+  /// Por qué se suspendió y desde cuándo. El estado sin motivo obliga a
+  /// preguntar por WhatsApp qué pasó con una empresa.
+  statusReason String?   @map("status_reason")
+  statusAt     DateTime? @map("status_at")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
@@ -209,6 +311,8 @@ model Tenant {
   notifications  Notification[]
   auditLogs      AuditLog[]
   idempotencyKeys IdempotencyKey[]
+  credentialTokens CredentialToken[]
+  moduleOverrides  TenantModuleOverride[]
 
   @@map("tenants")
 }
@@ -218,7 +322,14 @@ model User {
   tenantId         String     @map("tenant_id") @db.Uuid
   email            String
   name             String?
-  passwordHash     String     @map("password_hash")
+  // Id del usuario en ZITADEL, que es donde viven las credenciales. Nulo solo
+  // en filas sembradas por pruebas que no pasan por el alta real.
+  // `refreshTokenHash` NO desaparece: el token de sesión lo sigue emitiendo
+  // Ruteo, y ese hash es suyo, no una contraseña.
+  externalId       String?    @unique @map("external_id")
+  /// Espejo del estado en ZITADEL, para no consultarlo en cada carga del panel.
+  /// La fuente de verdad sigue siendo ZITADEL; esto es caché.
+  emailVerified    Boolean    @default(false) @map("email_verified")
   role             Role       @default(OPERATOR)
   status           UserStatus @default(ACTIVE)
   refreshTokenHash String?    @map("refresh_token_hash")
@@ -228,10 +339,47 @@ model User {
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   driver   Driver?
   customer Customer?
+  credentialTokens CredentialToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
+}
+
+/// Códigos de un solo uso para restablecer contraseña y verificar correo.
+///
+/// Los custodia RUTEO y no ZITADEL, y no es por gusto: comprobado el 2026-08-08,
+/// llamando con el token de la cuenta de servicio ZITADEL **no valida**
+/// `verification.verificationCode` —se le puede fijar la contraseña a cualquier
+/// usuario con un código inventado, sin haber pedido restablecimiento—. Reenviar
+/// el código que teclea el usuario habría dejado que cualquiera restableciera la
+/// contraseña de cualquiera.
+model CredentialToken {
+  id        String              @id @default(uuid()) @db.Uuid
+  tenantId  String              @map("tenant_id") @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
+  type      CredentialTokenType
+  /// Solo el hash: si se filtra la tabla, los códigos no son utilizables.
+  codeHash  String              @map("code_hash")
+  expiresAt DateTime            @map("expires_at")
+  usedAt    DateTime?           @map("used_at")
+  /// Intentos fallidos contra este código. Un código de 6 dígitos son un millón
+  /// de combinaciones: con 30 minutos de vigencia y sin tope, se fuerza.
+  attempts  Int                 @default(0)
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, type])
+  @@map("credential_tokens")
+}
+
+enum CredentialTokenType {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+  /// Alta de un miembro del equipo: el invitado elige su propia contraseña.
+  INVITATION
 }
 
 model Customer {
