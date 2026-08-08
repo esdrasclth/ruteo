@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -23,8 +26,9 @@ import { DriversService } from './drivers.service';
 
 @ApiTags('drivers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('drivers')
+@Modulo(TenantModule.DRIVERS)
 export class DriversController {
   constructor(private readonly drivers: DriversService) {}
 

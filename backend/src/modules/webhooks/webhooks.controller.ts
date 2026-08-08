@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -22,9 +25,10 @@ import { WebhooksService } from './webhooks.service';
 
 @ApiTags('webhooks')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Roles(Role.OWNER, Role.ADMIN)
 @Controller('webhooks')
+@Modulo(TenantModule.INTEGRATIONS)
 export class WebhooksController {
   constructor(private readonly webhooks: WebhooksService) {}
 

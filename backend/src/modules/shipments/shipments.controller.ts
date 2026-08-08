@@ -1,7 +1,11 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -38,9 +42,10 @@ import { ShipmentsService } from './shipments.service';
 
 @ApiTags('shipments')
 @ApiBearerAuth()
-@UseGuards(JwtOrApiKeyGuard, RolesGuard, RateLimitGuard)
+@UseGuards(JwtOrApiKeyGuard, RolesGuard, RateLimitGuard, TenantAccessGuard)
 @RateLimit(120, 60)
 @Controller('shipments')
+@Modulo(TenantModule.SHIPMENTS)
 export class ShipmentsController {
   constructor(private readonly shipments: ShipmentsService) {}
 
@@ -122,5 +127,15 @@ export class ShipmentsController {
     @Body() dto: UpdateLegDto,
   ) {
     return this.shipments.updateLeg(user.tenantId, id, legId, dto);
+  }
+
+  @Delete(':id/legs/:legId')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  removeLeg(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('legId', ParseUUIDPipe) legId: string,
+  ) {
+    return this.shipments.removeLeg(user.tenantId, id, legId);
   }
 }

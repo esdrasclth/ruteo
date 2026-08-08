@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -20,8 +23,9 @@ import { PaymentsService } from './payments.service';
 
 @ApiTags('payments')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('payments')
+@Modulo(TenantModule.PAYMENTS)
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 

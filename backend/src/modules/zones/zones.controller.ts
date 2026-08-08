@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -22,8 +25,9 @@ import { ZonesService } from './zones.service';
 
 @ApiTags('zones')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('zones')
+@Modulo(TenantModule.PRICING)
 export class ZonesController {
   constructor(private readonly zones: ZonesService) {}
 

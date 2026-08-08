@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -11,8 +14,9 @@ import { CancelSubscriptionDto, SubscribeDto } from './dto/subscribe.dto';
 
 @ApiTags('billing')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('billing')
+@Modulo(TenantModule.BILLING)
 export class BillingController {
   constructor(private readonly billing: BillingService) {}
 

@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -23,8 +26,9 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 @ApiTags('customers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('customers')
+@Modulo(TenantModule.CUSTOMERS)
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 

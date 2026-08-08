@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -25,8 +28,9 @@ import { LockersService } from './lockers.service';
 
 @ApiTags('lockers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('lockers')
+@Modulo(TenantModule.LOCKERS)
 export class LockersController {
   constructor(private readonly lockers: LockersService) {}
 

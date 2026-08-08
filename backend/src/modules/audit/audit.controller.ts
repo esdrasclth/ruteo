@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -11,9 +14,10 @@ import { QueryAuditDto } from './dto/query-audit.dto';
 
 @ApiTags('audit')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Roles(Role.OWNER, Role.ADMIN)
 @Controller('audit')
+@Modulo(TenantModule.AUDIT)
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 

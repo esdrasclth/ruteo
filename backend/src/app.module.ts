@@ -7,10 +7,13 @@ import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { ShipmentsModule } from './modules/shipments/shipments.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { CarriersModule } from './modules/carriers/carriers.module';
+import { GeocodingModule } from './modules/geocoding/geocoding.module';
+import { RoutingModule } from './modules/routing/routing.module';
 import { LockersModule } from './modules/lockers/lockers.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { UsersModule } from './modules/users/users.module';
@@ -40,9 +43,12 @@ import { SearchModule } from './modules/search/search.module';
     QueueModule,
     TenantsModule,
     AuthModule,
+    PlatformModule,
     ShipmentsModule,
     TrackingModule,
     CarriersModule,
+    GeocodingModule,
+    RoutingModule,
     LockersModule,
     CustomersModule,
     UsersModule,

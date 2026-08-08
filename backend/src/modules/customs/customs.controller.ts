@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -20,8 +23,9 @@ import { UpsertCustomsDto } from './dto/upsert-customs.dto';
 
 @ApiTags('customs')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('customs')
+@Modulo(TenantModule.CUSTOMS)
 export class CustomsController {
   constructor(private readonly customs: CustomsService) {}
 

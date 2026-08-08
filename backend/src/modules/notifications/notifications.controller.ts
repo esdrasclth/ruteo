@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
@@ -15,8 +18,9 @@ import { NotificationsService } from './notifications.service';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('notifications')
+@Modulo(TenantModule.NOTIFICATIONS)
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 

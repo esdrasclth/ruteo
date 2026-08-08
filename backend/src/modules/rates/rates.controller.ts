@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -23,8 +26,9 @@ import { RatesService } from './rates.service';
 
 @ApiTags('rates')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('rates')
+@Modulo(TenantModule.PRICING)
 export class RatesController {
   constructor(private readonly rates: RatesService) {}
 

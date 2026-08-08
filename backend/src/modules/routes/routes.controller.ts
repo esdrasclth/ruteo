@@ -1,3 +1,6 @@
+import { TenantModule } from '@prisma/client';
+import { Modulo } from '../../common/decorators/modulo.decorator';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import {
   Body,
   Controller,
@@ -26,8 +29,9 @@ import { RoutesService } from './routes.service';
 
 @ApiTags('routes')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
 @Controller('routes')
+@Modulo(TenantModule.ROUTES)
 export class RoutesController {
   constructor(private readonly routes: RoutesService) {}
 
