@@ -10,7 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { modulosEfectivos } from '../../modules/platform/modules.catalog';
 import { MODULO_KEY } from '../decorators/modulo.decorator';
-import type { AuthUser } from '../decorators/current-user.decorator';
+import type { PeticionHttp } from '../tipos-peticion';
 
 interface EstadoTenant {
   status: TenantStatus;
@@ -40,8 +40,8 @@ export class TenantAccessGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
-    const user = req.user as AuthUser | undefined;
+    const req = context.switchToHttp().getRequest<PeticionHttp>();
+    const user = req.user;
     if (!user?.tenantId) return true;
 
     const estado = await this.estadoDe(user.tenantId);

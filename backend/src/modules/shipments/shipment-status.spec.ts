@@ -10,7 +10,7 @@ const TODOS_LOS_ESTADOS = Object.values(ShipmentStatus);
 const TODOS_LOS_TIPOS = Object.values(ShipmentType);
 
 // Estados que cierran el ciclo de vida: no admiten ninguna transición de salida.
-const TERMINALES = [S.DELIVERED, S.RETURNED, S.CANCELLED];
+const TERMINALES: ShipmentStatus[] = [S.DELIVERED, S.RETURNED, S.CANCELLED];
 
 describe('Máquina de estados de envíos', () => {
   describe('flujo feliz', () => {

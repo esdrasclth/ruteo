@@ -43,9 +43,8 @@ function montar(opciones: { usuario?: unknown; filas?: Fila[] } = {}) {
       findFirst: jest.fn(async () => {
         const ahora = new Date();
         return (
-          [...filas]
-            .reverse()
-            .find((f) => !f.usedAt && f.expiresAt > ahora) ?? null
+          [...filas].reverse().find((f) => !f.usedAt && f.expiresAt > ahora) ??
+          null
         );
       }),
       update: jest.fn(async ({ data }: { data: { attempts?: unknown } }) => {
@@ -62,7 +61,9 @@ function montar(opciones: { usuario?: unknown; filas?: Fila[] } = {}) {
   };
 
   const servicio = new CredentialsService(
-    { withTenant: async (_t: string, fn: (t: typeof tx) => unknown) => fn(tx) } as never,
+    {
+      withTenant: async (_t: string, fn: (t: typeof tx) => unknown) => fn(tx),
+    } as never,
     { resolveIdBySlug: async () => 'tenant-1' } as never,
     {
       establecerContrasena: jest.fn(async (userId: string, nueva: string) => {
@@ -77,10 +78,17 @@ function montar(opciones: { usuario?: unknown; filas?: Fila[] } = {}) {
         enviados.push(m);
         return { ok: true };
       }),
-    } as never,
+    },
   );
 
-  return { servicio, filas, enviados, notificacionesGuardadas, contrasenasFijadas, tx };
+  return {
+    servicio,
+    filas,
+    enviados,
+    notificacionesGuardadas,
+    contrasenasFijadas,
+    tx,
+  };
 }
 
 const USUARIO = {
@@ -125,9 +133,9 @@ describe('CredentialsService', () => {
       await servicio.solicitarRestablecimiento('empresa', 'ana@x.hn');
 
       const codigo = /\b(\d{6})\b/.exec(enviados[0].body)![1];
-      expect(
-        JSON.stringify(notificacionesGuardadas).includes(codigo),
-      ).toBe(false);
+      expect(JSON.stringify(notificacionesGuardadas).includes(codigo)).toBe(
+        false,
+      );
     });
 
     it('con el correo SIN verificar no emite código, y avisa por correo', async () => {
@@ -174,7 +182,12 @@ describe('CredentialsService', () => {
     it('con el código correcto fija la contraseña en ZITADEL', async () => {
       const { servicio, contrasenasFijadas } = await conCodigo('123456');
 
-      await servicio.restablecer('empresa', 'ana@x.hn', '123456', 'Nueva-2026!');
+      await servicio.restablecer(
+        'empresa',
+        'ana@x.hn',
+        '123456',
+        'Nueva-2026!',
+      );
 
       expect(contrasenasFijadas).toEqual([
         { userId: 'zit-1', nueva: 'Nueva-2026!' },
@@ -186,7 +199,12 @@ describe('CredentialsService', () => {
       // en pie no arregla nada.
       const { servicio, tx } = await conCodigo('123456');
 
-      await servicio.restablecer('empresa', 'ana@x.hn', '123456', 'Nueva-2026!');
+      await servicio.restablecer(
+        'empresa',
+        'ana@x.hn',
+        '123456',
+        'Nueva-2026!',
+      );
 
       expect(tx.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { refreshTokenHash: null } }),
@@ -216,7 +234,12 @@ describe('CredentialsService', () => {
     it('el código es de un solo uso', async () => {
       const { servicio, contrasenasFijadas } = await conCodigo('123456');
 
-      await servicio.restablecer('empresa', 'ana@x.hn', '123456', 'Nueva-2026!');
+      await servicio.restablecer(
+        'empresa',
+        'ana@x.hn',
+        '123456',
+        'Nueva-2026!',
+      );
       await expect(
         servicio.restablecer('empresa', 'ana@x.hn', '123456', 'Otra-2026!'),
       ).rejects.toBeInstanceOf(BadRequestException);

@@ -51,7 +51,9 @@ export class CredentialsService {
   async solicitarRestablecimiento(slug: string, email: string): Promise<void> {
     const usuario = await this.buscarUsuario(slug, email);
     if (!usuario) {
-      this.log.log(`Restablecimiento pedido para un correo sin cuenta (${slug})`);
+      this.log.log(
+        `Restablecimiento pedido para un correo sin cuenta (${slug})`,
+      );
       return;
     }
 

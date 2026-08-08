@@ -75,9 +75,7 @@ export class ZitadelService {
   constructor(private readonly config: ConfigService) {}
 
   private get issuer(): string {
-    return this.config
-      .getOrThrow<string>('ZITADEL_ISSUER')
-      .replace(/\/+$/, '');
+    return this.config.getOrThrow<string>('ZITADEL_ISSUER').replace(/\/+$/, '');
   }
 
   private get token(): string {

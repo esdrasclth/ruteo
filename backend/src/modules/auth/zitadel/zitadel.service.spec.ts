@@ -67,7 +67,9 @@ const SESION_CREADA = {
 // El PATCH devuelve SOLO `details` y `sessionToken`: no trae los factores.
 // Comprobado contra la instancia real el 2026-08-08. Dar por buena la
 // verificación con esta respuesta fue el fallo que dejó el login roto.
-const PATCH_OK = { json: { sessionToken: 'tok-2', details: { sequence: '5' } } };
+const PATCH_OK = {
+  json: { sessionToken: 'tok-2', details: { sequence: '5' } },
+};
 
 // Los factores solo aparecen al releer la sesión.
 const GET_OK = {
@@ -133,9 +135,7 @@ describe('ZitadelService', () => {
       // El orden del contrato: primero la sesión con el usuario, después la
       // contraseña por PATCH sobre esa sesión.
       expect(llamadas[0].metodo).toBe('POST');
-      expect(llamadas[0].url).toBe(
-        'https://auth.brandsofts.com/v2/sessions',
-      );
+      expect(llamadas[0].url).toBe('https://auth.brandsofts.com/v2/sessions');
       expect(llamadas[0].cuerpo).toEqual({
         checks: { user: { loginName: 'ana@catracha.hn' } },
       });
@@ -238,7 +238,7 @@ describe('ZitadelService', () => {
     it('si la instancia no responde, es indisponibilidad', async () => {
       global.fetch = jest.fn(async () => {
         throw new Error('ECONNREFUSED');
-      }) as unknown as typeof fetch;
+      });
 
       await expect(
         new ZitadelService(config()).verificarCredenciales('a@b.hn', 'x'),

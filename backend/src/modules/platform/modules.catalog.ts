@@ -15,20 +15,43 @@ export interface ModuloInfo {
 }
 
 export const MODULOS: ModuloInfo[] = [
-  { key: TenantModule.SHIPMENTS, label: 'Envíos', grupo: 'Operación', esencial: true },
+  {
+    key: TenantModule.SHIPMENTS,
+    label: 'Envíos',
+    grupo: 'Operación',
+    esencial: true,
+  },
   { key: TenantModule.ROUTES, label: 'Rutas', grupo: 'Operación' },
   { key: TenantModule.DRIVERS, label: 'Repartidores', grupo: 'Operación' },
   { key: TenantModule.INTAKE, label: 'Recepción', grupo: 'Operación' },
   { key: TenantModule.LOCKERS, label: 'Casilleros', grupo: 'Operación' },
   { key: TenantModule.CARRIERS, label: 'Transportistas', grupo: 'Operación' },
   { key: TenantModule.CUSTOMS, label: 'Aduana', grupo: 'Operación' },
-  { key: TenantModule.CUSTOMERS, label: 'Clientes', grupo: 'Comercial', esencial: true },
+  {
+    key: TenantModule.CUSTOMERS,
+    label: 'Clientes',
+    grupo: 'Comercial',
+    esencial: true,
+  },
   { key: TenantModule.PRICING, label: 'Zonas y tarifas', grupo: 'Comercial' },
   { key: TenantModule.PAYMENTS, label: 'Pagos', grupo: 'Comercial' },
-  { key: TenantModule.BILLING, label: 'Facturación', grupo: 'Comercial', esencial: true },
-  { key: TenantModule.NOTIFICATIONS, label: 'Notificaciones', grupo: 'Administración' },
+  {
+    key: TenantModule.BILLING,
+    label: 'Facturación',
+    grupo: 'Comercial',
+    esencial: true,
+  },
+  {
+    key: TenantModule.NOTIFICATIONS,
+    label: 'Notificaciones',
+    grupo: 'Administración',
+  },
   { key: TenantModule.AUDIT, label: 'Auditoría', grupo: 'Administración' },
-  { key: TenantModule.INTEGRATIONS, label: 'Integraciones (API)', grupo: 'Administración' },
+  {
+    key: TenantModule.INTEGRATIONS,
+    label: 'Integraciones (API)',
+    grupo: 'Administración',
+  },
 ];
 
 const T = TenantModule;

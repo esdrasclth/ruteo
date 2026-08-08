@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VERIFIED_EMAIL_KEY } from '../decorators/verified-email.decorator';
-import type { AuthUser } from '../decorators/current-user.decorator';
+import type { PeticionHttp } from '../tipos-peticion';
 
 /**
  * Bloquea las acciones marcadas con `@RequiereCorreoVerificado()` mientras el
@@ -32,9 +32,8 @@ export class VerifiedEmailGuard implements CanActivate {
     );
     if (!exigido) return true;
 
-    const user = context.switchToHttp().getRequest().user as
-      | AuthUser
-      | undefined;
+    const req = context.switchToHttp().getRequest<PeticionHttp>();
+    const user = req.user;
     // Sin usuario en la petición es una llave de API, no una persona: no hay
     // correo que verificar y el control de acceso lo hace su propio guard.
     if (!user?.userId) return true;

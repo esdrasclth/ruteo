@@ -4,12 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  Plan,
-  TenantModule,
-  TenantStatus,
-  UserStatus,
-} from '@prisma/client';
+import { Plan, TenantModule, TenantStatus, UserStatus } from '@prisma/client';
 import { PLANS } from '../billing/plans';
 import {
   ESENCIALES,
@@ -162,7 +157,12 @@ export class PlatformService {
           orderBy: { createdAt: 'asc' },
         },
         _count: {
-          select: { shipments: true, customers: true, drivers: true, routes: true },
+          select: {
+            shipments: true,
+            customers: true,
+            drivers: true,
+            routes: true,
+          },
         },
       },
     });
@@ -549,15 +549,16 @@ export class PlatformService {
     await this.db.platformAdmin.update({ where: { id }, data: { status } });
     await this.anotar({
       actor,
-      action:
-        status === UserStatus.ACTIVE ? 'admin.enabled' : 'admin.disabled',
+      action: status === UserStatus.ACTIVE ? 'admin.enabled' : 'admin.disabled',
       targetType: 'platform_admin',
       targetId: id,
       targetLabel: admin.email,
       before: { status: admin.status },
       after: { status },
     });
-    this.log.warn(`[plataforma] ${actor.email} puso ${admin.email} en ${status}`);
+    this.log.warn(
+      `[plataforma] ${actor.email} puso ${admin.email} en ${status}`,
+    );
     return this.listarAdmins();
   }
 }

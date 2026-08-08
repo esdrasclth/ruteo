@@ -36,7 +36,10 @@ export class PlatformAuthService {
     return `${PREFIJO}:${email.toLowerCase()}`;
   }
 
-  async login(email: string, password: string): Promise<{ accessToken: string }> {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ accessToken: string }> {
     await this.throttle.comprobar(PREFIJO, email);
 
     const admin = await this.db.platformAdmin.findUnique({

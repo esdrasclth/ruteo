@@ -58,7 +58,10 @@ export class ResendNotificationProvider implements NotificationProvider {
 
       if (!res.ok) {
         const detalle = await res.text().catch(() => '');
-        return { ok: false, error: `resend ${res.status}: ${detalle.slice(0, 200)}` };
+        return {
+          ok: false,
+          error: `resend ${res.status}: ${detalle.slice(0, 200)}`,
+        };
       }
       return { ok: true };
     } catch (e) {

@@ -1,3 +1,4 @@
+import type { PeticionHttp, RespuestaHttp } from '../tipos-peticion';
 import {
   CanActivate,
   ExecutionContext,
@@ -37,7 +38,7 @@ export class PublicRateLimitGuard implements CanActivate {
     );
     if (!options) return true;
 
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<PeticionHttp>();
     const ip = this.resolverIp(request);
     // La ruta entra en la clave para que el límite de `login` no consuma el de
     // `forgot-password`: son abusos distintos y merecen cupos distintos.
@@ -48,7 +49,7 @@ export class PublicRateLimitGuard implements CanActivate {
     const count = await this.redis.incrementWindow(key, options.windowSeconds);
     if (count === null) return true;
 
-    const response = context.switchToHttp().getResponse();
+    const response = context.switchToHttp().getResponse<RespuestaHttp>();
     response.setHeader('X-RateLimit-Limit', options.limit);
     response.setHeader(
       'X-RateLimit-Remaining',
@@ -67,11 +68,7 @@ export class PublicRateLimitGuard implements CanActivate {
     return true;
   }
 
-  private resolverIp(request: {
-    headers?: Record<string, unknown>;
-    ip?: string;
-    socket?: { remoteAddress?: string };
-  }): string {
+  private resolverIp(request: PeticionHttp): string {
     // Detrás de un proxy, `request.ip` es la del proxy y todo el mundo
     // compartiría cupo. Se toma el primer valor de `x-forwarded-for`, que es el
     // cliente original.
