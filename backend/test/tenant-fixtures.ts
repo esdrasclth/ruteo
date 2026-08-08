@@ -9,6 +9,7 @@ import {
   ShipmentType,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import Redis from 'ioredis';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 // Todo lo que crean estos tests lleva este prefijo en el slug del tenant, para
@@ -45,6 +46,32 @@ function requireEnv(name: string): string {
   return value;
 }
 
+// Las suites registran empresas una y otra vez desde la misma IP, así que
+// agotan el cupo público de `register` (5/hora) y la siguiente corrida falla con
+// 429. Se limpian las ventanas en vez de aflojar el límite: el tope existe para
+// evitar que alguien cree empresas en bucle, y bajarlo por comodidad de las
+// pruebas sería quitar la protección de producción.
+export async function limpiarVentanasDeRateLimit(): Promise<void> {
+  const redis = new Redis({
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+  });
+  try {
+    await redis.connect();
+    const claves = await redis.keys('rlp:*');
+    const bloqueos = await redis.keys('login:*');
+    if (claves.length || bloqueos.length) {
+      await redis.del(...claves, ...bloqueos);
+    }
+  } catch {
+    // Sin Redis el guard falla abierto, así que no hay nada que limpiar.
+  } finally {
+    redis.disconnect();
+  }
+}
+
 export function testSlug(suffix: string): string {
   return `${TEST_SLUG_PREFIX}${suffix}-${randomUUID().slice(0, 8)}`;
 }
@@ -62,6 +89,55 @@ export async function purgeTestTenants(
   await admin.tenant.deleteMany({
     where: { slug: { startsWith: `${TEST_SLUG_PREFIX}${grupo}-` } },
   });
+  await purgarUsuariosZitadel(grupo);
+}
+
+// El registro crea usuarios REALES en la instancia de identidad. Borrar solo la
+// fila local dejaría basura acumulándose ahí corrida tras corrida, y como el
+// nombre de usuario es único en toda la instancia, esa basura acabaría haciendo
+// fallar registros futuros con 409.
+//
+// El nombre de usuario es `{slug}:{correo}` y los slugs de prueba empiezan por
+// `test-iso-{grupo}-`, así que se puede acotar la purga igual que en la base.
+export async function purgarUsuariosZitadel(grupo: string): Promise<void> {
+  const issuer = (process.env.ZITADEL_ISSUER ?? '').replace(/\/+$/, '');
+  const token = process.env.ZITADEL_SERVICE_TOKEN ?? '';
+  if (!issuer || !token) return;
+
+  const cabeceras = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    const res = await fetch(`${issuer}/v2/users`, {
+      method: 'POST',
+      headers: cabeceras,
+      body: JSON.stringify({
+        queries: [
+          {
+            userNameQuery: {
+              userName: `${TEST_SLUG_PREFIX}${grupo}-`,
+              method: 'TEXT_QUERY_METHOD_STARTS_WITH',
+            },
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return;
+
+    const datos = (await res.json()) as { result?: { userId?: string }[] };
+    for (const u of datos.result ?? []) {
+      if (!u.userId) continue;
+      await fetch(`${issuer}/v2/users/${u.userId}`, {
+        method: 'DELETE',
+        headers: cabeceras,
+      });
+    }
+  } catch {
+    // La limpieza es de mejor esfuerzo: que la instancia no responda no debe
+    // tumbar la suite, que es lo que de verdad se quiere ejecutar.
+  }
 }
 
 export interface SeededTenant {
@@ -108,9 +184,8 @@ export async function seedTenant(
       data: {
         tenantId,
         email,
-        // Hash fijo e inválido: este sembrado no se usa para login (de eso se
-        // encarga el e2e de API, que registra vía HTTP).
-        passwordHash: '$2b$12$invalidhashplaceholderinvalidhashplaceholder00',
+        // Sin `externalId`: este sembrado no pasa por ZITADEL ni se usa para
+        // login (de eso se encarga el e2e de API, que registra vía HTTP).
         role: Role.OWNER,
       },
     });

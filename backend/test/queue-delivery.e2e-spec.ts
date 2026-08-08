@@ -25,6 +25,7 @@ import {
   purgeTestTenants,
   TEST_PASSWORD,
   testSlug,
+  limpiarVentanasDeRateLimit,
 } from './tenant-fixtures';
 
 // Destinatario del envio de prueba: los avisos de estado van aqui.
@@ -105,6 +106,7 @@ describe('Entrega asíncrona por BullMQ', () => {
   let shipmentId: string;
 
   beforeAll(async () => {
+    await limpiarVentanasDeRateLimit();
     admin = createAdminPrisma();
     await purgeTestTenants(admin, 'queue');
 
@@ -180,6 +182,14 @@ describe('Entrega asíncrona por BullMQ', () => {
     const auth = { Authorization: `Bearer ${token}` };
 
     const yo = await request(http).get('/api/auth/me').set(auth).expect(200);
+
+    // Los webhooks son del módulo Integraciones, que el plan FREE no incluye:
+    // sin esto el alta devuelve 403. Un cliente que usa webhooks paga un plan
+    // que los trae, así que la prueba refleja el caso real.
+    await admin.tenant.update({
+      where: { id: yo.body.tenantId as string },
+      data: { plan: 'PRO' },
+    });
 
     const webhook = await request(http)
       .post('/api/webhooks')

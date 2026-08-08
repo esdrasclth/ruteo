@@ -10,6 +10,7 @@ import {
   purgeTestTenants,
   TEST_PASSWORD,
   testSlug,
+  limpiarVentanasDeRateLimit,
 } from './tenant-fixtures';
 
 interface Inquilino {
@@ -33,6 +34,7 @@ describe('Aislamiento multi-tenant a través de la API', () => {
   let tenantB: Inquilino;
 
   beforeAll(async () => {
+    await limpiarVentanasDeRateLimit();
     admin = createAdminPrisma();
     await purgeTestTenants(admin, 'api');
 
@@ -80,6 +82,24 @@ describe('Aislamiento multi-tenant a través de la API', () => {
 
     const accessToken = (registro.body as { accessToken: string }).accessToken;
     const auth = { Authorization: `Bearer ${accessToken}` };
+
+    // Emitir credenciales (llaves de API, invitaciones) exige el correo
+    // verificado. Se marca aquí en vez de recorrer el flujo del código porque
+    // lo que esta suite prueba es el AISLAMIENTO, no la verificación —esa tiene
+    // sus propias pruebas—. Sin este paso, la suite fallaría por una precondición
+    // del negocio y no por una fuga entre tenants, que es lo que vigila.
+    await admin.user.updateMany({
+      where: { email },
+      data: { emailVerified: true },
+    });
+
+    // Las llaves de API son del módulo Integraciones, que el plan FREE no trae.
+    // Se sube a PRO porque lo que esta suite verifica es el AISLAMIENTO entre
+    // empresas, no qué incluye cada plan —eso tiene sus propias pruebas—.
+    await admin.tenant.updateMany({
+      where: { slug },
+      data: { plan: 'PRO' },
+    });
 
     const yo = await request(http).get('/api/auth/me').set(auth).expect(200);
 
