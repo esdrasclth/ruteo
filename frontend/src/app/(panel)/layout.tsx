@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -19,7 +20,6 @@ import {
   Route as RouteIcon,
   ScrollText,
   Search,
-  Truck,
   Users,
   UserCog,
 } from "lucide-react";
@@ -31,6 +31,7 @@ import {
   CommandPalette,
   useCommandPalette,
 } from "@/components/command-palette";
+import { VerifyEmailBanner } from "@/components/verify-email-banner";
 import { ChangePasswordDialog } from "./change-password-dialog";
 
 type NavItem = {
@@ -122,17 +123,21 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 min-h-screen">
       <aside className="flex w-60 shrink-0 flex-col border-r border-white/5 bg-sidebar text-sidebar-foreground">
-        <div className="flex items-center gap-2.5 px-4 py-5">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
-            <Truck className="size-5" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-lg font-semibold leading-tight tracking-wide">
-              Ruteo
-            </span>
-            <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
-              {session.slug}
-            </span>
+        {/* El SVG es el lockup completo (símbolo + palabra) en su versión
+            negativa, para el fondo oscuro del sidebar: ocupa el sitio de la
+            pastilla del icono y del rótulo. El slug del tenant se queda: no es
+            decoración, es en qué empresa estás trabajando. */}
+        <div className="px-4 py-5">
+          <Image
+            src="/logo-negativo.svg"
+            alt="Ruteo"
+            width={120}
+            height={32}
+            priority
+            className="h-8 w-auto"
+          />
+          <span className="mt-2 block truncate text-[11px] leading-tight text-sidebar-foreground/50">
+            {session.slug}
           </span>
         </div>
 
@@ -193,6 +198,21 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
             <LogOut className="size-4" />
             Cerrar sesión
           </Button>
+
+          {/* Crédito del desarrollador: al pie del sidebar, en el tono más
+              tenue disponible. Está presente sin robarle sitio a la navegación,
+              que es lo que se usa todo el día. */}
+          <p className="mt-3 border-t border-sidebar-border pt-3 text-[10px] leading-tight text-sidebar-foreground/40">
+            Desarrollado por{" "}
+            <a
+              href="https://www.brandsofts.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded font-medium text-sidebar-foreground/60 transition-colors hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-foreground/60"
+            >
+              Brandsofts
+            </a>
+          </p>
         </div>
       </aside>
 
@@ -214,6 +234,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
         </header>
 
         <main className="min-w-0 flex-1 overflow-x-auto p-6 lg:p-8">
+          <VerifyEmailBanner />
           {children}
         </main>
       </div>
