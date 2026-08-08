@@ -6,15 +6,15 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, setSession, ApiError, CurrentUser } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AuthAside,
+  AuthAsideCta,
+  AuthBrand,
+  AuthHeading,
+  AuthShell,
+} from "@/components/auth-shell";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -59,60 +59,105 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center bg-muted p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl text-primary">Ruteo</CardTitle>
-          <CardDescription>
-            Inicia sesión en el panel de tu empresa
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="slug">Empresa (slug)</Label>
-              <Input
-                id="slug"
-                placeholder="mi-empresa"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">Correo</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="tu@correo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Ingresando…" : "Ingresar"}
-            </Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            ¿Tu empresa aún no tiene cuenta?{" "}
-            <Link href="/register" className="text-primary underline">
-              Regístrala
+    <AuthShell
+      aside={
+        <AuthAside
+          title="Toda tu operación en una sola pantalla"
+          description="Casilleros, envíos, rutas y cobros conectados entre sí."
+          bullets={[
+            "Rastreo de USA a Honduras con hitos y aduana",
+            "Rutas con prueba de entrega y cobro contra entrega",
+            "Tus clientes consultan su guía sin llamarte",
+          ]}
+        >
+          <AuthAsideCta
+            title="¿Solo vienes a rastrear?"
+            description="Si eres cliente y quieres saber dónde va tu paquete, no necesitas cuenta: basta con el número de guía."
+            href="/track"
+            cta="Consultar una guía"
+          />
+        </AuthAside>
+      }
+    >
+      <AuthBrand />
+
+      <AuthHeading
+        title="Hola de nuevo"
+        description="Entra con el identificador de tu empresa y tus credenciales para retomar donde lo dejaste."
+      />
+
+      <form onSubmit={onSubmit} className="grid gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="slug" className="text-white/80">
+            Empresa
+          </Label>
+          <Input
+            id="slug"
+            className="auth-field h-11"
+            placeholder="mi-empresa"
+            autoComplete="organization"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            required
+            autoFocus
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="email" className="text-white/80">
+            Correo
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            className="auth-field h-11"
+            placeholder="tu@correo.com"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+        <div className="grid gap-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <Label htmlFor="password" className="text-white/80">
+              Contraseña
+            </Label>
+            <Link
+              href="/forgot-password"
+              className="text-xs text-white/60 transition-colors hover:text-white"
+            >
+              ¿La olvidaste?
             </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+          <Input
+            id="password"
+            type="password"
+            className="auth-field h-11"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
+
+        <Button
+          type="submit"
+          disabled={loading}
+          className="auth-cta mt-2 h-11 w-full text-sm font-semibold hover:opacity-100"
+        >
+          {loading ? "Ingresando…" : "Ingresar"}
+        </Button>
+      </form>
+
+      <p className="mt-6 text-sm text-white/50">
+        ¿Tu empresa aún no tiene cuenta?{" "}
+        <Link
+          href="/register"
+          className="rounded font-medium text-[#56b3a5] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5]"
+        >
+          Regístrala
+        </Link>
+      </p>
+    </AuthShell>
   );
 }

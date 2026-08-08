@@ -171,17 +171,29 @@ export interface ShipmentEvent {
   occurredAt: string;
 }
 
+// Espejo del modelo ShipmentLeg. El campo de estimación se llama `etaAt`, no
+// `eta`: el tipo antiguo declaraba `eta` y el detalle del envío nunca llegó a
+// mostrar la fecha porque leía una propiedad que la API no devuelve.
 export interface ShipmentLeg {
   id: string;
   sequence: number;
-  mode: string;
-  originLabel: string | null;
-  destinationLabel: string | null;
+  mode: LegMode;
+  originLabel: string;
+  destinationLabel: string;
+  originLat: number | null;
+  originLng: number | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  status: LegStatus;
+  carrier: string | null;
   carrierId: string | null;
+  externalTracking: string | null;
+  etaAt: string | null;
   departedAt: string | null;
   arrivedAt: string | null;
-  eta: string | null;
 }
+
+export type LegMode = "AIR" | "SEA" | "GROUND";
 
 // El detalle trae el contexto operativo del envío (cliente, ruta, cobros,
 // avisos) para que la pantalla funcione como centro de la operación y no haya
@@ -439,6 +451,7 @@ export interface CurrentUser {
   status: UserStatus;
   createdAt: string;
   updatedAt: string;
+  emailVerified?: boolean;
 }
 
 export interface CustomsRecord {
@@ -562,6 +575,25 @@ export interface ImportResult {
   failedCount: number;
   created: { line: number; id: string; trackingNumber: string }[];
   errors: { line: number; errors: string[] }[];
+}
+
+// Resultado de GET /routing/route/:id (OSRM). `null` cuando no hay geometría
+// posible: menos de dos paradas con coordenadas, o el motor apagado.
+export interface RoadRoute {
+  geometry: [number, number][];
+  distanceKm: number;
+  durationMin: number;
+}
+
+// Resultado de GET /geocoding/search (proxy a Nominatim con caché).
+export interface GeocodeResult {
+  /** Dirección completa; se muestra en la lista para desambiguar. */
+  label: string;
+  /** Versión corta; es la que se guarda (los campos topan en 160 caracteres). */
+  shortLabel: string;
+  lat: number;
+  lng: number;
+  type: string | null;
 }
 
 export type LegStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED";
