@@ -472,4 +472,22 @@ export class ShipmentsService {
     }
     return updated;
   }
+
+  // Borrar un tramo es corregir un error de captura, no un hecho del negocio:
+  // no emite notificación ni evento, a diferencia de `updateLeg`.
+  async removeLeg(tenantId: string, shipmentId: string, legId: string) {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      // findFirst acotado por shipmentId: evita borrar un tramo de otro envío
+      // pasando un legId ajeno, aunque RLS ya limite al tenant.
+      const leg = await tx.shipmentLeg.findFirst({
+        where: { id: legId, shipmentId },
+        select: { id: true },
+      });
+      if (!leg) {
+        throw new NotFoundException('Tramo no encontrado');
+      }
+      await tx.shipmentLeg.delete({ where: { id: legId } });
+      return { deleted: true };
+    });
+  }
 }
