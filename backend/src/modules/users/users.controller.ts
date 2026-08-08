@@ -16,6 +16,8 @@ import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { VerifiedEmailGuard } from '../../common/guards/verified-email.guard';
+import { RequiereCorreoVerificado } from '../../common/decorators/verified-email.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
@@ -25,7 +27,7 @@ import { UsersService } from './users.service';
 
 @ApiTags('users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, VerifiedEmailGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
@@ -49,7 +51,11 @@ export class UsersController {
     return this.users.list(user.tenantId, query);
   }
 
+  // Dar de alta a otra persona es ampliar quién entra a la empresa. Si el
+  // correo del que invita no está probado, la cadena de confianza arranca de
+  // una dirección que puede no ser suya.
   @Post()
+  @RequiereCorreoVerificado()
   @Roles(Role.OWNER, Role.ADMIN)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateUserDto) {
     return this.users.create(user, dto);

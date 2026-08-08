@@ -55,7 +55,6 @@ const emptyForm = {
   email: "",
   name: "",
   role: "OPERATOR" as Role,
-  password: "",
   driverId: undefined as string | undefined,
   customerId: undefined as string | undefined,
 };
@@ -125,7 +124,6 @@ export default function TeamPage() {
           email: form.email.trim(),
           name: form.name.trim() || undefined,
           role: form.role,
-          password: form.password,
           driverId: form.role === "DRIVER" ? form.driverId : undefined,
           customerId: form.role === "CUSTOMER" ? form.customerId : undefined,
         }),
@@ -267,20 +265,15 @@ export default function TeamPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Contraseña *</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    minLength={8}
-                    value={form.password}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, password: e.target.value }))
-                    }
-                  />
-                </div>
               </div>
+              {/* Ya no se pide contraseña: se manda una invitación y la elige
+                  quien entra. Que el administrador la pusiera significaba que
+                  conocía la clave de su gente, y que la primera se compartía
+                  por WhatsApp. */}
+              <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                Le enviaremos una invitación por correo para que elija su propia
+                contraseña. Su correo queda verificado al aceptarla.
+              </p>
               {form.role === "DRIVER" ? (
                 <div className="grid gap-2">
                   <Label>Vincular con driver (opcional)</Label>
@@ -355,7 +348,7 @@ export default function TeamPage() {
         </Dialog>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!users ? (
             <div className="flex flex-col gap-2 p-4">
@@ -422,7 +415,7 @@ export default function TeamPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-muted-foreground">
                         {u.driver
                           ? `Driver: ${u.driver.name}`
                           : u.customer

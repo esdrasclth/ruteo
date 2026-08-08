@@ -7,9 +7,14 @@ import {
   IsString,
   IsUUID,
   MaxLength,
-  MinLength,
+
 } from 'class-validator';
 
+// Sin contraseña a propósito: la elige el invitado desde el correo. Que el
+// administrador la ponga significaba que conocía la clave de sus empleados, lo
+// que arruina el no-repudio —si un operador cancela un envío, no se puede
+// sostener que fue él— y garantiza que la primera contraseña se comparta por
+// WhatsApp.
 export class CreateUserDto {
   @ApiProperty({ example: 'operador@aviotech.com' })
   @IsEmail()
@@ -25,11 +30,6 @@ export class CreateUserDto {
   @IsEnum(Role)
   role: Role;
 
-  @ApiProperty({ example: 'Sup3rSecret!' })
-  @IsString()
-  @MinLength(8)
-  @MaxLength(72)
-  password: string;
 
   @ApiPropertyOptional({ description: 'Link this user to an existing driver' })
   @IsOptional()
