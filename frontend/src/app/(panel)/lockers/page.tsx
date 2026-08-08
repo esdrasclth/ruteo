@@ -191,7 +191,7 @@ export default function LockersPage() {
         </Dialog>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!lockers ? (
             <div className="flex flex-col gap-2 p-4">
@@ -222,16 +222,16 @@ export default function LockersPage() {
                     className="cursor-pointer"
                     onClick={() => router.push(`/lockers/${l.id}`)}
                   >
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {l.code}
                     </TableCell>
                     <TableCell className="font-medium">
                       {l.customerName}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {l.customerEmail ?? l.customerPhone ?? "—"}
                     </TableCell>
-                    <TableCell className="max-w-56 truncate text-sm">
+                    <TableCell className="max-w-56 truncate">
                       {l.addressLine1}, {l.city}, {l.state} {l.postalCode}
                     </TableCell>
                     <TableCell>

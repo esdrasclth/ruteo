@@ -178,7 +178,7 @@ export default function CustomersPage() {
         />
       </div>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!customers ? (
             <div className="flex flex-col gap-2 p-4">
@@ -209,10 +209,10 @@ export default function CustomersPage() {
                     onClick={() => router.push(`/customers/${c.id}`)}
                   >
                     <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {c.email ?? c.phone ?? "—"}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {c.documentId ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">

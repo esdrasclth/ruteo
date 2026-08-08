@@ -181,7 +181,7 @@ export default function AuditPage() {
                 <TableBody>
                   {data.items.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
                         {fmtDateTime(log.createdAt)}
                       </TableCell>
                       <TableCell className="font-medium">
@@ -221,7 +221,7 @@ export default function AuditPage() {
                           );
                         })()}
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell>
                         {log.actorRole ? (
                           ROLE_LABELS[log.actorRole]
                         ) : (

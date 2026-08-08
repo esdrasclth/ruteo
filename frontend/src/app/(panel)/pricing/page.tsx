@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressSearch } from "@/components/address-search";
 import {
   Select,
   SelectContent,
@@ -65,6 +66,8 @@ export default function PricingPage() {
 
   const [zoneOpen, setZoneOpen] = useState(false);
   const [zoneForm, setZoneForm] = useState(EMPTY_ZONE);
+  // Solo alimenta al buscador: la zona guarda coordenadas, no la dirección.
+  const [zoneCentro, setZoneCentro] = useState("");
 
   const [rateOpen, setRateOpen] = useState(false);
   const [rateForm, setRateForm] = useState(EMPTY_RATE);
@@ -118,6 +121,7 @@ export default function PricingPage() {
       toast.success("Zona creada");
       setZoneOpen(false);
       setZoneForm(EMPTY_ZONE);
+      setZoneCentro("");
       await load();
     } catch (err) {
       toast.error(
@@ -222,7 +226,7 @@ export default function PricingPage() {
         </p>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden pb-0">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">
@@ -261,10 +265,10 @@ export default function PricingPage() {
                 {zones.map((z) => (
                   <TableRow key={z.id}>
                     <TableCell className="font-medium">{z.name}</TableCell>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {z.code}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {z.centerLat != null && z.centerLng != null
                         ? `${z.centerLat}, ${z.centerLng}`
                         : "—"}
@@ -311,7 +315,7 @@ export default function PricingPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="overflow-hidden pb-0">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">
@@ -353,7 +357,7 @@ export default function PricingPage() {
                 {rates.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">{r.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {zoneName(r.zoneId)}
                     </TableCell>
                     <TableCell className="text-right">{r.baseFee}</TableCell>
@@ -539,6 +543,21 @@ export default function PricingPage() {
                 }
               />
             </div>
+            <AddressSearch
+              id="zCentro"
+              label="Centro de la zona"
+              placeholder="Busca un punto: un bulevar, un centro comercial…"
+              value={zoneCentro}
+              onChange={setZoneCentro}
+              onPick={(r) =>
+                setZoneForm((f) => ({
+                  ...f,
+                  centerLat: String(r.lat),
+                  centerLng: String(r.lng),
+                }))
+              }
+              hint="Solo fija las coordenadas del centro; no se guarda como texto."
+            />
             <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="zLat">Lat centro</Label>

@@ -113,6 +113,257 @@ body {
       inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 
+  /* --- Marcadores del mapa de rastreo --------------------------------------
+     Elementos DOM en vez de iconos: heredan la paleta y no añaden peticiones. */
+  .ruteo-pin {
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: #ffffff;
+    border: 2px solid #183a37;
+    box-shadow: 0 1px 4px rgba(4, 21, 31, 0.3);
+    cursor: pointer;
+  }
+
+  /* La posición actual pesa más: relleno sólido y halo. Es el único punto que
+     el destinatario busca al abrir la página. */
+  .ruteo-pin-actual {
+    width: 16px;
+    height: 16px;
+    background: #183a37;
+    border-color: #ffffff;
+    box-shadow:
+      0 0 0 5px rgba(24, 58, 55, 0.16),
+      0 2px 6px rgba(4, 21, 31, 0.35);
+  }
+
+  /* Parada de una ruta: el número va dentro del marcador porque en el reparto
+     lo que se consulta es el orden, no la posición absoluta. */
+  .ruteo-parada {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 9999px;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 6px rgba(4, 21, 31, 0.35);
+    cursor: pointer;
+  }
+
+  /* --- Lienzo oscuro de marca ----------------------------------------------
+     Base para las pantallas públicas y de acceso. La foto es OPCIONAL y vive en
+     su propia clase (`auth-photo`), para poder reutilizar el mismo lienzo sin
+     imagen — por ejemplo en el rastreo público. Se usan pseudoelementos y no una
+     pila de `background-image` porque solo así se puede aplicar `filter` a la
+     foto sin arrastrar también a los degradados. */
+  .brand-dark {
+    position: relative;
+    background-color: #04151f;
+  }
+
+  .brand-dark::after,
+  .auth-photo::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* El filtro de marca. Cuando hay foto va por encima de ella; cuando no la hay,
+     es el fondo entero. El degradado vertical es el que sostiene el contraste. */
+  .brand-dark::after {
+    background-image:
+      radial-gradient(70% 55% at 12% 0%, rgba(63, 150, 137, 0.18), transparent 70%),
+      radial-gradient(55% 45% at 95% 18%, rgba(86, 179, 165, 0.13), transparent 72%),
+      radial-gradient(60% 50% at 60% 110%, rgba(24, 58, 55, 0.42), transparent 70%),
+      linear-gradient(180deg, rgba(4, 21, 31, 0.3), rgba(4, 21, 31, 0.68));
+  }
+
+  /* La foto: desaturada hacia el verde de marca y bajada de opacidad para que
+     sea textura de fondo y no compita con el formulario. */
+  .auth-photo::before {
+    background-image: url("/fondo.jpg");
+    background-size: cover;
+    background-position: center;
+    opacity: 0.5;
+    filter: saturate(0.55) contrast(1.08);
+  }
+
+  /* Paso más claro del MISMO tono de marca (hue 172°) para que el llamado a la
+     acción tenga contraste sobre la tinta sin salirse de la paleta. */
+  .auth-cta {
+    background-image: linear-gradient(100deg, #3f9689, #56b3a5);
+    color: #04151f;
+  }
+
+  .auth-cta:hover:not(:disabled) {
+    background-image: linear-gradient(100deg, #47a496, #62c2b3);
+  }
+
+  /* Tarjeta oscura que sostiene el formulario: se despega del lienzo por un
+     tono más claro y un filo de luz, no por un borde marcado. */
+  .auth-panel {
+    background: rgba(7, 29, 38, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow:
+      0 40px 90px -40px rgba(0, 0, 0, 0.75),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* La tarjeta clara va POR ENCIMA de la oscura: la sombra tiene que ser lo
+     bastante profunda para que se lea como una capa aparte, no como un hueco. */
+  .auth-float {
+    background: #ffffff;
+    box-shadow:
+      0 2px 6px rgba(4, 21, 31, 0.08),
+      0 50px 90px -35px rgba(0, 0, 0, 0.55);
+  }
+
+  /* Campos sobre fondo oscuro: vidrio tenue en vez de caja blanca. */
+  .auth-field {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+  }
+
+  .auth-field::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .auth-field:focus-visible {
+    border-color: rgba(86, 179, 165, 0.65);
+    box-shadow: 0 0 0 3px rgba(86, 179, 165, 0.18);
+  }
+
+  /* --- Sitio público (landing) ---------------------------------------------
+     Mismo vocabulario de vidrio que el panel, pero sobre lienzo CLARO. El panel
+     y las pantallas de acceso ya usan el lienzo oscuro; aquí la página es de
+     venta y tiene que leerse de un vistazo, así que la tinta va sobre blanco. */
+  .landing-surface {
+    background-color: #f8fbfa;
+    background-image:
+      radial-gradient(70% 55% at 6% -12%, rgba(63, 150, 137, 0.1), transparent 70%),
+      radial-gradient(55% 45% at 100% 2%, rgba(24, 58, 55, 0.055), transparent 72%);
+  }
+
+  /* La foto del puerto entra LAVADA —brillo alto, casi sin color— y desvanecida
+     hacia abajo con una máscara. Es textura de fondo, no imagen: a saturación
+     normal se comía el titular, que es lo único que hay que leer aquí. Los
+     pseudoelementos van en z-index negativo dentro de un contexto de
+     apilamiento propio (`isolation`), para no tapar el contenido ni escaparse
+     por detrás del fondo de la página. */
+  .landing-hero {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .landing-hero::before,
+  .landing-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* `background-blend-mode: color` toma el TONO del degradado verde y la
+     LUMINOSIDAD de la foto: sale un duotono de marca en vez de una foto gris
+     con un velo encima. Así se puede subir bastante la opacidad —el puerto se
+     reconoce— sin que aparezca ni un color que no sea de la paleta. */
+  .landing-hero::before {
+    background-image:
+      linear-gradient(155deg, rgba(63, 150, 137, 0.92), rgba(24, 58, 55, 0.84)),
+      url("/fondo.jpg");
+    background-size: cover, cover;
+    background-position: center, 50% 64%;
+    background-blend-mode: color;
+    opacity: 0.44;
+    filter: brightness(1.16) contrast(0.98);
+    -webkit-mask-image: linear-gradient(
+      180deg,
+      #000 0%,
+      rgba(0, 0, 0, 0.62) 62%,
+      transparent 96%
+    );
+    mask-image: linear-gradient(
+      180deg,
+      #000 0%,
+      rgba(0, 0, 0, 0.62) 62%,
+      transparent 96%
+    );
+  }
+
+  /* Vaho blanco bajo la columna de texto y halo verde sobre la tarjeta. Con la
+     foto más presente, el titular necesita que el fondo se abra justo debajo:
+     es lo que hace un fotógrafo con un reflector, y cuesta menos contraste que
+     bajar la imagen entera. */
+  .landing-hero::after {
+    background-image:
+      radial-gradient(56% 60% at 19% 44%, rgba(255, 255, 255, 0.66), transparent 73%),
+      radial-gradient(44% 40% at 78% 12%, rgba(86, 179, 165, 0.22), transparent 70%),
+      radial-gradient(38% 34% at 4% 78%, rgba(24, 58, 55, 0.06), transparent 72%);
+  }
+
+  /* Tarjeta que FLOTA sobre la foto del hero: más opaca y con más desenfoque
+     que `.glass-card`, porque debajo hay imagen y no un color plano. */
+  .glass-float {
+    background: color-mix(in srgb, #ffffff 88%, transparent);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    box-shadow:
+      0 1px 2px rgba(4, 21, 31, 0.05),
+      0 40px 80px -36px rgba(4, 21, 31, 0.38),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  /* Mismo aspecto que `.glass-card` y `.glass-panel` pero SIN `backdrop-filter`,
+     para las tarjetas que caen sobre el lienzo liso de la landing. Desenfocar
+     un fondo de un solo color no se ve, pero sí se paga: apiladas sobre la foto
+     del hero —que además lleva `filter` y máscara— bastaban para congelar el
+     compositor al hacer scroll. El vidrio de verdad queda donde hay algo
+     debajo que valga la pena difuminar: el hero y la barra superior. */
+  .glass-solid {
+    background: color-mix(in srgb, #ffffff 82%, transparent);
+    border: 1px solid rgba(24, 58, 55, 0.07);
+    box-shadow:
+      0 1px 2px rgba(4, 21, 31, 0.04),
+      0 10px 30px -20px rgba(4, 21, 31, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+
+  .panel-solid {
+    background: linear-gradient(
+      140deg,
+      color-mix(in srgb, #183a37 8%, rgba(255, 255, 255, 0.72)),
+      color-mix(in srgb, #183a37 3%, rgba(255, 255, 255, 0.86))
+    );
+    border: 1px solid rgba(24, 58, 55, 0.08);
+    box-shadow:
+      0 1px 2px rgba(4, 21, 31, 0.04),
+      0 12px 34px -22px rgba(4, 21, 31, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  /* Regla que nace y muere en transparente. Separa secciones sin meter una
+     línea dura de lado a lado, que es lo que endurece una página clara. */
+  .rule-fade {
+    height: 1px;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(24, 58, 55, 0.16),
+      transparent
+    );
+  }
+
   /* Frosted glass active state for the dark navy sidebar — subtle. */
   .glass-active {
     background: rgba(255, 255, 255, 0.09);

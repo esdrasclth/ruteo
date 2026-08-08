@@ -224,7 +224,7 @@ export default function LockerDetailPage({
         </div>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden pb-0">
         <CardHeader>
           <CardTitle className="text-base">
             Paquetes ({locker.packages.length})
@@ -252,7 +252,7 @@ export default function LockerDetailPage({
               <TableBody>
                 {locker.packages.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {p.externalTracking ?? "—"}
                     </TableCell>
                     <TableCell>{p.merchant ?? "—"}</TableCell>

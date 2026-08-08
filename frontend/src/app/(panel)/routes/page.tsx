@@ -224,7 +224,7 @@ function RoutesContent() {
         </SelectContent>
       </Select>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!routes ? (
             <div className="flex flex-col gap-2 p-4">
@@ -254,7 +254,7 @@ function RoutesContent() {
                     className="cursor-pointer"
                     onClick={() => router.push(`/routes/${r.id}`)}
                   >
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {r.code}
                     </TableCell>
                     <TableCell>{r.driver?.name ?? "—"}</TableCell>

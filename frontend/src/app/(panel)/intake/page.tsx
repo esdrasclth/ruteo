@@ -382,7 +382,7 @@ export default function IntakePage() {
       </div>
 
       {/* Recibos recientes */}
-      <Card>
+      <Card className="overflow-hidden pb-0">
         <CardHeader>
           <CardTitle className="text-base">Recibos recientes</CardTitle>
         </CardHeader>
@@ -413,7 +413,7 @@ export default function IntakePage() {
               <TableBody>
                 {recent.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {p.externalTracking ?? "—"}
                     </TableCell>
                     <TableCell className="max-w-48 truncate">
@@ -427,7 +427,7 @@ export default function IntakePage() {
                         {p.locker.code}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell>
                       {p.locker.customerName}
                     </TableCell>
                     <TableCell className="text-right">
@@ -438,7 +438,7 @@ export default function IntakePage() {
                         {PACKAGE_STATUS_LABELS[p.status]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {p.receivedAt
                         ? new Date(p.receivedAt).toLocaleString()
                         : "—"}

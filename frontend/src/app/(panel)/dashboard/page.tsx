@@ -21,6 +21,8 @@ import { STATUS_LABELS, TYPE_LABELS } from "@/lib/shipment-status";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
+import { DailyChart } from "@/components/daily-chart";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -81,13 +83,17 @@ export default function DashboardPage() {
   const [shipments, setShipments] = useState<ShipmentsAnalytics | null>(null);
   const [payments, setPayments] = useState<PaymentsAnalytics | null>(null);
   const [drivers, setDrivers] = useState<DriversAnalytics | null>(null);
+  const [recargando, setRecargando] = useState(false);
 
   const load = useCallback(async () => {
     const desde = new Date();
     desde.setDate(desde.getDate() - Number(dias));
     const qs = `?from=${desde.toISOString()}`;
 
-    setOverview(null);
+    // No se limpia el estado: al cambiar de rango se mantiene el render previo
+    // atenuado (ver `recargando`). Vaciarlo devolvía la pantalla al skeleton y
+    // el layout saltaba entero en cada cambio de filtro.
+    setRecargando(true);
     try {
       const [o, s, p, d] = await Promise.all([
         api<Overview>(`/analytics/overview${qs}`),
@@ -103,6 +109,8 @@ export default function DashboardPage() {
       toast.error(
         err instanceof ApiError ? err.message : "Error cargando analítica",
       );
+    } finally {
+      setRecargando(false);
     }
   }, [dias]);
 
@@ -126,13 +134,20 @@ export default function DashboardPage() {
     );
   }
 
-  const maxDaily = Math.max(1, ...shipments.daily.map((d) => d.count));
+  const maxDaily = Math.max(0, ...shipments.daily.map((d) => d.count));
+  const totalRango = shipments.daily.reduce((acc, d) => acc + d.count, 0);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div
+      className={cn(
+        "flex flex-col gap-6 transition-opacity duration-200",
+        recargando && "opacity-60",
+      )}
+    >
       <PageHeader
         title="Dashboard"
-        description={RANGOS.find((r) => String(r.dias) === dias)?.label}
+        // El rango ya lo dice el Select de al lado; repetirlo aquí era ruido.
+        description="Resumen de operación, cobros y notificaciones del período."
         actions={
           <Select value={dias} onValueChange={setDias}>
             <SelectTrigger className="w-48" aria-label="Rango de fechas">
@@ -182,36 +197,25 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="glass-panel rounded-2xl p-6 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-primary">
-              Envíos por día
-            </h2>
-            <span className="rounded-full bg-white/60 px-2.5 py-0.5 text-xs font-medium text-primary ring-1 ring-black/5">
-              máx {maxDaily}
-            </span>
-          </div>
-          {shipments.daily.length === 0 ? (
-            <p className="mt-6 text-sm text-muted-foreground">
-              Sin envíos en el rango.
-            </p>
-          ) : (
-            <div className="mt-6 flex h-44 items-end gap-1.5">
-              {shipments.daily.map((d) => (
-                <div
-                  key={d.date}
-                  className="group relative flex-1"
-                  title={`${d.date}: ${d.count}`}
-                >
-                  <div
-                    className="w-full rounded-t-md bg-gradient-to-t from-primary/70 to-primary shadow-[0_2px_8px_-2px_rgba(4,21,31,0.4)] transition-opacity hover:opacity-90"
-                    style={{
-                      height: `${Math.max((d.count / maxDaily) * 176, 4)}px`,
-                    }}
-                  />
-                </div>
-              ))}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-primary">
+                Envíos por día
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {totalRango} en el período · máximo {maxDaily} en un día
+              </p>
             </div>
-          )}
+          </div>
+          <div className="mt-4">
+            {shipments.daily.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Sin envíos en el rango.
+              </p>
+            ) : (
+              <DailyChart data={shipments.daily} label="envíos" />
+            )}
+          </div>
         </div>
 
         <div className="glass-card rounded-2xl p-6">

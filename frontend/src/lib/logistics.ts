@@ -202,6 +202,18 @@ export function subscriptionStatusBadgeClass(
   }
 }
 
+// Modo de transporte de un tramo (LegMode del backend). Sin esto la vista
+// pública mostraba el enum crudo — "AIR", "SEA" — al cliente final.
+export const LEG_MODE_LABELS: Record<string, string> = {
+  AIR: "Aéreo",
+  SEA: "Marítimo",
+  GROUND: "Terrestre",
+};
+
+export function legModeLabel(mode: string): string {
+  return LEG_MODE_LABELS[mode] ?? mode;
+}
+
 export const CARRIER_TYPE_LABELS: Record<CarrierType, string> = {
   COURIER: "Courier",
   AIRLINE: "Aerolínea",

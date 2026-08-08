@@ -245,7 +245,7 @@ function PaymentsContent() {
         </Select>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!payments ? (
             <div className="flex flex-col gap-2 p-4">
@@ -279,7 +279,7 @@ function PaymentsContent() {
               <TableBody>
                 {payments.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {new Date(p.createdAt).toLocaleDateString("es-HN")}
                     </TableCell>
                     <TableCell>{PAYMENT_TYPE_LABELS[p.type]}</TableCell>
@@ -298,7 +298,7 @@ function PaymentsContent() {
                     <TableCell className="text-right font-medium">
                       {p.amount} {p.currency}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {p.method ? PAYMENT_METHOD_LABELS[p.method] : "—"}
                     </TableCell>
                     <TableCell>

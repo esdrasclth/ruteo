@@ -218,7 +218,7 @@ export default function DriversPage() {
         </Dialog>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!drivers ? (
             <div className="flex flex-col gap-2 p-4">

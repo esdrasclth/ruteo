@@ -234,7 +234,7 @@ function NotificationsContent() {
               <TableBody>
                 {rows.map((n) => (
                   <TableRow key={n.id}>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
                       {fmtDateTime(n.createdAt)}
                     </TableCell>
                     <TableCell>

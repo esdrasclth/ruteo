@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressSearch } from "@/components/address-search";
 import {
   Select,
   SelectContent,
@@ -146,13 +147,24 @@ export default function NewShipmentPage() {
                 onChange={set("originLabel")}
               />
             </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="destinationLabel">Destino</Label>
-              <Input
+            <div className="sm:col-span-2">
+              <AddressSearch
                 id="destinationLabel"
+                label="Destino"
                 placeholder="Col. Kennedy, Tegucigalpa"
                 value={form.destinationLabel}
-                onChange={set("destinationLabel")}
+                onChange={(v) =>
+                  setForm((f) => ({ ...f, destinationLabel: v }))
+                }
+                onPick={(r) =>
+                  setForm((f) => ({
+                    ...f,
+                    destinationLabel: r.shortLabel,
+                    destinationLat: String(r.lat),
+                    destinationLng: String(r.lng),
+                  }))
+                }
+                hint="Al elegir una sugerencia se rellenan las coordenadas solas."
               />
             </div>
             <div className="grid gap-2">

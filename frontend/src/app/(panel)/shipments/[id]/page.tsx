@@ -37,6 +37,7 @@ import {
   STOP_STATUS_LABELS,
 } from "@/lib/logistics";
 import { PageHeader } from "@/components/page-header";
+import { LegsCard } from "@/components/legs-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -658,31 +659,8 @@ export default function ShipmentDetailPage({
         />
       ) : null}
 
-      {shipment.legs.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Tramos</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {shipment.legs.map((leg) => (
-              <div
-                key={leg.id}
-                className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
-              >
-                <Badge variant="outline">#{leg.sequence}</Badge>
-                <span className="font-medium">{leg.mode}</span>
-                <span className="text-muted-foreground">
-                  {leg.originLabel ?? "—"} → {leg.destinationLabel ?? "—"}
-                </span>
-                {leg.eta ? (
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    ETA: {new Date(leg.eta).toLocaleString("es-HN")}
-                  </span>
-                ) : null}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {shipment.type === "INTERNATIONAL" ? (
+        <LegsCard shipment={shipment} onChanged={load} />
       ) : null}
 
       <Card>

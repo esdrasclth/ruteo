@@ -189,7 +189,7 @@ function ShipmentsContent() {
         </Select>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
           {!data ? (
             <div className="flex flex-col gap-2 p-4">
@@ -235,7 +235,7 @@ function ShipmentsContent() {
                     className="cursor-pointer"
                     onClick={() => router.push(`/shipments/${s.id}`)}
                   >
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {s.trackingNumber}
                     </TableCell>
                     <TableCell>{s.recipientName}</TableCell>
@@ -251,7 +251,7 @@ function ShipmentsContent() {
                     <TableCell className="text-right">
                       {s.codAmount ? `${s.codAmount} ${s.currency}` : "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {new Date(s.createdAt).toLocaleDateString("es-HN")}
                     </TableCell>
                   </TableRow>

@@ -187,7 +187,7 @@ export default function CustomerDetailPage({
         </Card>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden pb-0">
         <CardHeader>
           <CardTitle className="text-base">
             Casilleros ({customer.lockers.length})
@@ -212,10 +212,10 @@ export default function CustomerDetailPage({
                     className="cursor-pointer"
                     onClick={() => router.push(`/lockers/${l.id}`)}
                   >
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {l.code}
                     </TableCell>
-                    <TableCell className="max-w-56 truncate text-sm">
+                    <TableCell className="max-w-56 truncate">
                       {l.addressLine1}, {l.city}, {l.state} {l.postalCode}
                     </TableCell>
                     <TableCell>
@@ -237,7 +237,7 @@ export default function CustomerDetailPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="overflow-hidden pb-0">
         <CardHeader>
           <CardTitle className="text-base">
             Envíos ({customer.shipments.length})
@@ -263,10 +263,10 @@ export default function CustomerDetailPage({
                     className="cursor-pointer"
                     onClick={() => router.push(`/shipments/${s.id}`)}
                   >
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       {s.trackingNumber}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell>
                       {TYPE_LABELS[s.type]}
                     </TableCell>
                     <TableCell>
@@ -274,7 +274,7 @@ export default function CustomerDetailPage({
                         {STATUS_LABELS[s.status]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground">
                       {new Date(s.createdAt).toLocaleDateString()}
                     </TableCell>
                   </TableRow>

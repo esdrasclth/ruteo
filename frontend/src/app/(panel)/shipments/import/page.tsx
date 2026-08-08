@@ -133,7 +133,7 @@ export default function ImportShipmentsPage() {
 
       {result ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+          <Card className="overflow-hidden pb-0">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Creados</CardTitle>
@@ -175,7 +175,7 @@ export default function ImportShipmentsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="overflow-hidden pb-0">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Errores</CardTitle>
@@ -207,7 +207,7 @@ export default function ImportShipmentsPage() {
                     {result.errors.map((e) => (
                       <TableRow key={e.line}>
                         <TableCell>{e.line}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="text-muted-foreground">
                           {e.errors.join(". ")}
                         </TableCell>
                       </TableRow>

@@ -8,6 +8,7 @@ import {
   api,
   ApiError,
   Paginated,
+  RoadRoute,
   RouteDetail,
   RouteStop,
   Shipment,
@@ -46,6 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StopsMap } from "@/components/stops-map";
 import {
   Table,
   TableBody,
@@ -62,6 +64,7 @@ export default function RouteDetailPage({
 }) {
   const { id } = use(params);
   const [route, setRoute] = useState<RouteDetail | null>(null);
+  const [carretera, setCarretera] = useState<RoadRoute | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -80,6 +83,13 @@ export default function RouteDetailPage({
       toast.error(
         err instanceof ApiError ? err.message : "Error cargando la ruta",
       );
+    }
+    // El trazado por carretera va aparte y sin bloquear: la ruta se muestra
+    // igual aunque OSRM esté apagado, solo que con líneas rectas.
+    try {
+      setCarretera(await api<RoadRoute | null>(`/routing/route/${id}`));
+    } catch {
+      setCarretera(null);
     }
   }, [id]);
 
@@ -242,6 +252,18 @@ export default function RouteDetailPage({
   const nexts = ROUTE_NEXT_STATUSES[route.status];
   const canEditStops = route.status === "PLANNED";
 
+  // Solo las paradas con coordenadas se pueden dibujar. Las que no las tienen
+  // se cuentan aparte para no dejar al usuario preguntándose por qué faltan.
+  const paradasGeo = route.stops
+    .filter((s) => s.lat !== null && s.lng !== null)
+    .map((s) => ({
+      sequence: s.sequence,
+      lat: s.lat as number,
+      lng: s.lng as number,
+      label: s.addressLabel ?? s.shipment.trackingNumber,
+      status: s.status,
+    }));
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -279,7 +301,41 @@ export default function RouteDetailPage({
         </div>
       </div>
 
-      <Card>
+      {paradasGeo.length > 0 ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Recorrido</CardTitle>
+            {carretera ? (
+              <span className="text-sm tabular-nums text-muted-foreground">
+                <span className="font-medium text-primary">
+                  {carretera.distanceKm} km
+                </span>{" "}
+                · {carretera.durationMin} min por carretera
+              </span>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            <StopsMap
+              paradas={paradasGeo}
+              carretera={carretera?.geometry ?? null}
+            />
+            {paradasGeo.length < route.stops.length ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {route.stops.length - paradasGeo.length} parada(s) sin
+                coordenadas no aparecen en el mapa.
+              </p>
+            ) : null}
+            {!carretera && paradasGeo.length > 1 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Trazado por calles no disponible: se muestra el orden de las
+                paradas en línea recta.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="overflow-hidden pb-0">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">
             Paradas ({route.stops.length})
@@ -361,7 +417,7 @@ export default function RouteDetailPage({
                         {STOP_STATUS_LABELS[stop.status]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-40 text-xs text-muted-foreground">
+                    <TableCell className="max-w-40 text-muted-foreground">
                       {stop.pod
                         ? (stop.pod.receivedBy ??
                           stop.pod.failureReason ??
