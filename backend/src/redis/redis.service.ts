@@ -56,6 +56,61 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // Cached JSON value, or null if missing / Redis down / payload corrupt.
+  // Same fail-open contract as the rest of the wrapper: a cache miss and an
+  // unreachable Redis are indistinguishable to the caller on purpose.
+  async getJson<T>(key: string): Promise<T | null> {
+    if (!this.client || this.client.status !== 'ready') {
+      return null;
+    }
+    try {
+      const raw = await this.client.get(key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch (err) {
+      this.logger.warn(`Redis get failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  // Best-effort write. A failed cache write must never fail the request.
+  async setJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+    if (!this.client || this.client.status !== 'ready') {
+      return;
+    }
+    try {
+      await this.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    } catch (err) {
+      this.logger.warn(`Redis set failed: ${(err as Error).message}`);
+    }
+  }
+
+  // Segundos que le quedan a una clave. `null` si Redis no responde o si la
+  // clave no existe/no caduca, para que quien llame no distinga "no está" de
+  // "no hay Redis" y trate ambos como "no bloqueado".
+  async ttl(key: string): Promise<number | null> {
+    if (!this.client || this.client.status !== 'ready') {
+      return null;
+    }
+    try {
+      const t = await this.client.ttl(key);
+      return t > 0 ? t : null;
+    } catch (err) {
+      this.logger.warn(`Redis ttl failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  async del(key: string): Promise<void> {
+    if (!this.client || this.client.status !== 'ready') {
+      return;
+    }
+    try {
+      await this.client.del(key);
+    } catch (err) {
+      this.logger.warn(`Redis del failed: ${(err as Error).message}`);
+    }
+  }
+
   // Fixed-window counter. Returns the current hit count for the window, or
   // null if Redis is unavailable (caller should fail open).
   async incrementWindow(key: string, windowSeconds: number): Promise<number | null> {
