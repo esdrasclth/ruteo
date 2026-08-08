@@ -118,12 +118,23 @@ export class AnalyticsService {
           where: { createdAt },
           _count: { _all: true },
         }),
+        // generate_series produce TODOS los días del rango; el LEFT JOIN deja en
+        // 0 los que no tienen envíos. Sin esto la serie solo traía los días con
+        // datos y el gráfico dibujaba 3 puntos para un rango de 30 días.
         tx.$queryRaw<{ day: Date; count: bigint }[]>`
-          SELECT date_trunc('day', created_at) AS day, COUNT(*) AS count
-          FROM shipments
-          WHERE created_at >= ${from} AND created_at <= ${to}
-          GROUP BY day
-          ORDER BY day ASC`,
+          SELECT d.day AS day, COUNT(s.id) AS count
+          FROM generate_series(
+                 date_trunc('day', ${from}::timestamptz),
+                 date_trunc('day', ${to}::timestamptz),
+                 '1 day'::interval
+               ) AS d(day)
+          LEFT JOIN shipments s
+            ON s.created_at >= d.day
+           AND s.created_at < d.day + '1 day'::interval
+           AND s.created_at >= ${from}
+           AND s.created_at <= ${to}
+          GROUP BY d.day
+          ORDER BY d.day ASC`,
       ]);
 
       return {

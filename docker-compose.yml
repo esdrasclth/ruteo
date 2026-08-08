@@ -31,6 +31,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # Motor de rutas por carretera (OpenStreetMap). Sirve la geometría real de las
+  # calles entre las paradas de un reparto, en vez de líneas rectas.
+  #
+  # El volumen `ruteo_osrmdata` debe traer los artefactos ya preprocesados; un
+  # clon nuevo del repo no los tiene y hay que generarlos una vez con
+  # `scripts/osrm-prepare.sh` (tarda ~1 min para Honduras y ocupa ~420 MB).
+  # Sin ellos el contenedor arranca y muere en bucle: es esperado, no un fallo
+  # de configuración.
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: ruteo-osrm
+    restart: unless-stopped
+    command: osrm-routed --algorithm mld --max-table-size 1000 /data/honduras.osrm
+    ports:
+      - "${OSRM_PORT:-5100}:5000"
+    volumes:
+      - ruteo_osrmdata:/data
+
 volumes:
   ruteo_pgdata:
   ruteo_redisdata:
+  # `name` explícito: sin esto Compose lo bautiza `ruteo_ruteo_osrmdata` y el
+  # script de preparación (que crea `ruteo_osrmdata` a secas) llenaría un volumen
+  # distinto del que monta el contenedor. Los dos de arriba NO llevan `name` a
+  # propósito: cambiárselo dejaría huérfanos los datos de Postgres y Redis.
+  ruteo_osrmdata:
+    name: ruteo_osrmdata
