@@ -111,6 +111,24 @@ RESEND_API_KEY=...                          # sin esto los códigos salen por el
   así que no se pierde ninguna entrega real).
 - **Los avisos automáticos no cambian**: su destinatario sale del envío, no de
   una petición, y no pasa por ese filtro.
+- **Las lecturas pasan a exigir rol.** `RolesGuard` deniega por defecto: un
+  endpoint sin `@Roles` ni `@CualquierRol` responde 403 y lo registra como error
+  del servidor, no del usuario. Antes dejaba pasar, y como casi ninguna lectura
+  declaraba roles, cualquier cuenta —incluidas `CUSTOMER` y `SUPPORT`, que no
+  aparecían en ningún `@Roles`— leía la agenda de clientes, los casilleros, la
+  caja y el tarifario. Si algún cliente tenía usuarios con esos roles, avísale:
+  dejan de ver casi todo el panel.
+- **Cada rol entra por una pantalla distinta.** El login mandaba a todos a
+  `/dashboard`, que es solo de oficina. Ahora repartidores van a rutas,
+  comercios y soporte a envíos, y los clientes al rastreo público.
+- **Ya no se puede subir de plan desde el panel** mientras el proveedor de cobro
+  sea `manual`. Antes `POST /billing/subscribe` ponía a la empresa en
+  ENTERPRISE al instante y gratis, con los catorce módulos y sin tope de
+  envíos. Bajar de plan y renovar siguen funcionando; las subidas se activan
+  desde el panel de plataforma.
+- **Las claves de idempotencia caducan a las 24 h** y se purgan cada hora. La
+  migración marca las existentes como vencidas, así que la primera purga
+  después de desplegar puede borrar bastantes filas de golpe.
 
 ## Pendiente (no cubierto todavía)
 

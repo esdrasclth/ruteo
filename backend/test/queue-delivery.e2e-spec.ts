@@ -440,13 +440,17 @@ describe('Entrega asíncrona por BullMQ', () => {
     it('el envío manual por API sigue siendo síncrono y definitivo', async () => {
       // `POST /notifications` devuelve el resultado final, no un PENDING: el
       // contrato de ese endpoint no cambia al introducir la cola.
-
+      //
+      // El destinatario es el correo del OWNER de este tenant y no uno
+      // inventado: el endpoint solo acepta direcciones que ya estén en la
+      // empresa, para no servir de relay de correo (ver
+      // `destinatario-permitido.ts`).
       const res = await request(http)
         .post('/api/notifications')
         .set({ Authorization: `Bearer ${accessToken}` })
         .send({
           channel: 'EMAIL',
-          recipient: 'manual@ejemplo.test',
+          recipient: 'owner@queue.test',
           type: 'test.manual',
           body: 'manual',
         })
@@ -456,6 +460,22 @@ describe('Entrega asíncrona por BullMQ', () => {
         NotificationStatus.SENT,
       );
       expect((res.body as { sentAt: string | null }).sentAt).not.toBeNull();
+    });
+
+    // Lo que impide que el endpoint sea un relay de correo abierto: sin este
+    // filtro, cualquiera que se registre manda correo firmado con nuestro
+    // dominio a quien quiera.
+    it('rechaza un destinatario que no pertenece a la empresa', async () => {
+      await request(http)
+        .post('/api/notifications')
+        .set({ Authorization: `Bearer ${accessToken}` })
+        .send({
+          channel: 'EMAIL',
+          recipient: 'ajeno@ejemplo.test',
+          type: 'test.manual',
+          body: 'manual',
+        })
+        .expect(400);
     });
   });
 });
