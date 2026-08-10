@@ -42,11 +42,13 @@ export class RoutesController {
     return this.routes.create(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.DRIVER)
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: QueryRoutesDto) {
     return this.routes.list(user.tenantId, query);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.DRIVER)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

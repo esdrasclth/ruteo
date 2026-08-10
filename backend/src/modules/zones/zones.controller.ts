@@ -37,11 +37,13 @@ export class ZonesController {
     return this.zones.create(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.zones.list(user.tenantId);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

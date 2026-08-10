@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, setSession, ApiError, CurrentUser } from "@/lib/api";
+import { INICIO_POR_ROL } from "@/lib/logistics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,7 +50,10 @@ export default function LoginPage() {
         name: me.name,
         role: me.role,
       });
-      router.replace("/dashboard");
+      // Cada rol entra por donde puede trabajar. Mandar a todos a
+      // `/dashboard` dejaba a repartidores y comercios en un tablero que
+      // les responde 403 en cada consulta.
+      router.replace(INICIO_POR_ROL[me.role]);
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "No se pudo iniciar sesión",

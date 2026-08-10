@@ -30,16 +30,19 @@ import { PaymentsService } from './payments.service';
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: QueryPaymentsDto) {
     return this.payments.list(user.tenantId, query);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN)
   @Get('summary')
   summary(@CurrentUser() user: AuthUser) {
     return this.payments.summary(user.tenantId);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

@@ -13,7 +13,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { CualquierRol, Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
@@ -33,11 +33,13 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  @CualquierRol()
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
     return this.users.me(user.tenantId, user.userId!);
   }
 
+  @CualquierRol()
   @Post('change-password')
   changePassword(
     @CurrentUser() user: AuthUser,

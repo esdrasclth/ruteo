@@ -37,11 +37,13 @@ export class CarriersController {
     return this.carriers.create(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.carriers.list(user.tenantId);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

@@ -38,6 +38,7 @@ export class DriversController {
     return this.drivers.create(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get()
   @ApiQuery({ name: 'status', enum: DriverStatus, required: false })
   list(
@@ -47,6 +48,7 @@ export class DriversController {
     return this.drivers.list(user.tenantId, status);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

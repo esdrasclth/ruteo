@@ -45,45 +45,106 @@ type NavGroup = { label: string | null; items: NavItem[] };
 
 // Agrupado por cómo se trabaja, no por módulo técnico: una lista plana de 15
 // entradas obliga a leerlas todas cada vez para encontrar una.
+//
+// `roles` refleja lo que permite el backend, entrada por entrada. No es el
+// control de acceso —ese lo hace `RolesGuard`, y el NAV se puede saltar
+// tecleando la URL—: es no ofrecer una pantalla que va a responder 403. Antes
+// solo Equipo y Auditoría lo declaraban, así que un CUSTOMER veía el panel
+// entero; ahora que el backend deniega por defecto, ofrecerlo todo sería
+// enseñar quince pantallas rotas.
+const OFICINA: Role[] = ["OWNER", "ADMIN", "OPERATOR"];
+const OFICINA_Y_SOPORTE: Role[] = [...OFICINA, "SUPPORT"];
+const JEFES: Role[] = ["OWNER", "ADMIN"];
+
 const NAV: NavGroup[] = [
   {
     label: null,
-    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+    items: [
+      {
+        href: "/dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        roles: OFICINA,
+      },
+    ],
   },
   {
     label: "Operación",
     items: [
-      { href: "/shipments", label: "Envíos", icon: Package },
-      { href: "/routes", label: "Rutas", icon: RouteIcon },
-      { href: "/drivers", label: "Repartidores", icon: Users },
-      { href: "/intake", label: "Recepción", icon: PackageCheck },
-      { href: "/lockers", label: "Casilleros", icon: Archive },
-      { href: "/carriers", label: "Transportistas", icon: Plane },
+      {
+        href: "/shipments",
+        label: "Envíos",
+        icon: Package,
+        roles: [...OFICINA_Y_SOPORTE, "DRIVER", "MERCHANT"],
+      },
+      {
+        href: "/routes",
+        label: "Rutas",
+        icon: RouteIcon,
+        roles: [...OFICINA, "DRIVER"],
+      },
+      { href: "/drivers", label: "Repartidores", icon: Users, roles: OFICINA },
+      {
+        href: "/intake",
+        label: "Recepción",
+        icon: PackageCheck,
+        roles: OFICINA,
+      },
+      {
+        href: "/lockers",
+        label: "Casilleros",
+        icon: Archive,
+        roles: OFICINA_Y_SOPORTE,
+      },
+      {
+        href: "/carriers",
+        label: "Transportistas",
+        icon: Plane,
+        roles: OFICINA_Y_SOPORTE,
+      },
     ],
   },
   {
     label: "Comercial",
     items: [
-      { href: "/customers", label: "Clientes", icon: Contact },
-      { href: "/pricing", label: "Zonas y tarifas", icon: DollarSign },
-      { href: "/payments", label: "Pagos", icon: CreditCard },
-      { href: "/billing", label: "Facturación", icon: Receipt },
+      {
+        href: "/customers",
+        label: "Clientes",
+        icon: Contact,
+        roles: OFICINA_Y_SOPORTE,
+      },
+      {
+        href: "/pricing",
+        label: "Zonas y tarifas",
+        icon: DollarSign,
+        roles: OFICINA,
+      },
+      {
+        href: "/payments",
+        label: "Pagos",
+        icon: CreditCard,
+        roles: OFICINA,
+      },
+      { href: "/billing", label: "Facturación", icon: Receipt, roles: JEFES },
     ],
   },
   {
     label: "Administración",
     items: [
-      { href: "/notifications", label: "Notificaciones", icon: Bell },
-      { href: "/team", label: "Equipo", icon: UserCog, roles: ["OWNER", "ADMIN"] },
-      // El backend restringe `GET /audit` a OWNER/ADMIN; el NAV refleja lo
-      // mismo para no ofrecer una pantalla que responderá 403.
       {
-        href: "/audit",
-        label: "Auditoría",
-        icon: ScrollText,
-        roles: ["OWNER", "ADMIN"],
+        href: "/notifications",
+        label: "Notificaciones",
+        icon: Bell,
+        roles: OFICINA,
       },
-      { href: "/integrations", label: "Integraciones", icon: KeyRound },
+      { href: "/team", label: "Equipo", icon: UserCog, roles: JEFES },
+      { href: "/audit", label: "Auditoría", icon: ScrollText, roles: JEFES },
+      {
+        href: "/integrations",
+        label: "Integraciones",
+        icon: KeyRound,
+        roles: JEFES,
+      },
     ],
   },
 ];
@@ -119,6 +180,32 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
   const visible = (item: NavItem) =>
     !item.roles || item.roles.includes(session.role);
+
+  // Hoy solo le pasa a CUSTOMER, que no tiene ninguna pantalla del panel. Sin
+  // esto vería la barra lateral vacía y un área en blanco, sin forma de saber
+  // si es un fallo o si le falta un permiso.
+  if (!NAV.some((grupo) => grupo.items.some(visible))) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <div className="max-w-md text-center">
+          <h1 className="text-lg font-semibold">Tu cuenta no usa el panel</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Con el perfil {ROLE_LABELS[session.role]} puedes seguir tus envíos
+            desde el rastreo público. Si crees que deberías tener acceso al
+            panel, pídeselo a quien administra la cuenta.
+          </p>
+          <div className="mt-6 flex justify-center gap-2">
+            <Button asChild>
+              <Link href="/track">Ir al rastreo</Link>
+            </Button>
+            <Button variant="outline" onClick={onLogout}>
+              Cerrar sesión
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 min-h-screen">

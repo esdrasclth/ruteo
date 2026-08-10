@@ -22,6 +22,7 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get()
   @ApiQuery({ name: 'status', enum: NotificationStatus, required: false })
   @ApiQuery({ name: 'channel', enum: NotificationChannel, required: false })

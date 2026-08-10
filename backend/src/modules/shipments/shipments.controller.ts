@@ -78,17 +78,34 @@ export class ShipmentsController {
     return this.shipments.importCsv(user, file.buffer.toString('utf8'));
   }
 
+  @Roles(
+    Role.OWNER,
+    Role.ADMIN,
+    Role.OPERATOR,
+    Role.DRIVER,
+    Role.MERCHANT,
+    Role.SUPPORT,
+  )
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: QueryShipmentsDto) {
     return this.shipments.list(user.tenantId, query);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
   @Get(':id/label')
   @Header('Content-Type', 'image/svg+xml')
   label(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.shipments.buildLabel(user.tenantId, id);
   }
 
+  @Roles(
+    Role.OWNER,
+    Role.ADMIN,
+    Role.OPERATOR,
+    Role.DRIVER,
+    Role.MERCHANT,
+    Role.SUPPORT,
+  )
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

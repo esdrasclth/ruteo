@@ -28,6 +28,27 @@ export const ROLE_LABELS: Record<Role, string> = {
   CUSTOMER: "Cliente",
 };
 
+/**
+ * Primera pantalla útil para cada rol, después de entrar.
+ *
+ * El login mandaba a todo el mundo a `/dashboard`, que consulta `/analytics/*`
+ * y está reservado a los perfiles de oficina: un repartidor o un comercio
+ * aterrizaban en un tablero que les responde 403 en cada llamada.
+ *
+ * `CUSTOMER` no tiene ninguna pantalla del panel —todavía no existe un portal
+ * de cliente—, así que se le manda al rastreo público, que es lo único de este
+ * producto pensado para él.
+ */
+export const INICIO_POR_ROL: Record<Role, string> = {
+  OWNER: "/dashboard",
+  ADMIN: "/dashboard",
+  OPERATOR: "/dashboard",
+  DRIVER: "/routes",
+  MERCHANT: "/shipments",
+  SUPPORT: "/shipments",
+  CUSTOMER: "/track",
+};
+
 // Roles that can be assigned to a team member from the UI.
 export const ASSIGNABLE_ROLES: Role[] = [
   "ADMIN",

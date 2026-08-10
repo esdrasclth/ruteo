@@ -38,11 +38,13 @@ export class CustomersController {
     return this.customers.create(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: QueryCustomersDto) {
     return this.customers.list(user.tenantId, query);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

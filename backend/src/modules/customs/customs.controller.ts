@@ -35,6 +35,7 @@ export class CustomsController {
     return this.customs.upsert(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get(':shipmentId')
   findByShipment(
     @CurrentUser() user: AuthUser,

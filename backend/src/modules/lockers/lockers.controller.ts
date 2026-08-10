@@ -40,6 +40,7 @@ export class LockersController {
     return this.lockers.create(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.lockers.list(user.tenantId);
@@ -52,6 +53,7 @@ export class LockersController {
     return this.lockers.intake(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get('packages')
   listAllPackages(
     @CurrentUser() user: AuthUser,
@@ -60,6 +62,7 @@ export class LockersController {
     return this.lockers.listAllPackages(user.tenantId, query);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,
@@ -88,6 +91,7 @@ export class LockersController {
     return this.lockers.preAlert(user.tenantId, id, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
   @Get(':id/packages')
   @ApiQuery({ name: 'status', enum: PackageStatus, required: false })
   listPackages(

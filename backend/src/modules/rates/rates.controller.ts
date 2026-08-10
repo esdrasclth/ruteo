@@ -39,16 +39,19 @@ export class RatesController {
   }
 
   // Quote is open to merchants too (cotizador de envíos).
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
   @Post('quote')
   quote(@CurrentUser() user: AuthUser, @Body() dto: QuoteRateDto) {
     return this.rates.quote(user.tenantId, dto);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.rates.list(user.tenantId);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,
