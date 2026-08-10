@@ -12,7 +12,8 @@ import {
 export class UpdateWebhookDto {
   @ApiPropertyOptional({ example: 'https://tienda.example.com/hooks/ruteo' })
   @IsOptional()
-  @IsUrl({ require_tld: false })
+  // Mismo criterio que en el alta: ver `destino-seguro.ts`.
+  @IsUrl({ protocols: ['https'], require_tld: true, require_protocol: true })
   @MaxLength(500)
   url?: string;
 

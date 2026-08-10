@@ -1,9 +1,22 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, WebhookStatus } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { createHmac, randomBytes } from 'node:crypto';
+import { TOPE_CATALOGO } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  DestinoNoPermitido,
+  enviarAlDestino,
+  validarDestinoWebhook,
+  type DestinoValidado,
+} from './destino-seguro';
 import {
   JOB_WEBHOOK_DELIVER,
   JOB_WEBHOOK_FANOUT,
@@ -30,10 +43,33 @@ export class WebhooksService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
     @InjectQueue(QUEUE_WEBHOOKS) private readonly queue: Queue,
   ) {}
 
-  create(tenantId: string, dto: CreateWebhookDto) {
+  // Solo para desarrollo: deja apuntar a un servidor local. En producción va en
+  // `false` y el destino se filtra de verdad.
+  private get permitirPrivados(): boolean {
+    return (
+      this.config.get<string>('WEBHOOKS_PERMITIR_DESTINOS_PRIVADOS') === 'true'
+    );
+  }
+
+  // El error de destino se traduce a 400: es un fallo de lo que escribió el
+  // usuario, no del servidor, y el mensaje le dice exactamente qué corregir.
+  private async validarUrl(url: string): Promise<void> {
+    try {
+      await validarDestinoWebhook(url, this.permitirPrivados);
+    } catch (err) {
+      if (err instanceof DestinoNoPermitido) {
+        throw new BadRequestException(err.message);
+      }
+      throw err;
+    }
+  }
+
+  async create(tenantId: string, dto: CreateWebhookDto) {
+    await this.validarUrl(dto.url);
     const secret = `whsec_${randomBytes(24).toString('base64url')}`;
     return this.prisma.withTenant(tenantId, (tx) =>
       tx.webhookEndpoint.create({
@@ -53,6 +89,7 @@ export class WebhooksService {
       tx.webhookEndpoint.findMany({
         orderBy: { createdAt: 'desc' },
         select: endpointPublicSelect,
+        take: TOPE_CATALOGO,
       }),
     );
   }
@@ -72,6 +109,9 @@ export class WebhooksService {
 
   async update(tenantId: string, id: string, dto: UpdateWebhookDto) {
     await this.findOne(tenantId, id);
+    if (dto.url !== undefined) {
+      await this.validarUrl(dto.url);
+    }
     return this.prisma.withTenant(tenantId, (tx) =>
       tx.webhookEndpoint.update({
         where: { id },
@@ -164,6 +204,37 @@ export class WebhooksService {
       return; // Ya entregado: los jobs son at-least-once, no repetimos el POST.
     }
 
+    // Se revalida el destino AQUÍ y no solo al dar de alta el endpoint: entre
+    // el alta y este envío, el dominio pudo repuntarse a una IP interna (DNS
+    // rebinding). Si ya no vale, se marca FAILED y NO se reintenta: reintentar
+    // un destino prohibido es repetir el intento de SSRF cada pocos segundos.
+    //
+    // La IP que devuelve es contra la que se conecta unas líneas más abajo. Ese
+    // acarreo es el arreglo: comprobar y luego dejar que la librería HTTP
+    // resuelva por su cuenta deja una segunda resolución en manos del dueño del
+    // dominio, y con ella la carrera que todo esto quiere evitar.
+    let destino: DestinoValidado;
+    try {
+      destino = await validarDestinoWebhook(
+        delivery.endpoint.url,
+        this.permitirPrivados,
+      );
+    } catch (err) {
+      if (err instanceof DestinoNoPermitido) {
+        this.logger.warn(
+          `Entrega ${deliveryId} descartada: destino no permitido (${err.message})`,
+        );
+        await this.recordAttempt(tenantId, deliveryId, {
+          status: WebhookStatus.FAILED,
+          attempts: attempt,
+          responseStatus: null,
+          lastError: `Destino no permitido: ${err.message}`,
+        });
+        return;
+      }
+      throw err;
+    }
+
     const body = JSON.stringify({
       event: delivery.event,
       sentAt: new Date().toISOString(),
@@ -177,18 +248,23 @@ export class WebhooksService {
     let lastError: string | null = null;
 
     try {
-      const res = await fetch(delivery.endpoint.url, {
-        method: 'POST',
+      const res = await enviarAlDestino(delivery.endpoint.url, destino, {
         headers: {
           'content-type': 'application/json',
           'x-ruteo-event': delivery.event,
           'x-ruteo-signature': `sha256=${signature}`,
         },
         body,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        timeoutMs: REQUEST_TIMEOUT_MS,
       });
       responseStatus = res.status;
-      if (!res.ok) {
+      // Las redirecciones no se siguen —`enviarAlDestino` no las sigue nunca—,
+      // porque son la otra forma de esquivar el filtro: el endpoint pasa la
+      // comprobación apuntando a una IP pública y contesta con un 302 hacia
+      // 169.254.169.254. Un receptor de webhooks no necesita redirigir.
+      if (res.status >= 300 && res.status < 400) {
+        lastError = `El endpoint respondió con un redirect (${res.status}); no se siguen.`;
+      } else if (res.status < 200 || res.status >= 300) {
         lastError = `HTTP ${res.status}`;
       }
     } catch (err) {

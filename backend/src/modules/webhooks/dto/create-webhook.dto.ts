@@ -9,7 +9,10 @@ import {
 
 export class CreateWebhookDto {
   @ApiProperty({ example: 'https://tienda.example.com/hooks/ruteo' })
-  @IsUrl({ require_tld: false })
+  // `require_tld: false` permitía `http://localhost` y `http://169.254.169.254`
+  // explícitamente. El filtro de verdad está en `destino-seguro.ts` (resuelve
+  // el DNS y descarta rangos internos); esto es el primer corte barato.
+  @IsUrl({ protocols: ['https'], require_tld: true, require_protocol: true })
   @MaxLength(500)
   url!: string;
 
