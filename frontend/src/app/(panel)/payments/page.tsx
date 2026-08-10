@@ -9,6 +9,7 @@ import {
   api,
   ApiError,
   Driver,
+  Paginated,
   Payment,
   PaymentMethod,
   PaymentSummaryRow,
@@ -57,6 +58,7 @@ import {
 
 const STATUS_FILTERS = ["PENDING", "COLLECTED", "REMITTED", "CANCELLED"];
 const TYPE_FILTERS = ["COD", "SUBSCRIPTION"];
+const PAGE_SIZE = 20;
 
 // `useSearchParams` exige frontera Suspense para no romper el build estatico.
 export default function PaymentsPage() {
@@ -71,11 +73,12 @@ function PaymentsContent() {
   const searchParams = useSearchParams();
   // Llega desde el detalle de un envio: "ver los cobros de este envio".
   const shipmentId = searchParams.get("shipmentId");
-  const [payments, setPayments] = useState<Payment[] | null>(null);
+  const [data, setData] = useState<Paginated<Payment> | null>(null);
   const [summary, setSummary] = useState<PaymentSummaryRow[] | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [status, setStatus] = useState("ALL");
   const [type, setType] = useState("ALL");
+  const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
 
   const [collecting, setCollecting] = useState<Payment | null>(null);
@@ -84,28 +87,39 @@ function PaymentsContent() {
   const [driverId, setDriverId] = useState<string>("NONE");
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
     if (status !== "ALL") params.set("status", status);
     if (type !== "ALL") params.set("type", type);
     if (shipmentId) params.set("shipmentId", shipmentId);
-    const qs = params.toString();
     try {
       const [list, sum] = await Promise.all([
-        api<Payment[]>(`/payments${qs ? `?${qs}` : ""}`),
+        api<Paginated<Payment>>(`/payments?${params}`),
         api<PaymentSummaryRow[]>("/payments/summary"),
       ]);
-      setPayments(list);
+      setData(list);
       setSummary(sum);
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Error cargando pagos",
       );
     }
-  }, [status, type, shipmentId]);
+  }, [page, status, type, shipmentId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin explicar
+  // por qué; se vuelve al principio.
+  useEffect(() => {
+    setPage(1);
+  }, [status, type, shipmentId]);
+
+  const payments = data?.items ?? null;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   useEffect(() => {
     api<Driver[]>("/drivers")
@@ -334,6 +348,28 @@ function PaymentsContent() {
           )}
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
+          Anterior
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Página {page} de {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Siguiente
+        </Button>
+      </div>
 
       <Dialog
         open={collecting !== null}

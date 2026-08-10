@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { nearestNeighbourOrder } from '../../common/geo';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { canTransition } from '../shipments/shipment-status';
 import { ShipmentsService } from '../shipments/shipments.service';
@@ -21,6 +22,7 @@ import { CompleteStopDto } from './dto/complete-stop.dto';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { FailStopDto } from './dto/fail-stop.dto';
 import { OptimizeRouteDto } from './dto/optimize-route.dto';
+import { QueryRoutesDto } from './dto/query-routes.dto';
 import { UpdateRouteStatusDto } from './dto/update-route-status.dto';
 import { generateRouteCode } from './route-code';
 
@@ -82,17 +84,27 @@ export class RoutesService {
     throw new BadRequestException('Could not allocate a route code');
   }
 
-  list(tenantId: string, driverId?: string, status?: RouteStatus) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.route.findMany({
-        where: {
-          ...(driverId ? { driverId } : {}),
-          ...(status ? { status } : {}),
-        },
-        orderBy: { scheduledDate: 'desc' },
-        include: { driver: true, _count: { select: { stops: true } } },
-      }),
-    );
+  // Paginado: se crea al menos una ruta por repartidor y día, así que el
+  // histórico crece sin parar aunque la operación diaria sea pequeña.
+  async list(tenantId: string, query: QueryRoutesDto) {
+    const where: Prisma.RouteWhereInput = {
+      ...(query.driverId ? { driverId: query.driverId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [total, items] = await Promise.all([
+        tx.route.count({ where }),
+        tx.route.findMany({
+          where,
+          orderBy: { scheduledDate: 'desc' },
+          skip: saltar(query),
+          take: query.pageSize,
+          include: { driver: true, _count: { select: { stops: true } } },
+        }),
+      ]);
+      return { items, total, page: query.page, pageSize: query.pageSize };
+    });
   }
 
   async findOne(tenantId: string, id: string) {

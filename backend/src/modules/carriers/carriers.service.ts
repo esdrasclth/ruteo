@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { TOPE_CATALOGO } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCarrierDto } from './dto/create-carrier.dto';
 import { UpdateCarrierDto } from './dto/update-carrier.dto';
@@ -41,7 +42,7 @@ export class CarriersService {
 
   list(tenantId: string) {
     return this.prisma.withTenant(tenantId, (tx) =>
-      tx.carrier.findMany({ orderBy: { name: 'asc' } }),
+      tx.carrier.findMany({ orderBy: { name: 'asc' }, take: TOPE_CATALOGO }),
     );
   }
 

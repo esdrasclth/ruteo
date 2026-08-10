@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DriverStatus, Prisma } from '@prisma/client';
+import { TOPE_CATALOGO } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
@@ -37,6 +38,7 @@ export class DriversService {
       tx.driver.findMany({
         where: status ? { status } : undefined,
         orderBy: { name: 'asc' },
+        take: TOPE_CATALOGO,
       }),
     );
   }

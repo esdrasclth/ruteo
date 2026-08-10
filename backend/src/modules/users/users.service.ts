@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Role, UserStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CredentialsService } from '../auth/credentials.service';
 import {
@@ -61,6 +62,8 @@ export class UsersService {
     );
   }
 
+  // Paginado: la lista del equipo incluye a los usuarios ligados a clientes y
+  // repartidores, así que en una empresa con muchos de ellos deja de ser corta.
   list(tenantId: string, query: QueryUsersDto) {
     const where: Prisma.UserWhereInput = {
       ...(query.role ? { role: query.role } : {}),
@@ -74,17 +77,23 @@ export class UsersService {
           }
         : {}),
     };
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.user.findMany({
-        where,
-        select: {
-          ...PUBLIC_SELECT,
-          driver: { select: { id: true, name: true } },
-          customer: { select: { id: true, name: true } },
-        },
-        orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
-      }),
-    );
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [total, items] = await Promise.all([
+        tx.user.count({ where }),
+        tx.user.findMany({
+          where,
+          select: {
+            ...PUBLIC_SELECT,
+            driver: { select: { id: true, name: true } },
+            customer: { select: { id: true, name: true } },
+          },
+          orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+          skip: saltar(query),
+          take: query.pageSize,
+        }),
+      ]);
+      return { items, total, page: query.page, pageSize: query.pageSize };
+    });
   }
 
   async create(actor: AuthUser, dto: CreateUserDto) {

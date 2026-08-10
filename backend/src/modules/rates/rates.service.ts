@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { TOPE_CATALOGO } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRateDto } from './dto/create-rate.dto';
 import { QuoteRateDto } from './dto/quote-rate.dto';
@@ -32,7 +33,7 @@ export class RatesService {
 
   list(tenantId: string) {
     return this.prisma.withTenant(tenantId, (tx) =>
-      tx.rate.findMany({ orderBy: { name: 'asc' } }),
+      tx.rate.findMany({ orderBy: { name: 'asc' }, take: TOPE_CATALOGO }),
     );
   }
 

@@ -16,6 +16,7 @@ import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
 import { VerifiedEmailGuard } from '../../common/guards/verified-email.guard';
 import { RequiereCorreoVerificado } from '../../common/decorators/verified-email.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -27,7 +28,7 @@ import { UsersService } from './users.service';
 
 @ApiTags('users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, VerifiedEmailGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, VerifiedEmailGuard, TenantAccessGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}

@@ -9,6 +9,7 @@ import {
   api,
   ApiError,
   Driver,
+  Paginated,
   RouteStatus,
   RouteSummary,
 } from "@/lib/api";
@@ -48,6 +49,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 
 const ALL = "ALL";
+const PAGE_SIZE = 20;
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -67,29 +69,42 @@ function RoutesContent() {
   const searchParams = useSearchParams();
   // Llega desde el listado de repartidores: "ver las rutas de este repartidor".
   const driverId = searchParams.get("driverId");
-  const [routes, setRoutes] = useState<RouteSummary[] | null>(null);
+  const [data, setData] = useState<Paginated<RouteSummary> | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [status, setStatus] = useState<string>(ALL);
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ driverId: "", scheduledDate: todayISO() });
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
     if (status !== ALL) params.set("status", status);
     if (driverId) params.set("driverId", driverId);
     try {
-      setRoutes(await api<RouteSummary[]>(`/routes?${params}`));
+      setData(await api<Paginated<RouteSummary>>(`/routes?${params}`));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Error cargando rutas",
       );
     }
-  }, [status, driverId]);
+  }, [page, status, driverId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin explicar
+  // por qué; se vuelve al principio.
+  useEffect(() => {
+    setPage(1);
+  }, [status, driverId]);
+
+  const routes = data?.items ?? null;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   useEffect(() => {
     api<Driver[]>("/drivers")
@@ -136,8 +151,8 @@ function RoutesContent() {
         }
         title="Rutas"
         description={
-          routes
-            ? `${routes.length} ruta${routes.length === 1 ? "" : "s"}${
+          data
+            ? `${data.total} ruta${data.total === 1 ? "" : "s"}${
                 driverId ? " de este repartidor" : ""
               }`
             : "Cargando…"
@@ -278,6 +293,28 @@ function RoutesContent() {
           )}
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
+          Anterior
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Página {page} de {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Siguiente
+        </Button>
+      </div>
     </div>
   );
 }

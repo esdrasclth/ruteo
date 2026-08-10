@@ -12,8 +12,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { Role, RouteStatus } from '@prisma/client';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -24,6 +24,7 @@ import { CompleteStopDto } from './dto/complete-stop.dto';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { FailStopDto } from './dto/fail-stop.dto';
 import { OptimizeRouteDto } from './dto/optimize-route.dto';
+import { QueryRoutesDto } from './dto/query-routes.dto';
 import { UpdateRouteStatusDto } from './dto/update-route-status.dto';
 import { RoutesService } from './routes.service';
 
@@ -42,14 +43,8 @@ export class RoutesController {
   }
 
   @Get()
-  @ApiQuery({ name: 'driverId', required: false })
-  @ApiQuery({ name: 'status', enum: RouteStatus, required: false })
-  list(
-    @CurrentUser() user: AuthUser,
-    @Query('driverId') driverId?: string,
-    @Query('status') status?: RouteStatus,
-  ) {
-    return this.routes.list(user.tenantId, driverId, status);
+  list(@CurrentUser() user: AuthUser, @Query() query: QueryRoutesDto) {
+    return this.routes.list(user.tenantId, query);
   }
 
   @Get(':id')

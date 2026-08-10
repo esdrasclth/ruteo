@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { TOPE_CATALOGO } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateZoneDto } from './dto/create-zone.dto';
 import { UpdateZoneDto } from './dto/update-zone.dto';
@@ -34,7 +35,7 @@ export class ZonesService {
 
   list(tenantId: string) {
     return this.prisma.withTenant(tenantId, (tx) =>
-      tx.zone.findMany({ orderBy: { name: 'asc' } }),
+      tx.zone.findMany({ orderBy: { name: 'asc' }, take: TOPE_CATALOGO }),
     );
   }
 

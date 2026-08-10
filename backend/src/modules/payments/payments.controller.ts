@@ -11,14 +11,15 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PaymentStatus, PaymentType, Role } from '@prisma/client';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CollectPaymentDto } from './dto/collect-payment.dto';
+import { QueryPaymentsDto } from './dto/query-payments.dto';
 import { PaymentsService } from './payments.service';
 
 @ApiTags('payments')
@@ -30,23 +31,8 @@ export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   @Get()
-  @ApiQuery({ name: 'status', enum: PaymentStatus, required: false })
-  @ApiQuery({ name: 'type', enum: PaymentType, required: false })
-  @ApiQuery({ name: 'driverId', required: false })
-  @ApiQuery({ name: 'shipmentId', required: false })
-  list(
-    @CurrentUser() user: AuthUser,
-    @Query('status') status?: PaymentStatus,
-    @Query('type') type?: PaymentType,
-    @Query('driverId') driverId?: string,
-    @Query('shipmentId') shipmentId?: string,
-  ) {
-    return this.payments.list(user.tenantId, {
-      status,
-      type,
-      driverId,
-      shipmentId,
-    });
+  list(@CurrentUser() user: AuthUser, @Query() query: QueryPaymentsDto) {
+    return this.payments.list(user.tenantId, query);
   }
 
   @Get('summary')

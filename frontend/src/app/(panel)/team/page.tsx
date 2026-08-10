@@ -9,6 +9,7 @@ import {
   CustomerListItem,
   Driver,
   getSession,
+  Paginated,
   Role,
   TeamUser,
   UserStatus,
@@ -50,6 +51,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 const NONE = "none";
+const PAGE_SIZE = 20;
 
 const emptyForm = {
   email: "",
@@ -60,7 +62,8 @@ const emptyForm = {
 };
 
 export default function TeamPage() {
-  const [users, setUsers] = useState<TeamUser[] | null>(null);
+  const [data, setData] = useState<Paginated<TeamUser> | null>(null);
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -79,14 +82,21 @@ export default function TeamPage() {
     : ASSIGNABLE_ROLES;
 
   const load = useCallback(async () => {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
     try {
-      setUsers(await api<TeamUser[]>("/users"));
+      setData(await api<Paginated<TeamUser>>(`/users?${params}`));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Error cargando el equipo",
       );
     }
-  }, []);
+  }, [page]);
+
+  const users = data?.items ?? null;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   const loadLinkables = useCallback(async () => {
     try {
@@ -202,7 +212,7 @@ export default function TeamPage() {
         <div>
           <h1 className="text-2xl font-semibold">Equipo</h1>
           <p className="text-sm text-muted-foreground">
-            {users ? `${users.length} miembros` : "Cargando…"}
+            {data ? `${data.total} miembros` : "Cargando…"}
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -460,6 +470,28 @@ export default function TeamPage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
+          Anterior
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Página {page} de {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Siguiente
+        </Button>
+      </div>
 
       <Dialog
         open={resetTarget !== null}

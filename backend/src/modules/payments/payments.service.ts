@@ -5,9 +5,11 @@ import {
   Prisma,
 } from '@prisma/client';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CollectPaymentDto } from './dto/collect-payment.dto';
+import { QueryPaymentsDto } from './dto/query-payments.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -72,33 +74,34 @@ export class PaymentsService {
     });
   }
 
-  list(
-    tenantId: string,
-    filters: {
-      status?: PaymentStatus;
-      type?: PaymentType;
-      driverId?: string;
-      shipmentId?: string;
-    },
-  ) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.payment.findMany({
-        where: {
-          ...(filters.status ? { status: filters.status } : {}),
-          ...(filters.type ? { type: filters.type } : {}),
-          ...(filters.driverId
-            ? { collectedByDriverId: filters.driverId }
-            : {}),
-          ...(filters.shipmentId ? { shipmentId: filters.shipmentId } : {}),
-        },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          shipment: { select: { trackingNumber: true, recipientName: true } },
-          // El panel muestra quien cobro; sin esto solo tendria el id.
-          driver: { select: { id: true, name: true } },
-        },
-      }),
-    );
+  // Paginado: se abre un pago por cada envío contra reembolso y por cada cargo
+  // de suscripción, así que esta tabla crece con la operación y no para. Sin
+  // techo, la pantalla de pagos se descargaba el histórico completo del tenant.
+  async list(tenantId: string, query: QueryPaymentsDto) {
+    const where: Prisma.PaymentWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.driverId ? { collectedByDriverId: query.driverId } : {}),
+      ...(query.shipmentId ? { shipmentId: query.shipmentId } : {}),
+    };
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [total, items] = await Promise.all([
+        tx.payment.count({ where }),
+        tx.payment.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: saltar(query),
+          take: query.pageSize,
+          include: {
+            shipment: { select: { trackingNumber: true, recipientName: true } },
+            // El panel muestra quien cobro; sin esto solo tendria el id.
+            driver: { select: { id: true, name: true } },
+          },
+        }),
+      ]);
+      return { items, total, page: query.page, pageSize: query.pageSize };
+    });
   }
 
   async findOne(tenantId: string, id: string) {
