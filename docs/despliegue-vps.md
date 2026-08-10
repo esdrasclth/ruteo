@@ -4,6 +4,31 @@ Lo que el código **no** puede hacer por sí solo. El arranque en producción
 comprueba buena parte de esto y se niega a levantar si falta (ver
 `backend/src/config/env.validation.ts`), pero los pasos de aquí hay que darlos.
 
+## 0. Resumen: el despliegue entero
+
+```bash
+git clone <repo> /srv/ruteo && cd /srv/ruteo
+
+cp .env.example .env                  # secretos + URLs públicas (pasos 1 y 5)
+cp backend/.env.example backend/.env  # secretos del backend (paso 1)
+# …rellenar los dos…
+
+./scripts/osrm-prepare.sh             # una vez: ~1 min, ~420 MB
+docker compose -f docker-compose.prod.yml up -d --build
+
+# El servicio `migraciones` corre solo y el backend espera a que termine bien.
+docker compose -f docker-compose.prod.yml ps
+
+# AHORA rotar las contraseñas de Postgres (paso 2) y reconstruir:
+docker compose -f docker-compose.prod.yml up -d
+```
+
+`docker-compose.prod.yml` levanta las tres aplicaciones además de la
+infraestructura, cada una como usuario sin privilegios y con healthcheck. Lo
+único que asoma al host son tres puertos en loopback (3000 backend, 3001 panel,
+3003 landing); Postgres, Redis y OSRM **no se publican en ningún sitio**. Delante
+va el proxy del paso 4.
+
 ## 1. Secretos
 
 Genera cada uno por separado. Los tres de JWT deben ser **distintos entre sí**:
@@ -42,19 +67,36 @@ si te lo saltas te enterarás en el primer `docker compose up`.
 
 ## 3. Puertos
 
-`docker-compose.yml` publica Postgres, Redis y OSRM **solo en 127.0.0.1**. No lo
-cambies: las reglas que Docker escribe en iptables se evalúan antes que las de
-UFW, así que un puerto publicado en `0.0.0.0` queda abierto a internet aunque el
-firewall diga lo contrario. Comprobar tras levantar:
+En producción, Postgres, Redis y OSRM **no se publican en ningún puerto del
+host**: el backend les llega por la red interna de Compose. El de desarrollo sí
+los publica en 127.0.0.1, porque allí el backend corre fuera de Docker.
+
+No lo cambies: las reglas que Docker escribe en iptables se evalúan antes que
+las de UFW, así que un puerto publicado en `0.0.0.0` queda abierto a internet
+aunque el firewall diga lo contrario.
+
+Por lo mismo `docker-compose.prod.yml` es un archivo aparte y no una
+superposición del de desarrollo: al superponer, Compose **suma** las listas de
+`ports` en vez de reemplazarlas, así que una superposición no podría quitar esa
+publicación. Habrías creído cerrarlos y seguirían abiertos.
+
+Comprobar tras levantar:
 
 ```bash
-ss -tlnp | grep -E '5544|6379|5100'   # todo debe decir 127.0.0.1, nunca 0.0.0.0
+# Solo deben aparecer 3000, 3001 y 3003, todos en 127.0.0.1.
+ss -tlnp | grep -E '3000|3001|3003|5432|6379|5000'
 ```
 
 Desde fuera del VPS, esto debe dar timeout:
 
 ```bash
-nc -zv <ip-del-vps> 6379
+nc -zv <ip-del-vps> 5432
+```
+
+Para entrar a la base se usa el propio Compose, no un puerto abierto:
+
+```bash
+docker compose -f docker-compose.prod.yml exec db psql -U ruteo -d ruteo
 ```
 
 ## 4. Reverse proxy
@@ -130,11 +172,60 @@ RESEND_API_KEY=...                          # sin esto los códigos salen por el
   migración marca las existentes como vencidas, así que la primera purga
   después de desplegar puede borrar bastantes filas de golpe.
 
+## 7. Respaldos
+
+`ruteo_pgdata` es el **único** volumen irrecuperable: el de OSRM se regenera con
+`scripts/osrm-prepare.sh` y Redis es caché y colas. Si se pierde ese, se perdió
+el negocio.
+
+```bash
+# En el crontab del VPS:
+0 3 * * *  cd /srv/ruteo && ./scripts/respaldo-db.sh >> /var/log/ruteo-respaldo.log 2>&1
+```
+
+Guarda en `/var/backups/ruteo` (configurable con `RUTEO_BACKUP_DIR`), rota a los
+30 días y comprueba que cada volcado sea legible antes de dar el respaldo por
+bueno.
+
+**Un respaldo sin restauración probada no es un respaldo.** La prueba es barata
+y no toca producción —restaura en una base temporal al lado, cuenta filas y la
+borra—, así que conviene hacerla el día que se monta y repetirla de vez en
+cuando:
+
+```bash
+./scripts/restaurar-db.sh --probar /var/backups/ruteo/ruteo-<fecha>.dump
+```
+
+Y el día del desastre, `--en-serio` sobre la base real. Pide confirmación
+escrita y para las aplicaciones mientras restaura.
+
+**Falta un paso que el script no puede dar solo**: los respaldos quedan en el
+mismo disco que la base. Un fallo del disco, un `rm -rf` desafortunado o que el
+proveedor pierda la máquina se los lleva con ella. Copiarlos fuera —`rclone` a
+un bucket, `scp` a otra máquina, lo que sea— es lo que convierte esto en un
+respaldo de verdad.
+
+## 8. Integración continua
+
+`.github/workflows/ci.yml` corre en cada push y PR: tipos, pruebas unitarias y
+compilación del backend; tipos y compilación del panel y la landing; construcción
+de las tres imágenes; y validación de `docker-compose.prod.yml`.
+
+Dos cosas a saber:
+
+- **Los e2e solo corren si existe el secreto `ZITADEL_SERVICE_TOKEN`** (más
+  `ZITADEL_ISSUER` y `ZITADEL_PROJECT_ID`). Dan de alta usuarios en ZITADEL de
+  verdad, así que sin credenciales se saltan con un aviso en vez de fallar: un
+  rojo permanente enseña a ignorar el CI.
+- **El lint NO está en el CI, a propósito.** El repo arrastra unos 46 errores de
+  `eslint` previos —casi todos de formato y `no-unsafe-*` en archivos que nadie
+  ha tocado— así que añadirlo lo dejaría en rojo desde el primer día. Verlos:
+  `cd backend && npx eslint "src/**/*.ts"`. Cuando se limpien, añadir el paso.
+
 ## Pendiente (no cubierto todavía)
 
 - `helmet` en el backend y cabeceras de seguridad en Next (CSP, HSTS).
 - Panel de plataforma en subdominio propio: hoy comparte origen con el panel de
   tenant, así que una XSS en cualquier pantalla alcanza la sesión de superadmin.
-- Dockerfile de `frontend` y `landing`, compose de producción y CI.
-- El contenedor del backend corre como root (falta `USER node` en el Dockerfile).
-- Backups de Postgres.
+- Copia de los respaldos fuera del VPS (ver arriba).
+- Los ~46 errores de lint previos, que mantienen el paso fuera del CI.

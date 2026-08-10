@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuevo cancela la ejecución anterior de la misma rama: en un repo de
+# una persona, dos builds de la misma rama compitiendo solo gastan minutos.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # La misma que usan las imágenes (`node:20-alpine`). Probar con una versión y
+  # desplegar con otra es cómo se descubren las incompatibilidades en producción.
+  NODE_VERSION: '20'
+
+jobs:
+  backend:
+    name: Backend — tipos y pruebas unitarias
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      # El cliente de Prisma se genera desde el esquema; sin esto no compila
+      # nada que lo importe.
+      - run: npx prisma generate
+      - name: Comprobación de tipos
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Pruebas unitarias
+        run: npx jest --ci
+      - name: Compilación
+        run: npm run build
+
+  e2e:
+    name: Backend — end to end
+    runs-on: ubuntu-latest
+    # Los e2e dan de alta usuarios en ZITADEL de verdad, así que necesitan sus
+    # credenciales. Sin ellas el job se salta en vez de fallar: en un fork o en
+    # un PR sin acceso a los secretos, un rojo permanente enseña a ignorar el CI.
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ruteo
+          POSTGRES_PASSWORD: ruteo
+          POSTGRES_DB: ruteo
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ruteo -d ruteo"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ruteo:ruteo@localhost:5432/ruteo?schema=public
+      DATABASE_URL_APP: postgresql://ruteo_app:ruteo_app@localhost:5432/ruteo?schema=public
+      # Valores de prueba: `NODE_ENV` no es `production`, así que las
+      # comprobaciones de secretos no aplican. Aun así son distintos entre sí,
+      # que es lo que exige el arranque en producción y conviene no acostumbrarse
+      # a saltarse.
+      JWT_ACCESS_SECRET: ci-access-secreto-de-prueba-suficientemente-largo
+      JWT_REFRESH_SECRET: ci-refresh-secreto-de-prueba-suficientemente-largo
+      PLATFORM_JWT_SECRET: ci-plataforma-secreto-de-prueba-suficientemente-largo
+      JWT_ACCESS_TTL: 900s
+      JWT_REFRESH_TTL: 7d
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      ZITADEL_ISSUER: ${{ secrets.ZITADEL_ISSUER }}
+      ZITADEL_SERVICE_TOKEN: ${{ secrets.ZITADEL_SERVICE_TOKEN }}
+      ZITADEL_PROJECT_ID: ${{ secrets.ZITADEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: ¿Hay credenciales de ZITADEL?
+        id: zitadel
+        run: echo "hay=${{ secrets.ZITADEL_SERVICE_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        if: steps.zitadel.outputs.hay == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - if: steps.zitadel.outputs.hay == 'true'
+        run: npm ci
+      - if: steps.zitadel.outputs.hay == 'true'
+        run: npx prisma migrate deploy
+      - name: Pruebas end to end
+        if: steps.zitadel.outputs.hay == 'true'
+        run: npm run test:e2e
+      - name: Aviso si se saltaron
+        if: steps.zitadel.outputs.hay != 'true'
+        run: echo "::warning::Sin ZITADEL_SERVICE_TOKEN; los e2e no se ejecutaron."
+
+  web:
+    name: ${{ matrix.app }} — tipos y compilación
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, landing]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      - name: Comprobación de tipos
+        run: npx tsc --noEmit
+      - name: Compilación
+        # Valores de relleno: `NEXT_PUBLIC_*` se incrusta al compilar, y aquí solo
+        # se comprueba que compila. Las URLs reales entran como `build-arg` al
+        # construir las imágenes de despliegue.
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.ejemplo.invalid/api
+          NEXT_PUBLIC_APP_URL: https://panel.ejemplo.invalid
+          NEXT_PUBLIC_SITE_URL: https://ejemplo.invalid
+
+  imagenes:
+    name: Imágenes de despliegue
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Se construyen las tres, sin publicarlas: lo que se comprueba es que los
+      # Dockerfile siguen siendo válidos. Un Dockerfile roto no se nota hasta el
+      # despliegue, que es el peor momento posible para enterarse.
+      - name: Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          target: runtime
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Panel
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          build-args: NEXT_PUBLIC_API_URL=https://api.ejemplo.invalid/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Landing
+        uses: docker/build-push-action@v6
+        with:
+          context: ./landing
+          push: false
+          build-args: |
+            NEXT_PUBLIC_APP_URL=https://panel.ejemplo.invalid
+            NEXT_PUBLIC_SITE_URL=https://ejemplo.invalid
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  compose:
+    name: Compose de producción
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `docker compose config` resuelve las variables y valida el archivo. Coge
+      # los errores de interpolación y de sintaxis, que en un compose solo se
+      # descubren al desplegar.
+      - name: Validar docker-compose.prod.yml
+        run: docker compose -f docker-compose.prod.yml config --quiet
+        env:
+          POSTGRES_PASSWORD: relleno
+          REDIS_PASSWORD: relleno
+          DATABASE_URL_DOCKER: postgresql://ruteo:relleno@db:5432/ruteo
+          DATABASE_URL_APP_DOCKER: postgresql://ruteo_app:relleno@db:5432/ruteo
+          PUBLIC_API_URL: https://api.ejemplo.invalid/api
+          PUBLIC_PANEL_URL: https://panel.ejemplo.invalid
+          PUBLIC_SITE_URL: https://ejemplo.invalid
