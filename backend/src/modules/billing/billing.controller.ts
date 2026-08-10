@@ -6,7 +6,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { CualquierRol, Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { BillingService } from './billing.service';
@@ -20,16 +20,19 @@ import { CancelSubscriptionDto, SubscribeDto } from './dto/subscribe.dto';
 export class BillingController {
   constructor(private readonly billing: BillingService) {}
 
+  @CualquierRol()
   @Get('plans')
   plans() {
     return this.billing.listPlans();
   }
 
+  @Roles(Role.OWNER, Role.ADMIN)
   @Get('subscription')
   subscription(@CurrentUser() user: AuthUser) {
     return this.billing.getSubscription(user.tenantId);
   }
 
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get('usage')
   usage(@CurrentUser() user: AuthUser) {
     return this.billing.getUsage(user.tenantId);

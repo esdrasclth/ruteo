@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Plan, Prisma } from '@prisma/client';
+import { Plan, Prisma, SubscriptionStatus } from '@prisma/client';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -27,6 +27,17 @@ export class BillingService {
     return Object.values(PLANS);
   }
 
+  /** Plan que la empresa tiene ahora mismo, que es contra el que se compara. */
+  private async planActual(tenantId: string): Promise<Plan> {
+    const tenant = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: { plan: true },
+      }),
+    );
+    return tenant.plan;
+  }
+
   async getSubscription(tenantId: string) {
     const subscription = await this.prisma.withTenant(tenantId, (tx) =>
       tx.subscription.findUnique({ where: { tenantId } }),
@@ -40,6 +51,25 @@ export class BillingService {
   async subscribe(actor: AuthUser, dto: SubscribeDto) {
     const { tenantId } = actor;
     const planDef = getPlan(dto.plan);
+
+    // **Subir de plan exige que alguien cobre.** Con el proveedor manual —el
+    // único que hay hoy— `startSubscription` devuelve ACTIVE sin cobrar nada,
+    // así que este endpoint era una promoción gratuita a ENTERPRISE: los
+    // catorce módulos y envíos sin tope, con una sola petición y desde
+    // cualquier cuenta OWNER o ADMIN. Dejaba en decorativos tanto el `@Modulo`
+    // como `assertShipmentQuota`.
+    //
+    // Se compara por importe y no por posición en el enum: el orden de los
+    // planes es el de su precio, y así añadir uno intermedio no obliga a tocar
+    // esta comprobación.
+    const actual = getPlan(await this.planActual(tenantId));
+    if (!this.provider.cobra && planDef.monthlyAmount > actual.monthlyAmount) {
+      throw new ForbiddenException(
+        `Para pasar al plan ${planDef.name} hay que contratarlo con nosotros: ` +
+          'escríbenos y lo activamos. No se puede subir de plan desde aquí.',
+      );
+    }
+
     const result = await this.provider.startSubscription({
       tenantId,
       plan: planDef,
@@ -63,10 +93,22 @@ export class BillingService {
         create: { tenantId, ...data },
         update: data,
       });
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: { plan: planDef.plan },
-      });
+
+      // El plan efectivo del tenant solo avanza si la suscripción quedó viva.
+      // Antes se aplicaba pasara lo que pasara con `result.status`, así que una
+      // pasarela que devolviera PAST_DUE —pago rechazado— habría concedido el
+      // plan igual. Hoy no puede ocurrir porque el proveedor manual siempre
+      // responde ACTIVE, pero es el punto exacto donde se colará el fallo el
+      // día que se enchufe una pasarela de verdad.
+      if (
+        result.status === SubscriptionStatus.ACTIVE ||
+        result.status === SubscriptionStatus.TRIALING
+      ) {
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: { plan: planDef.plan },
+        });
+      }
       if (planDef.monthlyAmount > 0) {
         await this.payments.createSubscriptionInTx(tx, tenantId, {
           amount: planDef.monthlyAmount,
