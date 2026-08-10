@@ -894,10 +894,13 @@ model IdempotencyKey {
   responseStatus Int?     @map("response_status")
   responseBody   Json?    @map("response_body")
   createdAt      DateTime @default(now()) @map("created_at")
+  /// Pasada esta fecha la clave deja de reproducirse y la purga se la lleva.
+  expiresAt      DateTime @map("expires_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId])
+  @@index([expiresAt])
   @@map("idempotency_keys")
 }
