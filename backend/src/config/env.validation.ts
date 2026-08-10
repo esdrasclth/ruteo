@@ -122,6 +122,14 @@ class EnvironmentVariables {
   @IsNumber()
   REDIS_PORT: number = 6379;
 
+  // Vacía en local (el contenedor arranca sin `--requirepass`). En producción
+  // la exige `comprobarSecretosDeProduccion`: Redis guarda los bloqueos de
+  // sesión y las colas, así que un Redis abierto es un problema de seguridad,
+  // no solo de datos.
+  @IsOptional()
+  @IsString()
+  REDIS_PASSWORD: string = '';
+
   // Namespace de las colas BullMQ en Redis; permite que varios entornos
   // compartan la misma instancia sin pisarse los jobs.
   @IsOptional()
@@ -132,6 +140,87 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   CORS_ORIGIN: string = 'http://localhost:3001';
+}
+
+// Valores que vienen en `.env.example`. Copiar el archivo y desplegar sin
+// cambiarlos es el error más fácil de cometer y el más caro: `PLATFORM_JWT_SECRET`
+// firma el token que ve TODAS las empresas, y su ejemplo lleva un número al
+// final que lo hace parecer generado.
+const SECRETOS_DE_EJEMPLO = new Set([
+  'change-me-access',
+  'change-me-refresh',
+  'cambiar-esto-plataforma-1739517683',
+  'ruteo',
+  'ruteo_app',
+]);
+
+// Mínimo para un secreto HMAC. 32 caracteres no es un número mágico del
+// estándar; es el punto donde `openssl rand -base64 24` ya no cabe y obliga a
+// generar en serio en vez de teclear algo.
+const LARGO_MINIMO_SECRETO = 32;
+
+/**
+ * Comprobaciones que solo aplican con `NODE_ENV=production`.
+ *
+ * Se hacen al arrancar y no en el despliegue porque un checklist se olvida y
+ * un arranque fallido no. Prefiere tirar el proceso a servir con la clave de
+ * ejemplo: un backend caído se nota en minutos, un secreto público no se nota
+ * hasta que alguien lo usa.
+ */
+function comprobarSecretosDeProduccion(env: EnvironmentVariables): string[] {
+  if (env.NODE_ENV !== NodeEnv.Production) return [];
+
+  const fallos: string[] = [];
+  const secretos: [string, string][] = [
+    ['JWT_ACCESS_SECRET', env.JWT_ACCESS_SECRET],
+    ['JWT_REFRESH_SECRET', env.JWT_REFRESH_SECRET],
+    ['PLATFORM_JWT_SECRET', env.PLATFORM_JWT_SECRET],
+  ];
+
+  for (const [nombre, valor] of secretos) {
+    if (SECRETOS_DE_EJEMPLO.has(valor)) {
+      fallos.push(
+        `${nombre} sigue siendo el valor de ejemplo. Genera uno con: openssl rand -base64 48`,
+      );
+    } else if (valor.length < LARGO_MINIMO_SECRETO) {
+      fallos.push(
+        `${nombre} es demasiado corto (${valor.length} caracteres, mínimo ${LARGO_MINIMO_SECRETO}).`,
+      );
+    }
+  }
+
+  // Los tres secretos tienen que ser DISTINTOS entre sí. Compartir el de tenant
+  // con el de plataforma anula la separación que sostiene el panel de
+  // superadmin: quien falsifique un token de empresa falsifica el que las ve
+  // todas.
+  const unicos = new Set(secretos.map(([, v]) => v));
+  if (unicos.size !== secretos.length) {
+    fallos.push(
+      'JWT_ACCESS_SECRET, JWT_REFRESH_SECRET y PLATFORM_JWT_SECRET deben ser distintos entre sí.',
+    );
+  }
+
+  if (!env.REDIS_PASSWORD) {
+    fallos.push(
+      'REDIS_PASSWORD es obligatoria en producción: Redis guarda los bloqueos de sesión y las colas.',
+    );
+  }
+
+  // La contraseña por defecto del rol de aplicación la fija la migración
+  // `20260712203500_rls_setup`, que la deja en `ruteo_app`. En un despliegue
+  // nuevo sobrevive tal cual si nadie la rota.
+  for (const [nombre, url] of [
+    ['DATABASE_URL', env.DATABASE_URL],
+    ['DATABASE_URL_APP', env.DATABASE_URL_APP],
+  ] as const) {
+    if (/:\/\/(ruteo|ruteo_app):(ruteo|ruteo_app)@/.test(url)) {
+      fallos.push(
+        `${nombre} usa la contraseña por defecto. Rótala con ALTER ROLE y actualiza la cadena.`,
+      );
+    }
+  }
+
+  return fallos;
 }
 
 export function validateEnv(config: Record<string, unknown>) {
@@ -157,5 +246,17 @@ export function validateEnv(config: Record<string, unknown>) {
         .join('\n')}`,
     );
   }
+
+  // Va DESPUÉS de la validación de forma: sin ella los campos podrían no ser
+  // ni siquiera cadenas y las comprobaciones de abajo mentirían.
+  const inseguros = comprobarSecretosDeProduccion(validated);
+  if (inseguros.length > 0) {
+    throw new Error(
+      `Configuración insegura para producción:\n${inseguros
+        .map((f) => `  - ${f}`)
+        .join('\n')}`,
+    );
+  }
+
   return validated;
 }

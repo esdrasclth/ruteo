@@ -1,3 +1,13 @@
+# Todos los puertos se publican SOLO en 127.0.0.1 y nunca en 0.0.0.0.
+#
+# No es paranoia de más: Docker escribe sus reglas en la cadena `DOCKER` de
+# iptables, que se evalúa ANTES que las de UFW. Un `ufw deny 6379` no cierra un
+# puerto publicado por Compose —queda abierto a internet aunque el firewall
+# diga lo contrario—. La única forma fiable de no exponerlo es no publicarlo
+# fuera del loopback.
+#
+# Si algún día el backend corre en otra máquina, la vía es una red privada o un
+# túnel, NO quitar el `127.0.0.1:` de aquí.
 services:
   db:
     image: postgres:16-alpine
@@ -8,7 +18,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ruteo}
       POSTGRES_DB: ${POSTGRES_DB:-ruteo}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - ruteo_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,16 +27,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # `--requirepass` va en el comando y no en un archivo de configuración para
+  # que la contraseña venga del entorno y no acabe versionada. En local, si
+  # `REDIS_PASSWORD` está vacía, Redis arranca sin contraseña y todo sigue
+  # funcionando igual; en el VPS es obligatoria.
   redis:
     image: redis:7-alpine
     container_name: ruteo-redis
     restart: unless-stopped
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ];
+             then exec redis-server --requirepass "$$REDIS_PASSWORD";
+             else exec redis-server; fi'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - ruteo_redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # El healthcheck también necesita la contraseña: sin ella `redis-cli ping`
+      # responde NOAUTH y el contenedor se quedaría eternamente "unhealthy".
+      #
+      # El `if` va DENTRO del comando (con `$$`, que Compose entrega como `$`
+      # literal) en vez de resolverse con `${VAR:+...}`: esa forma la expande
+      # Compose contra el entorno del HOST, no del contenedor, y bastaba con no
+      # tener la variable exportada en la shell para generar un healthcheck que
+      # no corresponde a cómo arrancó Redis.
+      test:
+        - CMD-SHELL
+        - >-
+          if [ -n "$$REDIS_PASSWORD" ];
+          then redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping;
+          else redis-cli ping; fi | grep -q PONG
       interval: 5s
       timeout: 5s
       retries: 5
@@ -45,7 +78,7 @@ services:
     restart: unless-stopped
     command: osrm-routed --algorithm mld --max-table-size 1000 /data/honduras.osrm
     ports:
-      - "${OSRM_PORT:-5100}:5000"
+      - "127.0.0.1:${OSRM_PORT:-5100}:5000"
     volumes:
       - ruteo_osrmdata:/data
 

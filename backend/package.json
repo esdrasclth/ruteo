@@ -19,6 +19,10 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
+  "//overrides": "js-yaml entra como dependencia transitiva de @nestjs/swagger, que todavía pide una versión con el fallo de parseo exponencial (GHSA-pm4m-ph32-ghv5). Se puede quitar cuando @nestjs/swagger publique una versión que ya la traiga.",
+  "overrides": {
+    "js-yaml": "^5.2.3"
+  },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
