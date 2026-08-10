@@ -1,3 +1,4 @@
+import type { TenantModule } from '@prisma/client';
 import type { AuthUser } from './decorators/current-user.decorator';
 
 /**
@@ -10,6 +11,17 @@ import type { AuthUser } from './decorators/current-user.decorator';
  */
 export interface PeticionHttp {
   user?: AuthUser;
+  /**
+   * Módulos que la empresa tiene activos, puestos por `TenantAccessGuard`.
+   *
+   * Existe para lo que es transversal a varios módulos y no puede llevar un
+   * `@Modulo` propio —el buscador global es el caso—: en vez de estar dentro o
+   * fuera del plan entero, mira esta lista y sirve solo lo que corresponda.
+   *
+   * `undefined` cuando el guard no llegó a resolverla (llave de API o tenant
+   * sin fila). Quien la use debe tratarlo como "no filtrar".
+   */
+  modulosActivos?: TenantModule[];
   headers?: Record<string, string | string[] | undefined>;
   ip?: string;
   url?: string;

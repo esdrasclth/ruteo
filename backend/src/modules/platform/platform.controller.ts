@@ -31,7 +31,6 @@ import { PLANS } from '../billing/plans';
 
 type PeticionPlataforma = {
   platformAdmin: PlatformJwtPayload;
-  headers?: Record<string, unknown>;
   ip?: string;
 };
 
@@ -48,22 +47,17 @@ export class PlatformController {
   ) {}
 
   // La IP se guarda en el registro: saber QUIÉN cambió algo vale más si también
-  // se sabe desde dónde. Detrás de un proxy, `req.ip` es la del proxy.
-  private actor(req: {
-    platformAdmin: PlatformJwtPayload;
-    headers?: Record<string, unknown>;
-    ip?: string;
-  }) {
-    const fwd = req.headers?.['x-forwarded-for'];
-    const cabecera = Array.isArray(fwd) ? fwd[0] : fwd;
-    const ip =
-      typeof cabecera === 'string' && cabecera.trim()
-        ? cabecera.split(',')[0].trim()
-        : req.ip;
+  // se sabe desde dónde.
+  //
+  // Se usa `req.ip`, que Express resuelve con `trust proxy` (fijado en
+  // `main.ts`). Leer `x-forwarded-for` a mano dejaba que el propio actor
+  // eligiera qué IP quedaba anotada, y una auditoría que el auditado puede
+  // escribir no sirve para nada.
+  private actor(req: { platformAdmin: PlatformJwtPayload; ip?: string }) {
     return {
       id: req.platformAdmin.sub,
       email: req.platformAdmin.email,
-      ip,
+      ip: req.ip,
     };
   }
 

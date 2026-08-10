@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Plan, TenantModule, TenantStatus, UserStatus } from '@prisma/client';
+import { claveEstadoTenant } from '../../common/guards/tenant-access.guard';
+import { RedisService } from '../../redis/redis.service';
 import { PLANS } from '../billing/plans';
 import {
   ESENCIALES,
@@ -39,7 +41,27 @@ export interface Actor {
 export class PlatformService {
   private readonly log = new Logger(PlatformService.name);
 
-  constructor(private readonly db: PlatformPrismaService) {}
+  constructor(
+    private readonly db: PlatformPrismaService,
+    private readonly redis: RedisService,
+  ) {}
+
+  /**
+   * Tira la copia cacheada del estado de una empresa.
+   *
+   * `TenantAccessGuard` cachea 60 segundos para no consultar la base en cada
+   * petición. Sin este borrado, suspender a alguien tardaba hasta un minuto en
+   * surtir efecto —y lo mismo un cambio de plan o de módulos—, que es el tipo
+   * de retraso que hace dudar de si el botón funcionó y acaba en un segundo
+   * clic. Borrar la clave lo vuelve inmediato y no cuesta nada.
+   *
+   * Si Redis no responde, `del` se lo traga: se vuelve al comportamiento de
+   * antes (hasta un minuto de retraso), que es exactamente el peor caso
+   * aceptable y no motivo para tumbar la operación del superadmin.
+   */
+  private async olvidarEstado(tenantId: string): Promise<void> {
+    await this.redis.del(claveEstadoTenant(tenantId));
+  }
 
   /**
    * Anota una acción de plataforma.
@@ -213,6 +235,7 @@ export class PlatformService {
     this.log.warn(
       `[plataforma] ${actor.email} cambió el plan de ${tenant.slug}: ${tenant.plan} -> ${plan}`,
     );
+    await this.olvidarEstado(id);
     return this.detalleTenant(id);
   }
 
@@ -262,6 +285,7 @@ export class PlatformService {
       `[plataforma] ${actor.email} puso ${tenant.slug} en ${status}` +
         (motivo ? ` — ${motivo}` : ''),
     );
+    await this.olvidarEstado(id);
     return this.detalleTenant(id);
   }
 
@@ -310,6 +334,7 @@ export class PlatformService {
       `[plataforma] ${actor.email} ${enabled ? 'activó' : 'desactivó'} ${module} en ${tenant.slug}` +
         (motivo ? ` — ${motivo}` : ''),
     );
+    await this.olvidarEstado(id);
     return this.detalleTenant(id);
   }
 

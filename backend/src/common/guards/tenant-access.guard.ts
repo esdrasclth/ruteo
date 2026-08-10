@@ -24,6 +24,19 @@ interface EstadoTenant {
 const CACHE_S = 60;
 
 /**
+ * Clave de la caché de estado. Se exporta para que el panel de plataforma la
+ * borre al suspender, cambiar de plan o tocar módulos.
+ *
+ * Vive aquí, junto a quien la escribe, y no repetida como texto en el servicio
+ * que la borra: dos literales iguales en archivos distintos se separan en el
+ * primer cambio, y la avería resultante —suspensiones que no surten efecto— no
+ * se nota hasta que alguien suspende a un cliente de verdad.
+ */
+export function claveEstadoTenant(tenantId: string): string {
+  return `tenant:estado:${tenantId}`;
+}
+
+/**
  * Corta el paso si la empresa está suspendida o si el módulo pedido está
  * desactivado.
  *
@@ -55,6 +68,12 @@ export class TenantAccessGuard implements CanActivate {
       );
     }
 
+    // Se deja a mano de lo que venga después. Un `@Modulo` responde "este
+    // controlador entero está dentro o fuera del plan", y eso no sirve para lo
+    // que cruza varios módulos: el buscador global vive en todos los planes
+    // pero no debe devolver casilleros a quien no tiene casilleros.
+    req.modulosActivos = estado.modulos;
+
     const requerido = this.reflector.getAllAndOverride<TenantModule>(
       MODULO_KEY,
       [context.getHandler(), context.getClass()],
@@ -68,7 +87,7 @@ export class TenantAccessGuard implements CanActivate {
   }
 
   private async estadoDe(tenantId: string): Promise<EstadoTenant | null> {
-    const key = `tenant:estado:${tenantId}`;
+    const key = claveEstadoTenant(tenantId);
     const cacheado = await this.redis.getJson<EstadoTenant>(key);
     if (cacheado) return cacheado;
 

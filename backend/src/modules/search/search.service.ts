@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, TenantModule } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 // Cuántos resultados devuelve cada sección. La búsqueda global es para saltar
@@ -34,19 +34,47 @@ export interface SearchResults {
 export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async search(tenantId: string, rawQuery: string): Promise<SearchResults> {
+  /**
+   * `modulos` son los que la empresa tiene contratados. Cada sección solo se
+   * consulta si el suyo está activo: buscar casilleros en un plan sin
+   * casilleros gastaba una consulta para devolver enlaces que llevan a un 403.
+   *
+   * `undefined` significa que no se pudieron resolver (llave de API, o el guard
+   * no llegó a leerlos) y entonces se busca en todo, que es como se comportaba
+   * antes.
+   */
+  async search(
+    tenantId: string,
+    rawQuery: string,
+    modulos?: TenantModule[],
+  ): Promise<SearchResults> {
     const q = rawQuery.trim();
     if (q.length < MIN_CARACTERES) {
       return this.vacio(q);
     }
     const patron = `%${q}%`;
+    const activo = (m: TenantModule) => !modulos || modulos.includes(m);
+
+    // Las secciones apagadas no llegan a consultarse: se resuelven a lista
+    // vacía y `Promise.all` mantiene las posiciones.
+    const nada = <T>(): Promise<T[]> => Promise.resolve([]);
 
     return this.prisma.withTenant(tenantId, async (tx) => {
       const [envios, clientes, casilleros, rutas, repartidores] =
         await Promise.all([
-          tx.$queryRaw<
-            { id: string; tracking_number: string; recipient_name: string }[]
-          >`
+          !activo(TenantModule.SHIPMENTS)
+            ? nada<{
+                id: string;
+                tracking_number: string;
+                recipient_name: string;
+              }>()
+            : tx.$queryRaw<
+                {
+                  id: string;
+                  tracking_number: string;
+                  recipient_name: string;
+                }[]
+              >`
             SELECT id, tracking_number, recipient_name
               FROM shipments
              WHERE unaccent(tracking_number) ILIKE unaccent(${patron})
@@ -56,14 +84,21 @@ export class SearchService {
              ORDER BY created_at DESC
              LIMIT ${POR_SECCION}`,
 
-          tx.$queryRaw<
-            {
-              id: string;
-              name: string;
-              email: string | null;
-              phone: string | null;
-            }[]
-          >`
+          !activo(TenantModule.CUSTOMERS)
+            ? nada<{
+                id: string;
+                name: string;
+                email: string | null;
+                phone: string | null;
+              }>()
+            : tx.$queryRaw<
+                {
+                  id: string;
+                  name: string;
+                  email: string | null;
+                  phone: string | null;
+                }[]
+              >`
             SELECT id, name, email, phone
               FROM customers
              WHERE unaccent(name) ILIKE unaccent(${patron})
@@ -72,7 +107,11 @@ export class SearchService {
              ORDER BY name ASC
              LIMIT ${POR_SECCION}`,
 
-          tx.$queryRaw<{ id: string; code: string; customer_name: string }[]>`
+          !activo(TenantModule.LOCKERS)
+            ? nada<{ id: string; code: string; customer_name: string }>()
+            : tx.$queryRaw<
+                { id: string; code: string; customer_name: string }[]
+              >`
             SELECT id, code, customer_name
               FROM lockers
              WHERE unaccent(code) ILIKE unaccent(${patron})
@@ -80,9 +119,11 @@ export class SearchService {
              ORDER BY code ASC
              LIMIT ${POR_SECCION}`,
 
-          tx.$queryRaw<
-            { id: string; code: string; driver_name: string | null }[]
-          >`
+          !activo(TenantModule.ROUTES)
+            ? nada<{ id: string; code: string; driver_name: string | null }>()
+            : tx.$queryRaw<
+                { id: string; code: string; driver_name: string | null }[]
+              >`
             SELECT r.id, r.code, d.name AS driver_name
               FROM routes r
               LEFT JOIN drivers d ON d.id = r.driver_id
@@ -91,7 +132,13 @@ export class SearchService {
              ORDER BY r.scheduled_date DESC
              LIMIT ${POR_SECCION}`,
 
-          tx.$queryRaw<{ id: string; name: string; phone: string | null }[]>`
+          // Los repartidores se enlazan a sus rutas, así que hacen falta los
+          // dos módulos: sin rutas, el resultado no lleva a ninguna parte.
+          !activo(TenantModule.DRIVERS) || !activo(TenantModule.ROUTES)
+            ? nada<{ id: string; name: string; phone: string | null }>()
+            : tx.$queryRaw<
+                { id: string; name: string; phone: string | null }[]
+              >`
             SELECT id, name, phone
               FROM drivers
              WHERE unaccent(name) ILIKE unaccent(${patron})
