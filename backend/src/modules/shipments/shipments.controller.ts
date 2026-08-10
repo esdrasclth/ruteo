@@ -18,12 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -58,7 +53,14 @@ export class ShipmentsController {
 
   @Post('import')
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
-  @UseInterceptors(FileInterceptor('file'))
+  // Multer NO topa nada por defecto: sin `limits`, un archivo de cientos de MB
+  // se cargaba entero a memoria (`file.buffer.toString`) y tumbaba el proceso.
+  // 2 MB dan de sobra para las ~10.000 filas que permite `parseShipmentCsv`.
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 4 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -83,10 +85,7 @@ export class ShipmentsController {
 
   @Get(':id/label')
   @Header('Content-Type', 'image/svg+xml')
-  label(
-    @CurrentUser() user: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  label(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.shipments.buildLabel(user.tenantId, id);
   }
 

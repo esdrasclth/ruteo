@@ -18,6 +18,18 @@ export interface CsvParseResult {
   invalid: RowError[];
 }
 
+// Tope de filas por importación.
+//
+// Cada fila válida acaba en su propia transacción dentro de `importCsv`, así
+// que un archivo grande no ocupa memoria: ocupa la conexión a la base y el
+// worker durante todo lo que tarde. Sin tope, un CSV de 100.000 filas deja la
+// petición viva minutos y compite con el resto del tenant.
+//
+// 10.000 cubre con holgura una importación real (un catálogo de envíos de un
+// día) y quien necesite más parte el archivo, que es una operación que se
+// entiende sola.
+export const MAX_FILAS = 10_000;
+
 const NUMERIC_FIELDS = [
   'destinationLat',
   'destinationLng',
@@ -51,10 +63,16 @@ export function parseShipmentCsv(content: string): CsvParseResult {
       skip_empty_lines: true,
       trim: true,
       bom: true,
-    }) as Record<string, string>[];
+    });
   } catch (err) {
     throw new Error(
       `CSV parse error: ${err instanceof Error ? err.message : 'invalid file'}`,
+    );
+  }
+
+  if (records.length > MAX_FILAS) {
+    throw new Error(
+      `El archivo trae ${records.length} filas y el máximo por importación es ${MAX_FILAS}. Pártelo en varios archivos.`,
     );
   }
 

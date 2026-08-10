@@ -152,7 +152,20 @@ export class ShipmentsService {
   // Bulk-creates shipments from a CSV file. Valid rows are inserted; invalid
   // rows are skipped and reported so the caller can fix and re-upload them.
   async importCsv(user: AuthUser, content: string) {
-    const { valid, invalid } = parseShipmentCsv(content);
+    // `parseShipmentCsv` lanza `Error` a secas cuando el archivo no se puede
+    // leer o trae más filas de la cuenta. Sin esto sale un 500, y el usuario
+    // —que solo subió un CSV mal formado— ve un fallo del servidor en vez del
+    // motivo, que además es accionable ("pártelo en varios archivos").
+    let parsed: ReturnType<typeof parseShipmentCsv>;
+    try {
+      parsed = parseShipmentCsv(content);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'CSV inválido',
+      );
+    }
+
+    const { valid, invalid } = parsed;
     if (valid.length === 0 && invalid.length === 0) {
       throw new BadRequestException('CSV has no data rows');
     }

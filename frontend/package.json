@@ -9,12 +9,16 @@
     "lint": "eslint",
     "postinstall": "node scripts/copy-maplibre-worker.mjs"
   },
+  "//overrides": "sharp entra a través de next (optimización de imágenes). La 0.34.x hereda cuatro CVE de libvips; se fuerza la 0.35 sin tocar la versión de next, que trae cambios de ruptura. Quitar cuando next pida ya la 0.35.",
+  "overrides": {
+    "sharp": "^0.35.3"
+  },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.25.0",
     "maplibre-gl": "^6.0.0",
-    "next": "16.2.10",
+    "next": "^16.3.0",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.2",
     "react": "19.2.4",
@@ -29,7 +33,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "^16.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
