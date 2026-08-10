@@ -1,0 +1,160 @@
+# Despliegue completo en el VPS: infraestructura + las tres aplicaciones.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Es un archivo APARTE y no una superposición sobre `docker-compose.yml` a
+# propósito. El de desarrollo publica Postgres, Redis y OSRM en 127.0.0.1 porque
+# allí el backend corre en la máquina, fuera de Docker; aquí no deben publicarse
+# en ningún sitio. Compose SUMA las listas de `ports` al superponer archivos —no
+# las reemplaza—, así que una superposición no podría quitar esa publicación:
+# habría creído cerrarlos y seguirían abiertos.
+#
+# Lo único que asoma al host son los tres puertos de aplicación, y solo en
+# loopback: delante va un nginx o Caddy que termina TLS. Ver
+# `docs/despliegue-vps.md`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ruteo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ruteo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ruteo}
+    # Sin `ports`: al backend le llega por la red interna de Compose. Publicar
+    # aunque sea en loopback solo haría falta para conectarse desde el host, y
+    # para eso está `docker compose exec db psql`.
+    volumes:
+      - ruteo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-ruteo} -d ${POSTGRES_DB:-ruteo}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ruteo-redis
+    restart: unless-stopped
+    # En producción la contraseña es obligatoria; el backend además se niega a
+    # arrancar sin ella (`env.validation.ts`).
+    command: redis-server --requirepass "${REDIS_PASSWORD:?define REDIS_PASSWORD en .env}"
+    volumes:
+      - ruteo_redisdata:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: ruteo-osrm
+    restart: unless-stopped
+    command: osrm-routed --algorithm mld --max-table-size 1000 /data/honduras.osrm
+    volumes:
+      - ruteo_osrmdata:/data
+
+  # Paso de migración: corre una vez, termina, y el backend no arranca hasta que
+  # haya terminado BIEN. Así un despliegue con una migración rota se detiene ahí
+  # en vez de dejar la API sirviendo contra un esquema que no le corresponde.
+  migraciones:
+    build:
+      context: ./backend
+      target: migraciones
+    container_name: ruteo-migraciones
+    restart: 'no'
+    env_file: ./backend/.env
+    environment:
+      # La MISMA sobrescritura que el backend, y por el mismo motivo: en
+      # `backend/.env` el host es `localhost` porque allí la aplicación corre
+      # fuera de Docker. Sin esta línea, `prisma migrate deploy` busca Postgres
+      # dentro de su propio contenedor y muere con un P1001 que no explica nada.
+      DATABASE_URL: ${DATABASE_URL_DOCKER:?define DATABASE_URL_DOCKER en .env}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    container_name: ruteo-backend
+    restart: unless-stopped
+    # `node` sería PID 1 y no hay nadie que recoja procesos zombis ni que
+    # reenvíe señales; con esto Docker pone un init mínimo delante y el
+    # `enableShutdownHooks` de Nest recibe su SIGTERM al parar.
+    init: true
+    env_file: ./backend/.env
+    environment:
+      # Todo lo de aquí SOBRESCRIBE a `backend/.env`, que está escrito para
+      # desarrollo —donde el backend corre en la máquina, fuera de Docker— y
+      # cuyos valores no sirven dentro de un contenedor. Cada uno costó una
+      # prueba fallida al levantar el stack completo, así que ninguno sobra.
+
+      # Dentro de la red de Compose los servicios se llaman por su nombre. Con
+      # el `localhost` del archivo, el backend busca la base dentro de sí mismo.
+      DATABASE_URL: ${DATABASE_URL_DOCKER:?define DATABASE_URL_DOCKER en .env}
+      DATABASE_URL_APP: ${DATABASE_URL_APP_DOCKER:?define DATABASE_URL_APP_DOCKER en .env}
+      REDIS_HOST: redis
+      # La contraseña sale de la MISMA variable que configura el contenedor de
+      # Redis, no de `backend/.env`. Tenerla en dos archivos es lo que hace que
+      # se separen: en la primera prueba, la raíz la tenía puesta y
+      # `backend/.env` la tenía vacía (su valor de desarrollo), y el backend se
+      # quedó en bucle de `NOAUTH` sin llegar a escuchar.
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      OSRM_URL: http://osrm:5000
+      # Fijo, y no el del archivo. El `backend/.env` de desarrollo suele traer
+      # otro puerto para no chocar con lo que haya corriendo en la máquina; si
+      # se cuela aquí, la aplicación escucha en uno y el compose mapea al otro.
+      # El síntoma es de los peores: el contenedor se reporta SANO —su
+      # healthcheck usa `$PORT` y acierta— y desde fuera no responde nadie.
+      PORT: '3000'
+    ports:
+      - '127.0.0.1:${BACKEND_PORT:-3000}:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migraciones:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Se incrusta en el bundle al construir; cambiarla obliga a reconstruir
+        # la imagen, no basta con reiniciar el contenedor.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?define PUBLIC_API_URL en .env}
+    container_name: ruteo-frontend
+    restart: unless-stopped
+    init: true
+    ports:
+      - '127.0.0.1:${FRONTEND_PORT:-3001}:3001'
+
+  landing:
+    build:
+      context: ./landing
+      args:
+        NEXT_PUBLIC_APP_URL: ${PUBLIC_PANEL_URL:?define PUBLIC_PANEL_URL en .env}
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:?define PUBLIC_SITE_URL en .env}
+    container_name: ruteo-landing
+    restart: unless-stopped
+    init: true
+    ports:
+      - '127.0.0.1:${LANDING_PORT:-3003}:3003'
+
+volumes:
+  # Los mismos nombres que en desarrollo, para que un `docker compose` de cada
+  # tipo en la misma máquina no acabe con dos copias de los datos.
+  ruteo_pgdata:
+  ruteo_redisdata:
+  ruteo_osrmdata:
+    name: ruteo_osrmdata
