@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { VentanaMemoria } from '../../common/ventana-memoria';
 import { RedisService } from '../../redis/redis.service';
 
 // Bloqueo temporal de la cuenta tras varios fallos seguidos.
@@ -19,7 +20,10 @@ const BLOQUEO_S = 15 * 60;
 
 @Injectable()
 export class LoginThrottleService {
-  constructor(private readonly redis: RedisService) {}
+  constructor(
+    private readonly redis: RedisService,
+    private readonly memoria: VentanaMemoria,
+  ) {}
 
   private claveIntentos(slug: string, email: string) {
     return `login:fails:${slug}:${email.toLowerCase()}`;
@@ -37,7 +41,12 @@ export class LoginThrottleService {
    * mensaje de bloqueo delataría cuáles lo son.
    */
   async comprobar(slug: string, email: string): Promise<void> {
-    const restante = await this.redis.ttl(this.claveBloqueo(slug, email));
+    const clave = this.claveBloqueo(slug, email);
+    // Se mira en los dos sitios. Redis devuelve `null` tanto si no hay bloqueo
+    // como si está caído, así que sin consultar la memoria un bloqueo anotado
+    // durante la avería se olvidaría en cuanto Redis volviera —o, peor, mientras
+    // sigue caído—.
+    const restante = (await this.redis.ttl(clave)) ?? this.memoria.ttl(clave);
     if (restante !== null && restante > 0) {
       const minutos = Math.max(1, Math.ceil(restante / 60));
       throw new HttpException(
@@ -51,26 +60,38 @@ export class LoginThrottleService {
 
   /** Suma un fallo y bloquea al llegar al tope. */
   async registrarFallo(slug: string, email: string): Promise<void> {
-    const n = await this.redis.incrementWindow(
-      this.claveIntentos(slug, email),
-      VENTANA_S,
-    );
-    // Redis caído: no se bloquea a nadie. Es preferible perder el freno un rato
-    // a dejar fuera a usuarios legítimos por una avería de infraestructura.
-    if (n === null) return;
+    const claveIntentos = this.claveIntentos(slug, email);
+    // Con Redis caído se cuenta en memoria. Antes se devolvía sin contar, y
+    // como el cupo por IP fallaba abierto por su lado, una avería de Redis
+    // dejaba la fuerza bruta sin ningún freno.
+    //
+    // El contador de memoria arranca de cero, así que una caída a mitad de una
+    // racha de fallos regala los intentos ya acumulados. Es la degradación que
+    // se acepta: recuperarlos exigiría duplicar cada escritura en los dos
+    // sitios y encarecer todos los logins buenos para cubrir un caso raro.
+    const enRedis = await this.redis.incrementWindow(claveIntentos, VENTANA_S);
+    const n = enRedis ?? this.memoria.incrementar(claveIntentos, VENTANA_S);
 
     if (n >= INTENTOS_MAX) {
-      await this.redis.setJson(
-        this.claveBloqueo(slug, email),
-        { desde: Date.now() },
-        BLOQUEO_S,
-      );
+      const claveBloqueo = this.claveBloqueo(slug, email);
+      // El bloqueo se anota en AMBOS sitios, siempre. Son pocos y duran poco
+      // (hacen falta ocho fallos para provocar uno), así que la memoria extra
+      // es despreciable, y a cambio el bloqueo sobrevive a que Redis se caiga
+      // justo después de imponerlo —que es precisamente cuando importa—.
+      await this.redis.setJson(claveBloqueo, { desde: Date.now() }, BLOQUEO_S);
+      this.memoria.fijar(claveBloqueo, BLOQUEO_S);
     }
   }
 
   /** Entrada correcta: se olvida el historial de fallos. */
   async limpiar(slug: string, email: string): Promise<void> {
-    await this.redis.del(this.claveIntentos(slug, email));
-    await this.redis.del(this.claveBloqueo(slug, email));
+    const claveIntentos = this.claveIntentos(slug, email);
+    const claveBloqueo = this.claveBloqueo(slug, email);
+    await this.redis.del(claveIntentos);
+    await this.redis.del(claveBloqueo);
+    // También en memoria: si no, un bloqueo anotado durante una avería
+    // sobreviviría a la entrada correcta que debería haberlo levantado.
+    this.memoria.borrar(claveIntentos);
+    this.memoria.borrar(claveBloqueo);
   }
 }

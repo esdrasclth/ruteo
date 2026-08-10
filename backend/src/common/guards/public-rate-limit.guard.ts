@@ -12,6 +12,7 @@ import {
   RATE_LIMIT_KEY,
   RateLimitOptions,
 } from '../decorators/rate-limit.decorator';
+import { VentanaMemoria } from '../ventana-memoria';
 
 /**
  * Límite por IP para endpoints SIN sesión.
@@ -21,14 +22,20 @@ import {
  * `forgot-password` servía para bombardear el buzón de alguien (y quemar la
  * cuota de Resend) y `register` para crear empresas en bucle.
  *
- * Falla ABIERTO si Redis no responde, igual que el otro guard: una caída de
- * Redis no debe dejar a nadie sin poder entrar.
+ * A diferencia del cupo de la API autenticada, este **no falla abierto**: si
+ * Redis no responde, sigue contando en memoria del proceso. El otro guard puede
+ * permitirse dejar pasar —lo peor que ocurre es que alguien consuma API de más
+ * durante una avería—; aquí lo que se cae es el único freno que hay contra la
+ * fuerza bruta de contraseñas, porque la instancia de ZITADEL tampoco tiene
+ * política de bloqueo (ver `login-throttle.service.ts`). Los detalles y los
+ * límites del respaldo están en `VentanaMemoria`.
  */
 @Injectable()
 export class PublicRateLimitGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly redis: RedisService,
+    private readonly memoria: VentanaMemoria,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -46,8 +53,14 @@ export class PublicRateLimitGuard implements CanActivate {
     const ventana = Math.floor(Date.now() / 1000 / options.windowSeconds);
     const key = `rlp:${ruta}:${ip}:${ventana}`;
 
-    const count = await this.redis.incrementWindow(key, options.windowSeconds);
-    if (count === null) return true;
+    // `null` significa que Redis no está: se sigue contando en memoria en vez
+    // de dejar pasar.
+    const enRedis = await this.redis.incrementWindow(
+      key,
+      options.windowSeconds,
+    );
+    const count =
+      enRedis ?? this.memoria.incrementar(key, options.windowSeconds);
 
     const response = context.switchToHttp().getResponse<RespuestaHttp>();
     response.setHeader('X-RateLimit-Limit', options.limit);
@@ -69,14 +82,15 @@ export class PublicRateLimitGuard implements CanActivate {
   }
 
   private resolverIp(request: PeticionHttp): string {
-    // Detrás de un proxy, `request.ip` es la del proxy y todo el mundo
-    // compartiría cupo. Se toma el primer valor de `x-forwarded-for`, que es el
-    // cliente original.
-    const fwd = request.headers?.['x-forwarded-for'];
-    const cabecera = Array.isArray(fwd) ? fwd[0] : fwd;
-    if (typeof cabecera === 'string' && cabecera.trim()) {
-      return cabecera.split(',')[0].trim();
-    }
+    // `request.ip` a secas, resuelto por Express con `trust proxy` (se fija en
+    // `main.ts`).
+    //
+    // Antes esto leía el primer valor de `x-forwarded-for` a mano, y esa
+    // cabecera la escribe quien llama: bastaba mandar una IP distinta en cada
+    // petición para tener intentos ilimitados en login, registro y
+    // recuperación de contraseña —es decir, el límite no limitaba nada—.
+    // Express con `trust proxy: 1` toma el salto de confianza correcto y
+    // descarta lo que el cliente haya inventado por delante.
     return request.ip ?? request.socket?.remoteAddress ?? 'desconocida';
   }
 }

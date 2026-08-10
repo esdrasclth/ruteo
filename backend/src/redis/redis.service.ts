@@ -20,9 +20,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     const host = this.config.get<string>('REDIS_HOST', 'localhost');
     const port = this.config.get<number>('REDIS_PORT', 6379);
+    // Vacía en local (el contenedor arranca sin `--requirepass`) y obligatoria
+    // en el VPS. Se omite la propiedad cuando no hay valor: pasarle `password:
+    // ''` a ioredis manda un AUTH vacío y un Redis sin contraseña lo rechaza.
+    const password = this.config.get<string>('REDIS_PASSWORD') || undefined;
     const client = new Redis({
       host,
       port,
+      ...(password ? { password } : {}),
       lazyConnect: true,
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
@@ -73,7 +78,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Best-effort write. A failed cache write must never fail the request.
-  async setJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  async setJson(
+    key: string,
+    value: unknown,
+    ttlSeconds: number,
+  ): Promise<void> {
     if (!this.client || this.client.status !== 'ready') {
       return;
     }
@@ -113,7 +122,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   // Fixed-window counter. Returns the current hit count for the window, or
   // null if Redis is unavailable (caller should fail open).
-  async incrementWindow(key: string, windowSeconds: number): Promise<number | null> {
+  async incrementWindow(
+    key: string,
+    windowSeconds: number,
+  ): Promise<number | null> {
     if (!this.client || this.client.status !== 'ready') {
       return null;
     }
@@ -126,9 +138,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       const count = result?.[0]?.[1];
       return typeof count === 'number' ? count : Number(count);
     } catch (err) {
-      this.logger.warn(
-        `Redis increment failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`Redis increment failed: ${(err as Error).message}`);
       return null;
     }
   }

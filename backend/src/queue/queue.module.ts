@@ -16,6 +16,11 @@ import { DEFAULT_ATTEMPTS } from './queue.constants';
         connection: {
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
+          // Misma salvedad que en `RedisService`: se omite si está vacía, para
+          // no mandar un AUTH que un Redis sin contraseña rechaza.
+          ...(config.get<string>('REDIS_PASSWORD')
+            ? { password: config.get<string>('REDIS_PASSWORD') }
+            : {}),
           maxRetriesPerRequest: null,
         },
         // Aísla las colas de otros entornos que compartan el mismo Redis (dev
