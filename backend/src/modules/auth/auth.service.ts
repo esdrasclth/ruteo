@@ -7,8 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { Prisma, Role, UserStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { LoginDto } from './dto/login.dto';
@@ -21,6 +20,33 @@ import { nombreDeUsuario, ZitadelService } from './zitadel/zitadel.service';
 export interface Tokens {
   accessToken: string;
   refreshToken: string;
+}
+
+/**
+ * Huella del refresh token que se guarda en `User.refreshTokenHash`.
+ *
+ * **SHA-256 y no bcrypt, y no es una cuestión de rendimiento.** bcrypt trunca
+ * su entrada a 72 bytes. Un refresh token es un JWT de ~270 bytes cuyos
+ * primeros 72 son la cabecera más el arranque del `sub`: IDÉNTICOS entre dos
+ * tokens del mismo usuario. Con bcrypt, comparar el token viejo contra el hash
+ * del nuevo devolvía `true` —comprobado—, así que la rotación no invalidaba
+ * nada y un refresh robado seguía sirviendo sus 7 días completos.
+ *
+ * El token es un JWT firmado con 256 bits de entropía, no una contraseña que
+ * alguien pueda adivinar: no necesita factor de trabajo, necesita no truncarse.
+ */
+function huellaDeRefresh(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/** Comparación en tiempo constante de dos huellas hex. */
+function huellasIguales(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'hex');
+  const bufB = Buffer.from(b, 'hex');
+  // `timingSafeEqual` lanza si los largos difieren, y esa excepción sería en sí
+  // misma un canal lateral. Un largo distinto ya significa que no coinciden.
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 @Injectable()
@@ -165,7 +191,7 @@ export class AuthService {
     );
     if (
       !user?.refreshTokenHash ||
-      !(await bcrypt.compare(presentedToken, user.refreshTokenHash))
+      !huellasIguales(huellaDeRefresh(presentedToken), user.refreshTokenHash)
     ) {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -206,7 +232,7 @@ export class AuthService {
       this.jwt.signAsync(payload, refreshOpts),
     ]);
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 12);
+    const refreshTokenHash = huellaDeRefresh(refreshToken);
     await this.prisma.withTenant(tenantId, (tx) =>
       tx.user.update({ where: { id: userId }, data: { refreshTokenHash } }),
     );
