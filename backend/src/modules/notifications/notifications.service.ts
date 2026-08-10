@@ -1,5 +1,10 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { NotificationChannel, NotificationStatus } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -8,6 +13,7 @@ import {
   NotificationSendJob,
   QUEUE_NOTIFICATIONS,
 } from '../../queue/queue.constants';
+import { comprobarDestinatario } from './destinatario-permitido';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { NOTIFICATION_PROVIDER } from './notification-provider';
 import type { NotificationProvider } from './notification-provider';
@@ -157,7 +163,22 @@ export class NotificationsService {
     );
   }
 
-  send(tenantId: string, dto: SendNotificationDto) {
+  /**
+   * Envío manual desde la API. **Es el único punto donde el destinatario lo
+   * escribe una persona**, así que es el único que necesita comprobarlo.
+   *
+   * `dispatch` no pasa por aquí a propósito: su destinatario sale del envío que
+   * originó el evento, ya está dentro de los datos de la empresa, y añadirle una
+   * consulta por aviso sería pagar en cada cambio de estado por un control que
+   * ahí no aporta nada.
+   */
+  async send(tenantId: string, dto: SendNotificationDto) {
+    const veredicto = await this.prisma.withTenant(tenantId, (tx) =>
+      comprobarDestinatario(tx, dto.channel, dto.recipient),
+    );
+    if (!veredicto.permitido) {
+      throw new BadRequestException(veredicto.motivo);
+    }
     return this.notify(tenantId, dto);
   }
 }

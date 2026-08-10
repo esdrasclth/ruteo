@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { QUEUE_NOTIFICATIONS } from '../../queue/queue.constants';
 import { LogNotificationProvider } from './log-notification.provider';
 import { NOTIFICATION_PROVIDER } from './notification-provider';
@@ -16,6 +17,9 @@ import { NotificationsService } from './notifications.service';
     NotificationsService,
     NotificationsProcessor,
     LogNotificationProvider,
+    // Techo del envío manual: el filtro de destinatario acota a QUIÉN se puede
+    // escribir, y este a cuánto.
+    RateLimitGuard,
     // Con clave de Resend se entrega de verdad; sin ella se sigue registrando
     // en el log, que es lo que permite probar el flujo completo en local sin
     // mandar correo a nadie. La elección se hace al arrancar y queda visible en
