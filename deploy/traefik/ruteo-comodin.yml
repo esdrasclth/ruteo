@@ -71,5 +71,19 @@ http:
           # El contenedor del panel, por nombre dentro de `dokploy-network`.
           # El sufijo `shc0uh` lo puso Dokploy al crear la aplicación Compose y
           # es estable mientras no se borre y recree el servicio `stack`.
-          # Comprobar con: docker ps --format '{{.Names}}' | grep frontend
+          # Para comprobarlo: docker ps | grep frontend
+          #
+          # OJO con lo que se escribe en los comentarios de este archivo.
+          # Traefik lo pasa por su motor de PLANTILLAS Go antes de leerlo como
+          # YAML, y las plantillas no respetan los comentarios. Aquí ponía
+          # `docker ps --format` con el marcador de nombres entre llaves dobles,
+          # y Traefik intentó evaluarlo:
+          #
+          #   template: :74:49: executing "" at <.Names>:
+          #   can't evaluate field Names in type bool
+          #
+          # El archivo ENTERO dejó de cargar —ni certificado ni routers— y el
+          # síntoma no señalaba a un comentario: los subdominios servían el
+          # certificado autofirmado por defecto de Traefik, como si el comodín
+          # nunca se hubiera emitido.
           - url: 'http://ruteo-stack-shc0uh-frontend-1:3001'
