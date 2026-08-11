@@ -1,0 +1,75 @@
+# Enrutado y certificado de los paneles por empresa.
+#
+# Se copia a `/etc/dokploy/traefik/dynamic/ruteo-comodin.yml` en el VPS. Vive
+# aquí, en el repo, porque es la única pieza del despliegue que no está en
+# ningún compose y que se perdería con la máquina.
+#
+# Es configuración DINÁMICA: Traefik la vigila (`file.watch: true`) y la recarga
+# sola. No hay que reiniciar nada, y un error aquí no tira el proxy —lo rechaza
+# y sigue con lo anterior—, al revés que un error en `traefik.yml`.
+
+tls:
+  certificates:
+    # El comodín lo emite y renueva `scripts/cert-comodin.sh`. Traefik elige el
+    # certificado por SNI: cualquier `<empresa>.ruteo.brandsofts.com` encaja con
+    # `*.ruteo.brandsofts.com` y se sirve con este.
+    #
+    # La ruta es la del HOST y la del CONTENEDOR a la vez: Dokploy monta
+    # `/etc/dokploy/traefik/dynamic` en sí mismo, sin cambiar de sitio.
+    - certFile: /etc/dokploy/traefik/dynamic/certificates/ruteo-comodin.crt
+      keyFile: /etc/dokploy/traefik/dynamic/certificates/ruteo-comodin.key
+
+http:
+  routers:
+    ruteo-empresas:
+      # `priority` explícita, y esto NO es opcional.
+      #
+      # Cuando no se pone, Traefik ordena por longitud de la regla. La de aquí
+      # abajo es más larga que `Host(`panel.ruteo.brandsofts.com`)`, así que
+      # ganaría a los routers que crea Dokploy y se tragaría el panel raíz y la
+      # API: todo acabaría en el panel de tenant. Con prioridad 1 —la más baja—
+      # este router solo atiende lo que ningún Host() exacto reclama.
+      priority: 1
+      # Traefik v3 (aquí corre 3.6.7): `HostRegexp` usa expresiones regulares de
+      # Go. La sintaxis de v2 con `{sub:[a-z]+}` ya no vale y falla en silencio.
+      #
+      # El juego de caracteres es el mismo que exige `RegisterDto` al dar de
+      # alta, para que no haya hosts que enruten pero que ningún registro haya
+      # podido crear. Y exige una etiqueta ANTES del dominio, así que no captura
+      # `ruteo.brandsofts.com` a secas, que es la landing.
+      rule: 'HostRegexp(`^[a-z0-9-]+\.ruteo\.brandsofts\.com$`)'
+      entryPoints:
+        - websecure
+      service: ruteo-panel
+      # Sin `certResolver`: el certificado sale del almacén de arriba. Pedirle
+      # uno a Let's Encrypt por HTTP-01 no funcionaría —de una regex no se puede
+      # deducir para qué dominio pedirlo— y solo generaría intentos fallidos.
+      tls: {}
+
+    # Sin esto, entrar por `http://empresa.ruteo…` da un 404 de Traefik en vez
+    # de llevar a https. Los routers de Dokploy traen su propia redirección;
+    # este es aparte y necesita la suya.
+    ruteo-empresas-http:
+      priority: 1
+      rule: 'HostRegexp(`^[a-z0-9-]+\.ruteo\.brandsofts\.com$`)'
+      entryPoints:
+        - web
+      middlewares:
+        - ruteo-a-https
+      service: ruteo-panel
+
+  middlewares:
+    ruteo-a-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  services:
+    ruteo-panel:
+      loadBalancer:
+        servers:
+          # El contenedor del panel, por nombre dentro de `dokploy-network`.
+          # El sufijo `shc0uh` lo puso Dokploy al crear la aplicación Compose y
+          # es estable mientras no se borre y recree el servicio `stack`.
+          # Comprobar con: docker ps --format '{{.Names}}' | grep frontend
+          - url: 'http://ruteo-stack-shc0uh-frontend-1:3001'
