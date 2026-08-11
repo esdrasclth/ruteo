@@ -52,17 +52,23 @@ chmod 700 "$TRABAJO"
 
 # lego decide solo entre pedir y renovar según lo que encuentre en --path, pero
 # `renew` sobre un certificado que no existe falla, y `run` sobre uno que sí
-# existe lo pide otra vez y gasta cuota. Así que se elige aquí.
-#
-# El nombre del archivo lo fija lego: el `*` del comodín se convierte en `_`.
+# El nombre del archivo lo fija lego a partir del primer dominio: el `*` del
+# comodín se convierte en `_`.
 ORIGEN="${TRABAJO}/certificates/_.${DOMINIO_BASE}"
-if [[ -f "${ORIGEN}.crt" ]]; then
-  ACCION=(renew --days 30)
-  echo "[$(date -Is)] renovando si quedan menos de 30 días"
-else
-  ACCION=(run)
-  echo "[$(date -Is)] primera emisión"
-fi
+
+# Un solo comando para emitir y para renovar.
+#
+# En lego 4.x había que elegir entre `run` y `renew`, y equivocarse costaba:
+# `renew` sobre un certificado que no existe falla, y `run` sobre uno que sí
+# existe lo vuelve a pedir y gasta cuota de Let's Encrypt. En lego 5 el
+# subcomando `renew` DESAPARECIÓ y `run` hace las dos cosas: emite si no hay
+# nada y renueva solo cuando toca (`--renew-days`, por defecto cuando queda un
+# tercio de vida). Así que llamarlo cada semana es correcto y barato.
+#
+# Ojo si algún día se fija la versión de la imagen: en lego 4.x estas banderas
+# eran globales y aquí van DESPUÉS del subcomando. Con la 4.x, esto falla con
+# «flag provided but not defined».
+echo "[$(date -Is)] emitiendo o renovando *.${DOMINIO_BASE}"
 
 # `--dns cloudflare` toma CF_DNS_API_TOKEN del entorno. Se pasa con `-e VAR` sin
 # valor a propósito: así el token no aparece en la línea de comandos, que
@@ -75,18 +81,17 @@ docker run --rm \
   -e CF_DNS_API_TOKEN \
   -v "${TRABAJO}:/data" \
   "$IMAGEN" \
+  run \
   --accept-tos \
   --email "$CORREO" \
   --dns cloudflare \
   --path /data \
   --domains "*.${DOMINIO_BASE}" \
-  --domains "${DOMINIO_BASE}" \
-  "${ACCION[@]}"
+  --domains "${DOMINIO_BASE}"
 
-# `renew` no toca nada si al certificado le quedan más de 30 días, así que
-# copiar siempre es inútil pero inofensivo… salvo por un detalle: copiar
-# reescribe el archivo, Traefik ve el cambio y recarga sin necesidad. Se copia
-# solo si el de origen es más nuevo.
+# Cuando no toca renovar, lego deja el archivo como estaba. Copiar igualmente
+# sería inofensivo salvo por un detalle: reescribirlo hace que Traefik vea un
+# cambio y recargue sin motivo. `-C` copia solo si el de origen es distinto.
 install -m 644 -C "${ORIGEN}.crt" "${PUBLICADO}/ruteo-comodin.crt"
 # La clave privada del comodín de TODAS las empresas. 600 y no 644.
 install -m 600 -C "${ORIGEN}.key" "${PUBLICADO}/ruteo-comodin.key"
