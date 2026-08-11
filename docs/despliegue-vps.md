@@ -4,6 +4,12 @@ Lo que el código **no** puede hacer por sí solo. El arranque en producción
 comprueba buena parte de esto y se niega a levantar si falta (ver
 `backend/src/config/env.validation.ts`), pero los pasos de aquí hay que darlos.
 
+> Este documento describe el despliegue **a mano**: `docker-compose.prod.yml` y
+> un nginx del host delante. Si el VPS corre Dokploy, el compose es otro y el
+> proxy lo pone Traefik: ver `docs/despliegue-dokploy.md`. Los apartados 1, 2, 6
+> y 7 de aquí (secretos, rotación de contraseñas, qué cambia para los usuarios y
+> respaldos) aplican igual en los dos casos.
+
 ## 0. Resumen: el despliegue entero
 
 ```bash

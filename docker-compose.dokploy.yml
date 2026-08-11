@@ -1,0 +1,234 @@
+# Despliegue en Dokploy (tipo «Compose», proveedor «Docker Compose»).
+#
+# Es un archivo APARTE de `docker-compose.prod.yml` y no una superposición, por
+# el mismo motivo que aquel es aparte del de desarrollo: Compose SUMA las listas
+# de `ports` al superponer, así que ninguna superposición puede QUITAR una
+# publicación de puertos. Y aquí lo que hay que quitar es precisamente eso.
+#
+# Las tres diferencias respecto a `docker-compose.prod.yml`:
+#
+#   1. NINGÚN servicio publica puertos. En el despliegue manual asomaban tres al
+#      loopback porque delante había un nginx del host. Aquí el proxy es Traefik,
+#      que corre EN Docker y alcanza a los contenedores por la red
+#      `dokploy-network`; publicar en el host no le sirve de nada y solo abre
+#      superficie. Traefik es también quien termina TLS y saca los certificados.
+#
+#   2. Sin `container_name`. Dokploy nombra los contenedores con el prefijo de la
+#      aplicación. Fijarlos a mano impide tener dos entornos (producción y una
+#      rama de pruebas) en la misma máquina: el segundo despliegue choca con el
+#      nombre del primero y falla a mitad, con el primero ya parado.
+#
+#   3. Sin `env_file`. `backend/.env` está en `.gitignore`, así que en el clon
+#      que hace Dokploy ese archivo NO EXISTE y Compose aborta. Todo lo que el
+#      backend necesita se declara abajo y se interpola desde la pestaña
+#      «Environment» de Dokploy.
+#
+# IMPORTANTE al configurar la aplicación en Dokploy:
+#
+#   - Proveedor «Docker Compose», NO «Stack». El servicio `migraciones` usa
+#     `condition: service_completed_successfully`, que Swarm no entiende.
+#   - Deja «Randomize Compose» APAGADO: le añade un sufijo aleatorio a volúmenes
+#     y redes, y aquí hay dos volúmenes externos con nombre fijo que dejarían de
+#     encontrarse (el de la base entre ellos).
+#
+# Ver `docs/despliegue-dokploy.md`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ruteo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en el Environment de Dokploy}
+      POSTGRES_DB: ${POSTGRES_DB:-ruteo}
+    volumes:
+      - ruteo_pgdata:/var/lib/postgresql/data
+    networks:
+      - interna
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-ruteo} -d ${POSTGRES_DB:-ruteo}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # En producción la contraseña es obligatoria; el backend además se niega a
+    # arrancar sin ella (`env.validation.ts`).
+    command: redis-server --requirepass "${REDIS_PASSWORD:?define REDIS_PASSWORD en el Environment de Dokploy}"
+    volumes:
+      - ruteo_redisdata:/data
+    networks:
+      - interna
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    restart: unless-stopped
+    command: osrm-routed --algorithm mld --max-table-size 1000 /data/honduras.osrm
+    volumes:
+      - ruteo_osrmdata:/data
+    networks:
+      - interna
+
+  # Paso de migración: corre una vez, termina, y el backend no arranca hasta que
+  # haya terminado BIEN. Así un despliegue con una migración rota se detiene ahí
+  # en vez de dejar la API sirviendo contra un esquema que no le corresponde.
+  #
+  # En Dokploy esto además hace visible el fallo: el despliegue queda en rojo y
+  # los logs de la aplicación muestran el error de Prisma.
+  migraciones:
+    build:
+      context: ./backend
+      target: migraciones
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:?define DATABASE_URL_DOCKER en el Environment de Dokploy}
+    networks:
+      - interna
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    # `node` sería PID 1 y no hay nadie que recoja procesos zombis ni que
+    # reenvíe señales; con esto Docker pone un init mínimo delante y el
+    # `enableShutdownHooks` de Nest recibe su SIGTERM al parar.
+    init: true
+    environment:
+      # La lista completa, porque aquí no hay `env_file` del que heredar. Lo que
+      # no aparezca toma el valor por defecto de `env.validation.ts`, que está
+      # escrito para desarrollo: `CORS_ORIGIN` apuntando a localhost, por ejemplo.
+
+      NODE_ENV: production
+      # Fijo, y no interpolado. Si se cuela otro valor, la aplicación escucha en
+      # un puerto y Traefik enruta a otro. El síntoma es de los peores: el
+      # contenedor se reporta SANO —su healthcheck usa `$PORT` y acierta— y desde
+      # fuera Traefik devuelve 502 sin más explicación.
+      PORT: '3000'
+
+      # Dentro de la red de Compose los servicios se llaman por su nombre, así
+      # que estas cadenas llevan `db` como host y no `localhost`.
+      DATABASE_URL: ${DATABASE_URL_DOCKER:?define DATABASE_URL_DOCKER en el Environment de Dokploy}
+      DATABASE_URL_APP: ${DATABASE_URL_APP_DOCKER:?define DATABASE_URL_APP_DOCKER en el Environment de Dokploy}
+
+      # Los tres deben ser DISTINTOS entre sí; el arranque lo comprueba y aborta.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?define JWT_ACCESS_SECRET en el Environment de Dokploy}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?define JWT_REFRESH_SECRET en el Environment de Dokploy}
+      PLATFORM_JWT_SECRET: ${PLATFORM_JWT_SECRET:?define PLATFORM_JWT_SECRET en el Environment de Dokploy}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900s}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER:?define ZITADEL_ISSUER en el Environment de Dokploy}
+      ZITADEL_SERVICE_TOKEN: ${ZITADEL_SERVICE_TOKEN:?define ZITADEL_SERVICE_TOKEN en el Environment de Dokploy}
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID:-}
+
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      # Sale de la MISMA variable que configura el contenedor de Redis. Tenerla
+      # en dos sitios es lo que hace que se separen, y el síntoma es un backend
+      # en bucle de `NOAUTH` que nunca llega a escuchar.
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      QUEUE_PREFIX: ${QUEUE_PREFIX:-bull}
+
+      OSRM_URL: http://osrm:5000
+
+      # Sin clave, los códigos de restablecimiento y verificación salen por el
+      # log en vez de enviarse: en producción eso es una cuenta que nadie puede
+      # recuperar.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: "${MAIL_FROM:-Ruteo <no-reply@brandsofts.com>}"
+
+      # Enlaces de los correos de verificación.
+      PANEL_URL: ${PUBLIC_PANEL_URL:?define PUBLIC_PANEL_URL en el Environment de Dokploy}
+      # Base de los enlaces de rastreo de las etiquetas QR. Es el dominio del
+      # backend SIN el sufijo /api, al revés que `PUBLIC_API_URL`.
+      PUBLIC_APP_URL: ${PUBLIC_BACKEND_URL:?define PUBLIC_BACKEND_URL en el Environment de Dokploy}
+      # Un solo origen: el panel. La landing no llama a la API.
+      CORS_ORIGIN: ${PUBLIC_PANEL_URL}
+
+      # Con `true`, un tenant puede apuntar un webhook al metadata del proveedor
+      # de nube o a los servicios internos del propio VPS —incluido el panel de
+      # Dokploy—. Fijo en `false`, no interpolado: no es algo que deba poder
+      # cambiarse desde una pestaña de la interfaz por error.
+      WEBHOOKS_PERMITIR_DESTINOS_PRIVADOS: 'false'
+
+      # Nominatim exige identificar la aplicación con un contacto real en cada
+      # petición; el de por defecto apunta a un dominio que no es tuyo.
+      NOMINATIM_USER_AGENT: "${NOMINATIM_USER_AGENT:-Ruteo/1.0 (logistica; contacto: soporte@brandsofts.com)}"
+    networks:
+      # `interna` para hablar con db/redis/osrm; `dokploy-network` para que
+      # Traefik lo alcance. Sin la segunda, el dominio que configures en Dokploy
+      # devuelve 404 desde Traefik: no encuentra el contenedor.
+      - interna
+      - dokploy-network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migraciones:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Se incrusta en el bundle al construir; cambiarla obliga a reconstruir
+        # la imagen. Cambiarla en el Environment y darle a «Redeploy» sin que
+        # cambie el código NO basta si Dokploy reutiliza la capa cacheada: usa
+        # «Rebuild» o cambia algo del contexto.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?define PUBLIC_API_URL en el Environment de Dokploy}
+    restart: unless-stopped
+    init: true
+    networks:
+      - dokploy-network
+
+  landing:
+    build:
+      context: ./landing
+      args:
+        NEXT_PUBLIC_APP_URL: ${PUBLIC_PANEL_URL:?define PUBLIC_PANEL_URL en el Environment de Dokploy}
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:?define PUBLIC_SITE_URL en el Environment de Dokploy}
+    restart: unless-stopped
+    init: true
+    networks:
+      - dokploy-network
+
+networks:
+  # Red propia de esta aplicación: db, redis y osrm viven solo aquí y no son
+  # alcanzables desde el resto de lo que corra en el Dokploy de la máquina.
+  interna:
+  # La crea el instalador de Dokploy y es donde escucha Traefik. Externa porque
+  # la comparten todas las aplicaciones del servidor.
+  dokploy-network:
+    external: true
+
+volumes:
+  # `external: true` en los dos que no se pueden perder por descuido: así BORRAR
+  # la aplicación en Dokploy no se lleva los datos por delante, y el nombre es
+  # estable para los scripts de respaldo. A cambio hay que crearlos a mano una
+  # vez (`docker volume create`), y si faltan el despliegue falla de inmediato en
+  # vez de arrancar con una base vacía —que es exactamente lo que se quiere—.
+  ruteo_pgdata:
+    external: true
+    name: ruteo_pgdata
+  ruteo_osrmdata:
+    external: true
+    name: ruteo_osrmdata
+  # Este sí lo gestiona Dokploy: Redis es caché y colas, se reconstruye solo.
+  ruteo_redisdata:
