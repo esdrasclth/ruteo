@@ -26,12 +26,14 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!slug) return;
     setLoading(true);
     try {
+      // Sin slug —panel raíz— el backend busca el correo en todas las empresas
+      // y manda un código por cada una, cada uno con el enlace a su panel. La
+      // clave se omite en vez de mandarse vacía: el DTO la valida si viene.
       await api("/auth/forgot-password", {
         method: "POST",
-        body: JSON.stringify({ slug, email }),
+        body: JSON.stringify(slug ? { slug, email } : { email }),
       });
       // La API responde igual exista o no la cuenta, y esta pantalla hace lo
       // mismo: si aquí se distinguiera, se perdería en el frontend la

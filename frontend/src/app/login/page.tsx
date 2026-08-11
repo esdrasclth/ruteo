@@ -4,7 +4,13 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { api, setSession, ApiError, CurrentUser } from "@/lib/api";
+import {
+  api,
+  setSession,
+  ApiError,
+  CurrentUser,
+  EmpresaDeAcceso,
+} from "@/lib/api";
 import { useSlugTenant } from "@/lib/use-tenant";
 import { INICIO_POR_ROL } from "@/lib/logistics";
 import { Button } from "@/components/ui/button";
@@ -24,13 +30,48 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // El slug sale del subdominio, no de un campo.
+  // El slug sale del subdominio, no de un campo. En el panel raíz no hay, y ahí
+  // la empresa se averigua por el correo.
   const { slug, resuelto } = useSlugTenant();
+
+  // Solo se llena cuando el mismo correo y contraseña valen en más de una
+  // empresa. Con una sola no se muestra nada: se redirige directo.
+  const [empresas, setEmpresas] = useState<EmpresaDeAcceso[] | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!slug) return;
     setLoading(true);
+
+    // Sin slug —panel raíz— el backend responde con las empresas donde esta
+    // credencial vale, cada una con su vale de traspaso. Los tokens no vienen
+    // aquí: la sesión tiene que nacer en el subdominio de la empresa, que es un
+    // origen distinto y no comparte `localStorage` con esta pantalla.
+    if (!slug) {
+      try {
+        const { empresas: encontradas } = await api<{
+          empresas: EmpresaDeAcceso[];
+        }>("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (encontradas.length === 1) {
+          // `location.href` y no el router de Next: es otro origen, no una ruta
+          // de esta aplicación.
+          window.location.href = encontradas[0].url;
+          return;
+        }
+        setEmpresas(encontradas);
+        setLoading(false);
+      } catch (err) {
+        toast.error(
+          err instanceof ApiError ? err.message : "No se pudo iniciar sesión",
+        );
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const tokens = await api<{ accessToken: string; refreshToken: string }>(
         "/auth/login",
@@ -89,28 +130,41 @@ export default function LoginPage() {
     >
       <AuthBrand />
 
-      {resuelto && !slug ? (
+      {empresas ? (
         <>
+          {/* Solo se llega aquí con la contraseña ya comprobada: esta lista no
+              revela en qué empresas está un correo a quien no la sabía. */}
           <AuthHeading
-            title="Entra por la dirección de tu empresa"
-            description="Cada empresa tiene su propia dirección. Esta es la general, y desde aquí no se puede iniciar sesión."
+            title="¿A qué empresa entras?"
+            description="Tu correo está dado de alta en más de una."
           />
-          <p className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-            Si tu empresa es <span className="text-white">mi-empresa</span>,
-            entra por{" "}
-            <span className="text-white">
-              mi-empresa.{process.env.NEXT_PUBLIC_PANEL_BASE_HOST}
-            </span>
-            . La dirección está en el correo de alta que recibiste.
-          </p>
+          <ul className="mt-6 grid gap-2">
+            {empresas.map((empresa) => (
+              <li key={empresa.slug}>
+                {/* Enlace normal y no el router de Next: cada empresa vive en
+                    otro origen. Y `replace` en el historial no aplica aquí,
+                    porque el vale de la URL se gasta al canjearse. */}
+                <a
+                  href={empresa.url}
+                  className="flex items-baseline justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-white transition-colors hover:border-[#56b3a5] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5]"
+                >
+                  <span className="font-medium">{empresa.nombre}</span>
+                  <span className="text-xs text-white/50">{empresa.slug}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
           <p className="mt-6 text-sm text-white/50">
-            ¿Tu empresa aún no tiene cuenta?{" "}
-            <Link
-              href="/register"
+            Los accesos de esta lista caducan en un minuto. Si se te pasa,
+            vuelve a{" "}
+            <button
+              type="button"
+              onClick={() => setEmpresas(null)}
               className="rounded font-medium text-[#56b3a5] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5]"
             >
-              Regístrala
-            </Link>
+              iniciar sesión
+            </button>
+            .
           </p>
         </>
       ) : (
@@ -120,7 +174,7 @@ export default function LoginPage() {
             description={
               slug
                 ? `Entra a ${slug} para retomar donde lo dejaste.`
-                : "Entra con tus credenciales para retomar donde lo dejaste."
+                : "Entra con tu correo y te llevamos al panel de tu empresa."
             }
           />
 

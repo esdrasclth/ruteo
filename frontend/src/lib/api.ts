@@ -22,6 +22,21 @@ export interface Session {
   role: Role;
 }
 
+/**
+ * Una empresa a la que el correo y la contraseña recién tecleados dan acceso.
+ * Es lo que devuelve `/auth/login` cuando la petición no lleva slug, o sea
+ * desde el panel raíz.
+ *
+ * `url` apunta a OTRO origen —el subdominio de la empresa— y lleva dentro un
+ * vale de un solo uso que caduca en un minuto. Se navega con `location.href`,
+ * nunca con el router de Next, que solo sabe moverse dentro de este origen.
+ */
+export interface EmpresaDeAcceso {
+  slug: string;
+  nombre: string;
+  url: string;
+}
+
 const SESSION_KEY = "ruteo.session";
 
 export function getSession(): Session | null {

@@ -11,6 +11,8 @@
  * que teclear el identificador de su empresa.
  */
 
+import { esSlugReservado } from "./slugs-reservados";
+
 /**
  * Dominio bajo el que cuelgan los paneles de empresa. Se incrusta en el bundle
  * al construir, como el resto de `NEXT_PUBLIC_*`: cambiarlo obliga a
@@ -33,6 +35,17 @@ export function slugDelHost(host: string): string | null {
   // que alguien está probando cosas: mejor tratarlo como "sin empresa" que
   // mandar `a.b` al backend a ver qué pasa.
   if (!/^[a-z0-9-]+$/.test(etiqueta)) return null;
+
+  // Los hosts del sistema no son empresas, y esto NO es un detalle estético.
+  //
+  // El panel raíz es `panel.<dominio>`, así que recortar el dominio deja
+  // `panel`, que encaja con la regex de arriba. Sin esta comprobación, el panel
+  // raíz se creía la empresa «panel» y mandaba `slug: "panel"` al login: el
+  // backend no encuentra ninguna empresa con ese slug y responde «credenciales
+  // inválidas» a gente que tecleaba su contraseña correcta. Ningún registro
+  // puede haber creado estos slugs —`SLUGS_RESERVADOS` los rechaza al dar de
+  // alta—, así que si aparecen aquí no son de nadie.
+  if (esSlugReservado(etiqueta)) return null;
 
   return etiqueta;
 }
