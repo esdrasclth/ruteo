@@ -202,9 +202,17 @@ docker compose -p ruteo-stack-shc0uh exec db psql -U ruteo -d ruteo \
   -c "ALTER ROLE ruteo_app PASSWORD '<la-de-DATABASE_URL_APP_DOCKER>';"
 ```
 
-Y reinicia el backend desde Dokploy. Esta vez levanta, y **sin tocar el
-Environment**: la cadena ya tenía la contraseña correcta, era el rol el que no
-la tenía.
+No hace falta reiniciar nada: el backend está en bucle de reinicio
+(`restart: unless-stopped`), así que en el siguiente intento —segundos— conecta
+solo. Y **sin tocar el Environment**: la cadena ya tenía la contraseña correcta,
+era el rol el que no la tenía.
+
+El error que verás en los logs hasta ese momento, para reconocerlo:
+
+```
+PrismaClientInitializationError: Authentication failed against database server,
+the provided database credentials for `ruteo_app` are not valid.   (P1000)
+```
 
 ### El primer superadmin
 
