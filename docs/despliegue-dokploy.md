@@ -276,20 +276,26 @@ Los scripts del repo (`respaldo-db.sh`, `restaurar-db.sh`) funcionan bajo
 Dokploy, pero hay que decirles dónde está el compose y con qué nombre de
 proyecto corre, porque no es el del directorio:
 
+Los dos scripts corren **como root**, no como tu usuario: hablan con el socket de
+Docker y escriben en `/var/backups/ruteo`. Y `sudo` no hereda las variables, así
+que hay que pasarlas con `env` —`sudo VAR=x ...` depende de la configuración de
+sudoers y falla de formas confusas—:
+
 ```bash
 cd /etc/dokploy/compose/ruteo-stack-shc0uh/code
 
-export COMPOSE_FILE=docker-compose.dokploy.yml
-export COMPOSE_PROJECT_NAME=ruteo-stack-shc0uh   # confirmalo con `docker compose ls`
-
-./scripts/respaldo-db.sh
+sudo env COMPOSE_FILE=docker-compose.dokploy.yml \
+         COMPOSE_PROJECT_NAME=ruteo-stack-shc0uh \
+         ./scripts/respaldo-db.sh
 ```
 
 Sin `COMPOSE_PROJECT_NAME`, `docker compose` deduce el proyecto del nombre del
 directorio (`code`), no encuentra el servicio `db` y el script falla con un «no
 such service» que no dice nada del motivo real.
 
-En el crontab del VPS:
+En el crontab de **root** (`sudo crontab -e`, no `crontab -e`: el de tu usuario no
+puede escribir en `/var/log` ni llegar al socket de Docker). Ahí no hace falta
+`sudo env`, porque ya corre como root:
 
 ```bash
 0 3 * * *  cd /etc/dokploy/compose/ruteo-stack-shc0uh/code && COMPOSE_FILE=docker-compose.dokploy.yml COMPOSE_PROJECT_NAME=ruteo-stack-shc0uh ./scripts/respaldo-db.sh >> /var/log/ruteo-respaldo.log 2>&1
@@ -300,11 +306,21 @@ limpio). Los scripts sobreviven porque vienen del repo, pero cualquier cosa que
 edites ahí a mano se pierde en el siguiente push.
 
 **Un respaldo sin restauración probada no es un respaldo.** La prueba no toca
-producción —restaura en una base temporal al lado, cuenta filas y la borra—:
+producción —restaura en una base temporal al lado, cuenta filas y la borra—.
+Primero mira qué volcados hay y coge el nombre de uno real:
 
 ```bash
-./scripts/restaurar-db.sh --probar /var/backups/ruteo/ruteo-<fecha>.dump
+sudo ls -lh /var/backups/ruteo/
+
+sudo env COMPOSE_FILE=docker-compose.dokploy.yml \
+         COMPOSE_PROJECT_NAME=ruteo-stack-shc0uh \
+         ./scripts/restaurar-db.sh --probar /var/backups/ruteo/ruteo-20260811-030000.dump
 ```
+
+Esa fecha es de ejemplo: sustitúyela por la del archivo que te haya listado el
+`ls`. Pegar el comando con un `<algo>` entre picoparéntesis no falla con un
+mensaje útil, falla con un `syntax error near unexpected token` del propio bash,
+porque `<` es una redirección.
 
 Y siguen quedando en el mismo disco que la base. Copiarlos fuera (`rclone` a un
 bucket, `scp` a otra máquina) es lo que convierte esto en un respaldo de verdad.
