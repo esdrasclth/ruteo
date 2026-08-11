@@ -83,26 +83,26 @@ preguntarse por qué hay un contenedor en bucle.
 
 ## 3. Subir el repo a GitHub
 
-El repositorio es local todavía. Dokploy clona por Git, así que hace falta un
-remoto:
+Dokploy clona por Git, así que hace falta un remoto:
 
 ```bash
 gh repo create ruteo --private --source=. --remote=origin
-git push -u origin --all
+git push -u origin main
 ```
 
 **Privado.** El repo no lleva secretos —`backend/.env` está en `.gitignore`—
 pero sí el esquema completo, la lógica de RLS y los archivos de despliegue.
 
-La rama que configures en Dokploy (paso 4) tiene que ser una que exista en el
-remoto. Con el trabajo todavía en `feat/plataforma-y-landing`, o la fusionas a
-`main` antes de desplegar, o pones esa rama en Dokploy y la cambias a `main`
-cuando fusiones. Lo que no funciona es dejar `main` configurada mientras el
-código vive solo en la rama: Dokploy clona `main`, no encuentra
-`docker-compose.dokploy.yml` y falla sin decir por qué.
+La rama que configures en Dokploy (paso 4) tiene que existir en el remoto y
+contener `docker-compose.dokploy.yml`. Si el trabajo vive en una rama de
+funcionalidad, fusiónala a `main` antes de desplegar: dejar `main` configurada
+mientras el código está solo en la rama hace que Dokploy clone `main`, no
+encuentre el compose y falle sin decir por qué.
 
 En Dokploy, `Settings → Git → GitHub` instala la app de GitHub y le da acceso al
-repo. Es lo que habilita el auto-deploy del paso 8.
+repo. Es lo que habilita el auto-deploy del paso 8. Si la app ya estaba instalada
+para otros proyectos, un repo nuevo aparece solo si se instaló con acceso a
+«todos los repositorios»; con acceso selectivo hay que añadirlo en GitHub.
 
 ## 4. Crear la aplicación en Dokploy
 
@@ -138,11 +138,20 @@ openssl rand -base64 32   # POSTGRES_PASSWORD
 
 Los tres de JWT **distintos entre sí**; el arranque lo comprueba y aborta si no.
 
-Para el primer despliegue, `DATABASE_URL_DOCKER` y `DATABASE_URL_APP_DOCKER`
-llevan todavía las contraseñas de la migración (`ruteo` y `ruteo_app`). Se rotan
-en el paso 7 y **el backend no arrancará hasta que lo hagas**: detecta las de
-por defecto en la cadena y se niega. Eso es lo esperado, no un fallo del
-despliegue.
+Pon en `DATABASE_URL_DOCKER` y `DATABASE_URL_APP_DOCKER` las contraseñas
+**definitivas** desde el principio, no las de la migración. La primera de las dos
+funcionará de inmediato (Postgres inicializa el rol `ruteo` con el
+`POSTGRES_PASSWORD` de este mismo Environment); la segunda no, hasta que rotes el
+rol `ruteo_app` en el paso 7. Es una rotación, no una edición de variables: el
+Environment ya queda bien puesto aquí y no se vuelve a tocar.
+
+Genera las contraseñas de base de datos **en hexadecimal**, no en base64:
+`openssl rand -base64` puede producir `/` y `+`, y una `/` dentro de la
+contraseña parte la URL de conexión por donde no es.
+
+```bash
+openssl rand -hex 32   # POSTGRES_PASSWORD y la de ruteo_app
+```
 
 ## 6. Dominios
 
@@ -167,41 +176,44 @@ alcanzables desde fuera ni desde el resto de aplicaciones del servidor.
 **Deploy.** El orden que verás en los logs: `db` y `redis` sanos →
 `migraciones` corre y termina → `backend`, `frontend` y `landing` arrancan.
 
-Salvo que el backend se caerá al arrancar, con este error:
+Salvo que el backend no llegará a servir: se queda sin poder conectar como
+`ruteo_app`. Es lo esperado en el primer despliegue.
 
-```
-Configuración insegura para producción:
-  - DATABASE_URL usa la contraseña por defecto. Rótala con ALTER ROLE y actualiza la cadena.
-```
+> Por qué: la migración `20260712203500_rls_setup` crea el rol de aplicación con
+> la contraseña escrita en el propio SQL (`ruteo_app`), y no se puede
+> parametrizar desde una migración de Prisma. Hasta que esa migración no ha
+> corrido, el rol no existe; y en cuanto existe, su contraseña no es la que dice
+> `DATABASE_URL_APP_DOCKER`.
 
-Correcto. Ahora, por SSH:
+Solo hay que rotar **una**, no dos. `ALTER ROLE ruteo` no hace falta: ese rol lo
+crea Postgres al inicializarse con el `POSTGRES_PASSWORD` que pusiste en el
+Environment, así que ya nace con la contraseña buena. (El apartado 2 de
+`docs/despliegue-vps.md` rota las dos porque está escrito para un despliegue que
+arrancó con `POSTGRES_PASSWORD=ruteo`.)
+
+Por SSH:
 
 ```bash
-# El nombre del proyecto que usó Dokploy (columna NAME):
+# Nombre del proyecto Compose que usó Dokploy. NO es el App Name que escribiste:
+# Dokploy le añade un sufijo aleatorio. En este despliegue: ruteo-stack-shc0uh
 docker compose ls
 
-docker compose -p <appName> exec db psql -U ruteo -d ruteo \
-  -c "ALTER ROLE ruteo_app PASSWORD '<la-generada>';" \
-  -c "ALTER ROLE ruteo     PASSWORD '<la-otra-generada>';"
+docker compose -p ruteo-stack-shc0uh exec db psql -U ruteo -d ruteo \
+  -c "ALTER ROLE ruteo_app PASSWORD '<la-de-DATABASE_URL_APP_DOCKER>';"
 ```
 
-Vuelve al Environment de Dokploy, pon esas dos contraseñas en
-`DATABASE_URL_DOCKER` y `DATABASE_URL_APP_DOCKER`, y **Redeploy**. Esta vez el
-backend levanta.
-
-> Por qué este baile: la migración `20260712203500_rls_setup` crea el rol de
-> aplicación con la contraseña escrita en el propio SQL, y no se puede
-> parametrizar desde una migración de Prisma. En un despliegue nuevo sobrevive
-> tal cual si nadie la rota.
+Y reinicia el backend desde Dokploy. Esta vez levanta, y **sin tocar el
+Environment**: la cadena ya tenía la contraseña correcta, era el rol el que no
+la tenía.
 
 ### El primer superadmin
 
 ```bash
-docker compose -p <appName> -f /etc/dokploy/compose/<appName>/code/docker-compose.dokploy.yml \
+docker compose -p ruteo-stack-shc0uh -f /etc/dokploy/compose/ruteo-stack-shc0uh/code/docker-compose.dokploy.yml \
   run --rm backend node dist/scripts/crear-superadmin.js
 ```
 
-(`ls /etc/dokploy/compose` confirma la ruta exacta si el nombre no coincide.)
+(`ls /etc/dokploy/compose` confirma la ruta si el sufijo cambió.)
 
 ## 8. Comprobaciones
 
@@ -257,10 +269,10 @@ Dokploy, pero hay que decirles dónde está el compose y con qué nombre de
 proyecto corre, porque no es el del directorio:
 
 ```bash
-cd /etc/dokploy/compose/<appName>/code
+cd /etc/dokploy/compose/ruteo-stack-shc0uh/code
 
 export COMPOSE_FILE=docker-compose.dokploy.yml
-export COMPOSE_PROJECT_NAME=<appName>   # el de `docker compose ls`
+export COMPOSE_PROJECT_NAME=ruteo-stack-shc0uh   # confirmalo con `docker compose ls`
 
 ./scripts/respaldo-db.sh
 ```
@@ -272,7 +284,7 @@ such service» que no dice nada del motivo real.
 En el crontab del VPS:
 
 ```bash
-0 3 * * *  cd /etc/dokploy/compose/<appName>/code && COMPOSE_FILE=docker-compose.dokploy.yml COMPOSE_PROJECT_NAME=<appName> ./scripts/respaldo-db.sh >> /var/log/ruteo-respaldo.log 2>&1
+0 3 * * *  cd /etc/dokploy/compose/ruteo-stack-shc0uh/code && COMPOSE_FILE=docker-compose.dokploy.yml COMPOSE_PROJECT_NAME=ruteo-stack-shc0uh ./scripts/respaldo-db.sh >> /var/log/ruteo-respaldo.log 2>&1
 ```
 
 **Ojo con el directorio**: Dokploy lo reescribe en cada despliegue (`git clone`
