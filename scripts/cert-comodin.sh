@@ -50,8 +50,6 @@ IMAGEN="goacme/lego:latest"
 mkdir -p "$TRABAJO" "$PUBLICADO"
 chmod 700 "$TRABAJO"
 
-# lego decide solo entre pedir y renovar según lo que encuentre en --path, pero
-# `renew` sobre un certificado que no existe falla, y `run` sobre uno que sí
 # El nombre del archivo lo fija lego a partir del primer dominio: el `*` del
 # comodín se convierte en `_`.
 ORIGEN="${TRABAJO}/certificates/_.${DOMINIO_BASE}"
