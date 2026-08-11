@@ -67,14 +67,18 @@ fi
 # `--dns cloudflare` toma CF_DNS_API_TOKEN del entorno. Se pasa con `-e VAR` sin
 # valor a propósito: así el token no aparece en la línea de comandos, que
 # cualquier usuario de la máquina puede leer con `ps`.
+#
+# El volumen va a `/data` y NO a `/lego`: en esta imagen `/lego` es el propio
+# binario, y montar un directorio encima falla con «not a directory», un error
+# que suena a problema del host y no lo es.
 docker run --rm \
   -e CF_DNS_API_TOKEN \
-  -v "${TRABAJO}:/lego" \
+  -v "${TRABAJO}:/data" \
   "$IMAGEN" \
   --accept-tos \
   --email "$CORREO" \
   --dns cloudflare \
-  --path /lego \
+  --path /data \
   --domains "*.${DOMINIO_BASE}" \
   --domains "${DOMINIO_BASE}" \
   "${ACCION[@]}"
