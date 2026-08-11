@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, setSession, ApiError, CurrentUser } from "@/lib/api";
+import { useSlugTenant } from "@/lib/use-tenant";
 import { INICIO_POR_ROL } from "@/lib/logistics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,13 +20,16 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [slug, setSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // El slug sale del subdominio, no de un campo.
+  const { slug, resuelto } = useSlugTenant();
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!slug) return;
     setLoading(true);
     try {
       const tokens = await api<{ accessToken: string; refreshToken: string }>(
@@ -85,83 +89,101 @@ export default function LoginPage() {
     >
       <AuthBrand />
 
-      <AuthHeading
-        title="Hola de nuevo"
-        description="Entra con el identificador de tu empresa y tus credenciales para retomar donde lo dejaste."
-      />
-
-      <form onSubmit={onSubmit} className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="slug" className="text-white/80">
-            Empresa
-          </Label>
-          <Input
-            id="slug"
-            className="auth-field h-11"
-            placeholder="mi-empresa"
-            autoComplete="organization"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-            autoFocus
+      {resuelto && !slug ? (
+        <>
+          <AuthHeading
+            title="Entra por la dirección de tu empresa"
+            description="Cada empresa tiene su propia dirección. Esta es la general, y desde aquí no se puede iniciar sesión."
           />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="email" className="text-white/80">
-            Correo
-          </Label>
-          <Input
-            id="email"
-            type="email"
-            className="auth-field h-11"
-            placeholder="tu@correo.com"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
-        <div className="grid gap-2">
-          <div className="flex items-baseline justify-between gap-3">
-            <Label htmlFor="password" className="text-white/80">
-              Contraseña
-            </Label>
+          <p className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+            Si tu empresa es <span className="text-white">mi-empresa</span>,
+            entra por{" "}
+            <span className="text-white">
+              mi-empresa.{process.env.NEXT_PUBLIC_PANEL_BASE_HOST}
+            </span>
+            . La dirección está en el correo de alta que recibiste.
+          </p>
+          <p className="mt-6 text-sm text-white/50">
+            ¿Tu empresa aún no tiene cuenta?{" "}
             <Link
-              href="/forgot-password"
-              className="text-xs text-white/60 transition-colors hover:text-white"
+              href="/register"
+              className="rounded font-medium text-[#56b3a5] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5]"
             >
-              ¿La olvidaste?
+              Regístrala
             </Link>
-          </div>
-          <Input
-            id="password"
-            type="password"
-            className="auth-field h-11"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
+          </p>
+        </>
+      ) : (
+        <>
+          <AuthHeading
+            title="Hola de nuevo"
+            description={
+              slug
+                ? `Entra a ${slug} para retomar donde lo dejaste.`
+                : "Entra con tus credenciales para retomar donde lo dejaste."
+            }
           />
-        </div>
 
-        <Button
-          type="submit"
-          disabled={loading}
-          className="auth-cta mt-2 h-11 w-full text-sm font-semibold hover:opacity-100"
-        >
-          {loading ? "Ingresando…" : "Ingresar"}
-        </Button>
-      </form>
+          <form onSubmit={onSubmit} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email" className="text-white/80">
+                Correo
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                className="auth-field h-11"
+                placeholder="tu@correo.com"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="grid gap-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <Label htmlFor="password" className="text-white/80">
+                  Contraseña
+                </Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-white/60 transition-colors hover:text-white"
+                >
+                  ¿La olvidaste?
+                </Link>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                className="auth-field h-11"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
 
-      <p className="mt-6 text-sm text-white/50">
-        ¿Tu empresa aún no tiene cuenta?{" "}
-        <Link
-          href="/register"
-          className="rounded font-medium text-[#56b3a5] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5]"
-        >
-          Regístrala
-        </Link>
-      </p>
+            <Button
+              type="submit"
+              disabled={loading || !resuelto}
+              className="auth-cta mt-2 h-11 w-full text-sm font-semibold hover:opacity-100"
+            >
+              {loading ? "Ingresando…" : "Ingresar"}
+            </Button>
+          </form>
+
+          <p className="mt-6 text-sm text-white/50">
+            ¿Tu empresa aún no tiene cuenta?{" "}
+            <Link
+              href="/register"
+              className="rounded font-medium text-[#56b3a5] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5]"
+            >
+              Regístrala
+            </Link>
+          </p>
+        </>
+      )}
     </AuthShell>
   );
 }

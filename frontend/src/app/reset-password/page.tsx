@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { useSlugTenant } from "@/lib/use-tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +20,8 @@ import {
 function Formulario() {
   const router = useRouter();
   const params = useSearchParams();
-  const [slug, setSlug] = useState(params.get("slug") ?? "");
+  // El slug ya no viaja en el enlace: sale del subdominio.
+  const { slug } = useSlugTenant();
   const [email, setEmail] = useState(params.get("email") ?? "");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -34,6 +36,7 @@ function Formulario() {
       toast.error("Las contraseñas no coinciden");
       return;
     }
+    if (!slug) return;
     setLoading(true);
     try {
       await api("/auth/reset-password", {
@@ -74,19 +77,6 @@ function Formulario() {
       />
 
       <form onSubmit={onSubmit} className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="slug" className="text-white/80">
-            Empresa
-          </Label>
-          <Input
-            id="slug"
-            className="auth-field h-11"
-            placeholder="mi-empresa"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-          />
-        </div>
         <div className="grid gap-2">
           <Label htmlFor="email" className="text-white/80">
             Correo

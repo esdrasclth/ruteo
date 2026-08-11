@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { CredentialTokenType, NotificationChannel } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
+import { urlDeTenant } from '../../common/tenant-host';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NOTIFICATION_PROVIDER } from '../notifications/notification-provider';
 import type { NotificationProvider } from '../notifications/notification-provider';
@@ -157,13 +158,18 @@ export class CredentialsService {
       codigo,
     );
 
-    const panel = (
-      this.config.get<string>('PANEL_URL') ?? 'http://localhost:3001'
-    ).replace(/\/+$/, '');
     const slug = await this.slugDe(tenantId);
+    // El panel de cada empresa vive en su propio subdominio, asi que el enlace
+    // se arma con el slug DENTRO del host. Mandarlo al panel raiz dejaria al
+    // usuario en una pantalla que ya no sabe a que empresa pertenece.
+    const panel = urlDeTenant(
+      this.config.get<string>('PANEL_TENANT_URL') ??
+        'http://{slug}.localhost:3001',
+      slug,
+    ).replace(/\/+$/, '');
     const enlace =
-      `${panel}/accept-invitation?slug=${encodeURIComponent(slug)}` +
-      `&email=${encodeURIComponent(email)}&code=${encodeURIComponent(codigo)}`;
+      `${panel}/accept-invitation` +
+      `?email=${encodeURIComponent(email)}&code=${encodeURIComponent(codigo)}`;
 
     await this.enviar(
       tenantId,
@@ -253,13 +259,18 @@ ${enlace}
     // es para quien abre el correo en el móvil y solo quiere pulsar; el código
     // suelto es para quien lee el correo en un sitio y trabaja en otro, y para
     // cuando el cliente de correo rompe los enlaces largos.
-    const panel = (
-      this.config.get<string>('PANEL_URL') ?? 'http://localhost:3001'
-    ).replace(/\/+$/, '');
     const slug = await this.slugDe(tenantId);
+    // El panel de cada empresa vive en su propio subdominio, asi que el enlace
+    // se arma con el slug DENTRO del host. Mandarlo al panel raiz dejaria al
+    // usuario en una pantalla que ya no sabe a que empresa pertenece.
+    const panel = urlDeTenant(
+      this.config.get<string>('PANEL_TENANT_URL') ??
+        'http://{slug}.localhost:3001',
+      slug,
+    ).replace(/\/+$/, '');
     const enlace =
-      `${panel}/verify-email?slug=${encodeURIComponent(slug)}` +
-      `&email=${encodeURIComponent(email)}&code=${encodeURIComponent(codigo)}`;
+      `${panel}/verify-email` +
+      `?email=${encodeURIComponent(email)}&code=${encodeURIComponent(codigo)}`;
 
     await this.enviar(
       tenantId,

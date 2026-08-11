@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, MailWarning } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { useSlugTenant } from "@/lib/use-tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,8 @@ function Contenido() {
   // Los datos llegan en el enlace del correo. Se leen al inicializar el estado
   // y no en un efecto: con efecto habría un primer render con los campos vacíos
   // y un salto visible al rellenarse.
-  const [slug, setSlug] = useState(() => params.get("slug") ?? "");
+  // El slug ya no viaja en el enlace: sale del subdominio por el que se abre.
+  const { slug, resuelto } = useSlugTenant();
   const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [code, setCode] = useState(() => params.get("code") ?? "");
   const [estado, setEstado] = useState<Estado>("listo");
@@ -45,7 +47,9 @@ function Contenido() {
       setEstado("hecho");
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "No se pudo verificar el correo",
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo verificar el correo",
       );
       setEstado("error");
     }
@@ -110,19 +114,12 @@ function Contenido() {
       />
 
       <div className="grid gap-4">
-        {!slug || !email ? (
+        {resuelto && !slug ? (
+          <p className="text-sm text-white/70">
+            Abre este enlace desde la direccion de tu empresa.
+          </p>
+        ) : !email ? (
           <>
-            <div className="grid gap-2">
-              <Label htmlFor="slug" className="text-white/80">
-                Empresa
-              </Label>
-              <Input
-                id="slug"
-                className="auth-field h-11"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-              />
-            </div>
             <div className="grid gap-2">
               <Label htmlFor="email" className="text-white/80">
                 Correo

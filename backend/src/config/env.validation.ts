@@ -136,10 +136,22 @@ class EnvironmentVariables {
   @IsString()
   QUEUE_PREFIX: string = 'bull';
 
-  // Allowed CORS origin for the web panel.
+  // Origen del panel RAÍZ: la única pantalla sin tenant todavía (el alta).
   @IsOptional()
   @IsString()
   CORS_ORIGIN: string = 'http://localhost:3001';
+
+  // Plantilla del panel de cada empresa. El `{slug}` se sustituye por el de la
+  // empresa, tanto para los enlaces de los correos como para decidir qué
+  // orígenes acepta el CORS.
+  //
+  // Lleva el esquema y el puerto dentro a propósito: con piezas sueltas harían
+  // falta tres variables que solo tienen sentido juntas, y bastaría con que una
+  // se quedara en su valor de desarrollo para que los correos de producción
+  // salieran enlazando a `http://`.
+  @IsOptional()
+  @IsString()
+  PANEL_TENANT_URL: string = 'http://{slug}.localhost:3001';
 }
 
 // Valores que vienen en `.env.example`. Copiar el archivo y desplegar sin
@@ -204,6 +216,25 @@ function comprobarSecretosDeProduccion(env: EnvironmentVariables): string[] {
     fallos.push(
       'REDIS_PASSWORD es obligatoria en producción: Redis guarda los bloqueos de sesión y las colas.',
     );
+  }
+
+  // Sin el marcador, `urlDeTenant` devuelve la plantilla tal cual y TODAS las
+  // empresas reciben la misma URL en sus correos. No rompe nada al arrancar:
+  // se descubre cuando un usuario pulsa el enlace de verificación y aterriza en
+  // el panel de otra empresa.
+  if (!env.PANEL_TENANT_URL.includes('{slug}')) {
+    fallos.push(
+      'PANEL_TENANT_URL debe llevar el marcador {slug} (ej. https://{slug}.ruteo.example).',
+    );
+  }
+
+  // El mismo valor decide qué orígenes acepta el CORS. Con `http://`, cualquier
+  // subdominio servido en claro pasaría a ser un origen de confianza.
+  if (!env.PANEL_TENANT_URL.startsWith('https://')) {
+    fallos.push('PANEL_TENANT_URL debe usar https:// en producción.');
+  }
+  if (!env.CORS_ORIGIN.startsWith('https://')) {
+    fallos.push('CORS_ORIGIN debe usar https:// en producción.');
   }
 
   // La contraseña por defecto del rol de aplicación la fija la migración

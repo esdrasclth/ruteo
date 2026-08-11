@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { useSlugTenant } from "@/lib/use-tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,13 +18,15 @@ import {
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
-  const [slug, setSlug] = useState("");
+  // El slug sale del subdominio, no de un campo.
+  const { slug } = useSlugTenant();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [enviado, setEnviado] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!slug) return;
     setLoading(true);
     try {
       await api("/auth/forgot-password", {
@@ -67,9 +70,7 @@ export default function ForgotPasswordPage() {
           <Button
             className="auth-cta h-11 font-semibold hover:opacity-100"
             onClick={() =>
-              router.push(
-                `/reset-password?slug=${encodeURIComponent(slug)}&email=${encodeURIComponent(email)}`,
-              )
+              router.push(`/reset-password?email=${encodeURIComponent(email)}`)
             }
           >
             Ya tengo el código
@@ -104,25 +105,10 @@ export default function ForgotPasswordPage() {
 
       <AuthHeading
         title="¿Olvidaste tu contraseña?"
-        description="Dinos el identificador de tu empresa y tu correo, y te enviamos un código para volver a entrar."
+        description="Dinos tu correo y te enviamos un código para volver a entrar."
       />
 
       <form onSubmit={onSubmit} className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="slug" className="text-white/80">
-            Empresa
-          </Label>
-          <Input
-            id="slug"
-            className="auth-field h-11"
-            placeholder="mi-empresa"
-            autoComplete="organization"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-            autoFocus
-          />
-        </div>
         <div className="grid gap-2">
           <Label htmlFor="email" className="text-white/80">
             Correo
@@ -136,6 +122,7 @@ export default function ForgotPasswordPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoFocus
           />
         </div>
 

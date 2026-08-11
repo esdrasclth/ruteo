@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { esOrigenDeTenant } from './common/tenant-host';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -21,8 +22,25 @@ async function bootstrap() {
   // día hay un CDN por delante, sube el número al total de saltos de confianza.
   app.set('trust proxy', 1);
 
+  // El origen ya no puede ser una cadena fija: con el acceso por subdominio hay
+  // uno por empresa y no se conocen al arrancar. Se acepta el panel raíz —donde
+  // vive el alta, que es la única pantalla sin tenant todavía— y cualquier
+  // `https://<slug>.<dominio>` que encaje con la plantilla.
+  //
+  // `origin` sin valor (peticiones que no son de navegador: curl, healthchecks
+  // del contenedor, servidor a servidor) se deja pasar porque en esas no hay
+  // política de mismo origen que aplicar; CORS solo protege al navegador.
+  const panelRaiz = config.get<string>('CORS_ORIGIN', 'http://localhost:3001');
+  const plantillaTenant = config.get<string>(
+    'PANEL_TENANT_URL',
+    'http://{slug}.localhost:3001',
+  );
   app.enableCors({
-    origin: config.get<string>('CORS_ORIGIN', 'http://localhost:3001'),
+    origin(origen, cb) {
+      if (!origen || origen === panelRaiz) return cb(null, true);
+      if (esOrigenDeTenant(plantillaTenant, origen)) return cb(null, true);
+      cb(new Error('Origen no permitido'), false);
+    },
   });
   app.useGlobalPipes(
     new ValidationPipe({

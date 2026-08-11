@@ -155,6 +155,10 @@ services:
 
       # Enlaces de los correos de verificación.
       PANEL_URL: ${PUBLIC_PANEL_URL:?define PUBLIC_PANEL_URL en el Environment de Dokploy}
+      # Panel de CADA empresa. El `{slug}` se sustituye por el de la empresa,
+      # tanto para los enlaces de los correos como para decidir qué orígenes
+      # acepta el CORS. Sin el marcador, el arranque aborta.
+      PANEL_TENANT_URL: ${PUBLIC_PANEL_TENANT_URL:?define PUBLIC_PANEL_TENANT_URL en el Environment de Dokploy}
       # Base de los enlaces de rastreo de las etiquetas QR. Es el dominio del
       # backend SIN el sufijo /api, al revés que `PUBLIC_API_URL`.
       PUBLIC_APP_URL: ${PUBLIC_BACKEND_URL:?define PUBLIC_BACKEND_URL en el Environment de Dokploy}
@@ -193,6 +197,9 @@ services:
         # cambie el código NO basta si Dokploy reutiliza la capa cacheada: usa
         # «Rebuild» o cambia algo del contexto.
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?define PUBLIC_API_URL en el Environment de Dokploy}
+        # De aquí sale el slug del tenant: el panel lo deduce del subdominio por
+        # el que se abre, y ya no hay campo «Empresa» en el login.
+        NEXT_PUBLIC_PANEL_BASE_HOST: ${PUBLIC_PANEL_BASE_HOST:?define PUBLIC_PANEL_BASE_HOST en el Environment de Dokploy}
     restart: unless-stopped
     init: true
     networks:

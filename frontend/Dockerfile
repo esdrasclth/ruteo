@@ -14,6 +14,14 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+# Dominio bajo el que cuelgan los paneles de empresa
+# (`enviospress.ruteo.brandsofts.com`). De aquí sale el slug del tenant, que ya
+# no se teclea en el login. Si no coincide con el host real, `slugDelHost`
+# devuelve null y el panel dice "entra por la dirección de tu empresa" a todo el
+# mundo, incluso entrando por la dirección correcta.
+ARG NEXT_PUBLIC_PANEL_BASE_HOST
+ENV NEXT_PUBLIC_PANEL_BASE_HOST=$NEXT_PUBLIC_PANEL_BASE_HOST
+
 COPY package*.json ./
 # `scripts/` va ANTES de `npm ci`: el `postinstall` del proyecto ejecuta
 # `copy-maplibre-worker.mjs`, y sin el archivo la instalación falla entera.

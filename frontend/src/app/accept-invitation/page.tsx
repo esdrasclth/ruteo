@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { useSlugTenant } from "@/lib/use-tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +20,8 @@ import {
 function Formulario() {
   const router = useRouter();
   const params = useSearchParams();
-  const [slug, setSlug] = useState(() => params.get("slug") ?? "");
+  // El slug ya no viaja en el enlace: sale del subdominio.
+  const { slug, resuelto } = useSlugTenant();
   const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [code, setCode] = useState(() => params.get("code") ?? "");
   const [password, setPassword] = useState("");
@@ -44,7 +46,9 @@ function Formulario() {
       router.replace("/login");
     } catch (err) {
       toast.error(
-        err instanceof ApiError ? err.message : "No se pudo aceptar la invitación",
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo aceptar la invitación",
       );
       setLoading(false);
     }
@@ -72,20 +76,12 @@ function Formulario() {
       />
 
       <form onSubmit={onSubmit} className="grid gap-4">
-        {!slug || !email ? (
+        {resuelto && !slug ? (
+          <p className="text-sm text-white/70">
+            Abre este enlace desde la direccion de tu empresa.
+          </p>
+        ) : !email ? (
           <>
-            <div className="grid gap-2">
-              <Label htmlFor="slug" className="text-white/80">
-                Empresa
-              </Label>
-              <Input
-                id="slug"
-                className="auth-field h-11"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-              />
-            </div>
             <div className="grid gap-2">
               <Label htmlFor="email" className="text-white/80">
                 Correo
