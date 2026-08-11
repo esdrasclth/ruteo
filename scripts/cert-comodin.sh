@@ -47,6 +47,19 @@ TRABAJO="${RUTEO_ACME_DIR:-/etc/dokploy/ruteo-acme}"
 PUBLICADO="${RUTEO_CERT_DIR:-/etc/dokploy/traefik/dynamic/certificates}"
 IMAGEN="goacme/lego:latest"
 
+# A quién le pregunta lego si el TXT del desafío ya se ve.
+#
+# Por defecto usa los nameservers del sistema, y en este VPS eso es el resolutor
+# de Contabo (213.136.95.10), que cachea en negativo: acaba de responder que
+# `_acme-challenge.<dominio>` no existe, y sigue diciéndolo un rato después de
+# que Cloudflare lo haya creado. El resultado es que lego espera dos minutos,
+# se rinde, y el error habla de «time limit exceeded» como si el registro no se
+# hubiera creado —cuando sí se creó, y de hecho se borra al limpiar—.
+#
+# Se le pregunta directamente a los autoritativos de la zona: no hay caché que
+# valga, porque son la fuente.
+RESOLUTORES="${RUTEO_DNS_RESOLVERS:-ashley.ns.cloudflare.com:53,marek.ns.cloudflare.com:53}"
+
 mkdir -p "$TRABAJO" "$PUBLICADO"
 chmod 700 "$TRABAJO"
 
@@ -83,6 +96,7 @@ docker run --rm \
   --accept-tos \
   --email "$CORREO" \
   --dns cloudflare \
+  --dns.resolvers "$RESOLUTORES" \
   --path /data \
   --domains "*.${DOMINIO_BASE}" \
   --domains "${DOMINIO_BASE}"
