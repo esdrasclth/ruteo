@@ -12,12 +12,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { JwtRefreshGuard } from '../../common/guards/jwt-refresh.guard';
-import { AuthService, Tokens } from './auth.service';
+import { AuthService, EmpresasDeAcceso, Tokens } from './auth.service';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { PublicRateLimitGuard } from '../../common/guards/public-rate-limit.guard';
 import { CredentialsService } from './credentials.service';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { HandoffDto } from './dto/handoff.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordCodeDto } from './dto/reset-password-code.dto';
@@ -44,11 +45,29 @@ export class AuthController {
 
   // El tope por IP frena el barrido; el bloqueo por cuenta (LoginThrottle)
   // frena el ataque dirigido a una persona concreta. Hacen falta los dos.
+  //
+  // Devuelve una cosa u otra según venga slug: los tokens si la petición ya
+  // sabe a qué empresa entra, o la lista de empresas con su vale de traspaso si
+  // hay que averiguarlo por el correo. Ver `AuthService.login`.
   @RateLimit(10, 300)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto): Promise<Tokens> {
+  login(@Body() dto: LoginDto): Promise<Tokens | EmpresasDeAcceso> {
     return this.auth.login(dto);
+  }
+
+  // Canje del vale que emitió el login del panel raíz. Aquí es donde nace la
+  // sesión en el origen de la empresa.
+  //
+  // El tope es más alto que el del login porque un canje legítimo puede
+  // repetirse —recargar la pestaña, un reintento de red— y porque el vale ya es
+  // de un solo uso y dura un minuto: no hay nada que barrer. Lo que frena es
+  // que adivinar 256 bits en 60 segundos no ocurre.
+  @RateLimit(30, 300)
+  @Post('handoff')
+  @HttpCode(HttpStatus.OK)
+  handoff(@Body() dto: HandoffDto): Promise<Tokens> {
+    return this.auth.canjearHandoff(dto.code);
   }
 
   @Post('refresh')

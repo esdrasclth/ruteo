@@ -48,8 +48,34 @@ export class CredentialsService {
    * Arranca el restablecimiento. **Siempre responde igual**, exista o no la
    * cuenta: si distinguiera, este endpoint sería un verificador de qué correos
    * están dados de alta en cada empresa.
+   *
+   * Sin slug —se pide desde el panel raíz, que no pertenece a ninguna empresa—
+   * se manda un código por CADA empresa donde exista ese correo. Cada correo
+   * dice de qué empresa es y trae el enlace a su panel, porque quien recibe dos
+   * códigos a la vez no tiene forma de saber cuál va con cuál.
+   *
+   * Mandar varios no delata nada a un tercero: los correos llegan al buzón del
+   * titular, no a quien pulsó el botón, y la respuesta HTTP es 202 en todos los
+   * casos.
    */
-  async solicitarRestablecimiento(slug: string, email: string): Promise<void> {
+  async solicitarRestablecimiento(
+    slug: string | undefined,
+    email: string,
+  ): Promise<void> {
+    const slugs = slug
+      ? [slug]
+      : (await this.tenants.candidatosPorCorreo(email)).map((c) => c.slug);
+
+    if (slugs.length === 0) {
+      this.log.log('Restablecimiento pedido para un correo sin ninguna cuenta');
+    }
+
+    for (const destino of slugs) {
+      await this.solicitarEnEmpresa(destino, email);
+    }
+  }
+
+  private async solicitarEnEmpresa(slug: string, email: string): Promise<void> {
     const usuario = await this.buscarUsuario(slug, email);
     if (!usuario) {
       this.log.log(
@@ -91,11 +117,30 @@ export class CredentialsService {
       codigo,
     );
 
+    // El correo lleva el código Y el enlace al panel de ESTA empresa, igual que
+    // la invitación y la verificación. Sin el enlace, quien pidió el
+    // restablecimiento desde el panel raíz —donde ya no hace falta saberse el
+    // subdominio— se queda con un código y sin saber dónde escribirlo.
+    const panel = urlDeTenant(
+      this.config.get<string>('PANEL_TENANT_URL') ??
+        'http://{slug}.localhost:3001',
+      slug,
+    ).replace(/\/+$/, '');
+    const enlace =
+      `${panel}/reset-password` +
+      `?email=${encodeURIComponent(email)}&code=${encodeURIComponent(codigo)}`;
+
     await this.enviar(
       usuario.tenantId,
       email,
-      'Restablecer tu contraseña de Ruteo',
-      `Tu código para restablecer la contraseña es ${codigo}. ` +
+      `Restablecer tu contraseña de Ruteo (${slug})`,
+      `Tu código para restablecer la contraseña de la empresa ${slug} es ${codigo}.
+
+` +
+        `También puedes hacerlo de un clic aquí:
+${enlace}
+
+` +
         `Caduca en ${VIGENCIA_MIN} minutos. Si no lo pediste tú, ignora este mensaje.`,
     );
   }

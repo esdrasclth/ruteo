@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { Prisma, Role, UserStatus } from '@prisma/client';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
+import { urlDeTenant } from '../../common/tenant-host';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { LoginDto } from './dto/login.dto';
@@ -15,12 +16,51 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { CredentialsService } from './credentials.service';
 import { LoginThrottleService } from './login-throttle.service';
+import { SessionHandoffService } from './session-handoff.service';
 import { nombreDeUsuario, ZitadelService } from './zitadel/zitadel.service';
 
 export interface Tokens {
   accessToken: string;
   refreshToken: string;
 }
+
+/** Una empresa a la que la contraseña recién comprobada da acceso. */
+export interface EmpresaDeAcceso {
+  slug: string;
+  nombre: string;
+  /** Dónde entrar: el panel de esa empresa, con el vale de traspaso dentro. */
+  url: string;
+}
+
+/**
+ * Respuesta del login sin slug. Siempre lista, aunque haya una sola empresa:
+ * un tipo por cada caso obligaría a quien llama a distinguirlos antes de poder
+ * leer nada, y el caso de una es simplemente una lista de uno.
+ */
+export interface EmpresasDeAcceso {
+  empresas: EmpresaDeAcceso[];
+}
+
+/**
+ * Cuántas empresas se prueban como mucho al entrar sin slug.
+ *
+ * Cada candidata cuesta una verificación contra ZITADEL, así que sin tope un
+ * correo dado de alta en cincuenta empresas convertiría cada intento de login
+ * en cincuenta peticiones de red. Que alguien trabaje en más de cinco empresas
+ * a la vez no se ha visto; si pasa, esa persona entra por el subdominio de la
+ * suya, que no tiene este límite.
+ */
+const MAX_CANDIDATAS = 5;
+
+/**
+ * Cubo del freno por cuenta cuando no hay slug.
+ *
+ * Es un slug imposible —el registro no admite `*`— así que no puede chocar con
+ * el cubo de ninguna empresa real. Y tiene que ser UNO SOLO para todas: si el
+ * conteo se repartiera por empresa, probar el mismo correo contra cinco
+ * empresas daría cinco veces los intentos antes del bloqueo.
+ */
+const CUBO_SIN_SLUG = '*';
 
 /**
  * Huella del refresh token que se guarda en `User.refreshTokenHash`.
@@ -61,6 +101,7 @@ export class AuthService {
     private readonly zitadel: ZitadelService,
     private readonly credenciales: CredentialsService,
     private readonly throttle: LoginThrottleService,
+    private readonly handoff: SessionHandoffService,
   ) {}
 
   async register(dto: RegisterDto): Promise<Tokens> {
@@ -129,7 +170,26 @@ export class AuthService {
     return this.issueTokens(tenantId, user.id, user.role);
   }
 
-  async login(dto: LoginDto): Promise<Tokens> {
+  /**
+   * Dos caminos, y el de siempre no cambia ni un paso.
+   *
+   * El panel de una empresa manda su slug (lo saca del subdominio) y entra
+   * directo. El panel raíz no pertenece a ninguna empresa y no lo manda: ahí
+   * hay que averiguar primero a qué empresa pertenece quien entra.
+   */
+  async login(dto: LoginDto): Promise<Tokens | EmpresasDeAcceso> {
+    if (dto.slug) {
+      return this.loginConSlug(dto.slug, dto.email, dto.password);
+    }
+    return this.loginPorCorreo(dto.email, dto.password);
+  }
+
+  private async loginConSlug(
+    slug: string,
+    correo: string,
+    contrasena: string,
+  ): Promise<Tokens> {
+    const dto = { slug, email: correo, password: contrasena };
     // El bloqueo se comprueba ANTES de resolver el tenant y para cualquier
     // identificador, exista o no: si solo se bloquearan las cuentas reales, el
     // mensaje delataría cuáles lo son.
@@ -176,6 +236,130 @@ export class AuthService {
 
     await this.throttle.limpiar(dto.slug, dto.email);
     return this.issueTokens(tenantId, user.id, user.role);
+  }
+
+  /**
+   * Entrada desde el panel raíz: el correo dice a qué empresas mirar y la
+   * contraseña decide a cuáles se entra.
+   *
+   * **No devuelve tokens.** La sesión tiene que nacer en el origen de la
+   * empresa, no aquí (ver `SessionHandoffService`), así que lo que sale son
+   * vales de un solo uso.
+   *
+   * **Nada de lo que devuelve delata cuentas ajenas.** Solo aparecen empresas
+   * en las que la contraseña acaba de comprobarse buena, así que quien lo lee
+   * ya sabía la credencial. Con la contraseña mal, la respuesta es el mismo 401
+   * genérico exista el correo o no.
+   */
+  private async loginPorCorreo(
+    correo: string,
+    contrasena: string,
+  ): Promise<EmpresasDeAcceso> {
+    await this.throttle.comprobar(CUBO_SIN_SLUG, correo);
+
+    const candidatas = (await this.tenants.candidatosPorCorreo(correo)).slice(
+      0,
+      MAX_CANDIDATAS,
+    );
+
+    const validas: typeof candidatas = [];
+    let hayDeshabilitada = false;
+
+    for (const candidata of candidatas) {
+      try {
+        await this.zitadel.verificarCredenciales(
+          nombreDeUsuario(candidata.slug, correo),
+          contrasena,
+        );
+      } catch (e) {
+        // Contraseña mala en ESTA empresa: se pasa a la siguiente. El mismo
+        // correo puede tener contraseñas distintas en cada una —en ZITADEL son
+        // usuarios distintos, `slug:correo`—, así que un fallo aquí no dice
+        // nada de las demás.
+        if (e instanceof UnauthorizedException) continue;
+        // ZITADEL caído: se corta. Seguir probando lo dejaría en "credenciales
+        // inválidas" cuando lo que pasa es que el proveedor no responde, y el
+        // usuario cambiaría una contraseña que estaba bien.
+        throw e;
+      }
+
+      if (candidata.userStatus !== UserStatus.ACTIVE) {
+        hayDeshabilitada = true;
+        continue;
+      }
+      validas.push(candidata);
+    }
+
+    if (validas.length === 0) {
+      // La contraseña era correcta pero la cuenta está desactivada. Se dice tal
+      // cual, igual que en la entrada por subdominio: no revela nada a quien no
+      // tenía ya la credencial, y sin esto la persona seguiría probando una
+      // contraseña que está bien.
+      if (hayDeshabilitada) {
+        throw new UnauthorizedException('Account is disabled');
+      }
+      await this.throttle.registrarFallo(CUBO_SIN_SLUG, correo);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.throttle.limpiar(CUBO_SIN_SLUG, correo);
+
+    const plantilla =
+      this.config.get<string>('PANEL_TENANT_URL') ??
+      'http://{slug}.localhost:3001';
+
+    // Un vale por empresa, todos a la vez. La alternativa —devolver la lista y
+    // pedir la contraseña otra vez al elegir— haría teclearla dos veces para
+    // llegar al mismo sitio. Los que no se usen caducan en un minuto.
+    const empresas = await Promise.all(
+      validas.map(async (empresa) => {
+        const vale = await this.handoff.emitir({
+          tenantId: empresa.tenantId,
+          userId: empresa.userId,
+        });
+        const panel = urlDeTenant(plantilla, empresa.slug).replace(/\/+$/, '');
+        return {
+          slug: empresa.slug,
+          nombre: empresa.nombre,
+          url: `${panel}/auth/handoff?code=${encodeURIComponent(vale)}`,
+        };
+      }),
+    );
+
+    return { empresas };
+  }
+
+  /**
+   * Canjea el vale de traspaso por una sesión de verdad, ya en el origen de la
+   * empresa.
+   *
+   * El vale solo dice a qué par (empresa, usuario) apunta. El rol y el estado
+   * se releen de la base de datos aquí y no viajan dentro: entre que se emitió
+   * y se canjea pueden haber pasado sesenta segundos, y en ese rato a alguien
+   * le pueden haber quitado el acceso.
+   */
+  async canjearHandoff(codigo: string): Promise<Tokens> {
+    const destino = await this.handoff.canjear(codigo);
+    if (!destino) {
+      throw new UnauthorizedException(
+        'El acceso caducó o ya se usó. Vuelve a iniciar sesión.',
+      );
+    }
+
+    const user = await this.prisma.withTenant(destino.tenantId, (tx) =>
+      tx.user.findUnique({
+        where: { id: destino.userId },
+        select: { id: true, role: true, status: true },
+      }),
+    );
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+
+    return this.issueTokens(destino.tenantId, user.id, user.role);
   }
 
   async refresh(

@@ -109,6 +109,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // Lee y borra en la MISMA operación. Es lo que hace de un valor un vale de un
+  // solo uso: con `get` y `del` por separado, dos peticiones simultáneas leen
+  // ambas antes de que ninguna borre y las dos lo dan por bueno.
+  //
+  // Va por `eval` y no por `GETDEL` porque `GETDEL` es de Redis 6.2 en adelante
+  // y aquí la versión la fija la imagen del compose, que puede cambiar sin que
+  // nadie mire esto. Un script Lua es atómico en cualquier versión.
+  async takeJson<T>(key: string): Promise<T | null> {
+    if (!this.client || this.client.status !== 'ready') {
+      return null;
+    }
+    try {
+      const raw = (await this.client.eval(
+        "local v = redis.call('GET', KEYS[1]) " +
+          "if v then redis.call('DEL', KEYS[1]) end " +
+          'return v',
+        1,
+        key,
+      )) as string | null;
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch (err) {
+      this.logger.warn(`Redis take failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   async del(key: string): Promise<void> {
     if (!this.client || this.client.status !== 'ready') {
       return;

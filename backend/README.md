@@ -41,7 +41,12 @@ npm run start:dev             # backend en el host con hot-reload
 ## Endpoints de auth
 
 - `POST /api/auth/register` — crea tenant + usuario owner, devuelve tokens.
-- `POST /api/auth/login` — `{ slug, email, password }`, devuelve tokens.
+- `POST /api/auth/login` — `{ slug?, email, password }`. Con `slug` devuelve
+  tokens; sin él —panel raíz— devuelve `{ empresas: [{ slug, nombre, url }] }`,
+  las empresas donde esa contraseña vale, cada una con un vale de traspaso de un
+  solo uso dentro de su `url`. Ver `docs/acceso-por-subdominio.md`.
+- `POST /api/auth/handoff` — `{ code }`, canjea ese vale por tokens. Lo llama el
+  panel de la empresa, que es el origen donde tiene que nacer la sesión.
 - `POST /api/auth/refresh` — `Authorization: Bearer <refreshToken>`.
 - `POST /api/auth/logout` — invalida el refresh token (requiere access token).
 - `GET  /api/auth/me` — datos del usuario autenticado.

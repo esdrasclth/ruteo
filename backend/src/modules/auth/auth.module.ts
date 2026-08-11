@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { PublicRateLimitGuard } from '../../common/guards/public-rate-limit.guard';
 import { CredentialsService } from './credentials.service';
 import { LoginThrottleService } from './login-throttle.service';
+import { SessionHandoffService } from './session-handoff.service';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ZitadelService } from './zitadel/zitadel.service';
@@ -25,6 +26,7 @@ import { ZitadelService } from './zitadel/zitadel.service';
     AuthService,
     CredentialsService,
     LoginThrottleService,
+    SessionHandoffService,
     PublicRateLimitGuard,
     JwtStrategy,
     JwtRefreshStrategy,
