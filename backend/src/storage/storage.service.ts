@@ -163,9 +163,20 @@ export class StorageService implements OnModuleInit {
       nombreOriginal: solicitud.nombreOriginal,
     });
 
-    // `ContentType` y `ContentLength` van FIRMADOS: pasan a formar parte de lo
-    // que la firma autoriza, así que quien tenga la URL no puede usarla para
-    // subir otra cosa ni algo más grande de lo declarado.
+    // `signableHeaders` NO es opcional, y esto está comprobado contra el MinIO
+    // real, no deducido de la documentación.
+    //
+    // Sin esa opción, el SDK firma `content-length;host` y deja `content-type`
+    // FUERA: pasarle `ContentType` al comando lo mete en la petición pero no en
+    // la firma, así que la URL se podía usar para subir cualquier cosa con
+    // cualquier tipo —comprobado: un PUT con `text/plain` sobre una URL firmada
+    // para `image/jpeg` devolvía 200 y el objeto quedaba guardado como texto—.
+    // Eso convierte «URL para subir una foto» en «URL para subir lo que sea»,
+    // que es un alojamiento de archivos abierto durante quince minutos.
+    //
+    // Con los dos nombrados aquí, `SignedHeaders` pasa a
+    // `content-length;content-type;host` y ambos se rechazan con 403 si no
+    // coinciden. El tamaño ya se aplicaba por defecto; el tipo no.
     const url = await getSignedUrl(
       client,
       new PutObjectCommand({
@@ -174,7 +185,10 @@ export class StorageService implements OnModuleInit {
         ContentType: solicitud.contentType,
         ContentLength: solicitud.sizeBytes,
       }),
-      { expiresIn: VIGENCIA_SUBIDA_S },
+      {
+        expiresIn: VIGENCIA_SUBIDA_S,
+        signableHeaders: new Set(['content-type', 'content-length']),
+      },
     );
 
     return { url, clave, expiraEn: VIGENCIA_SUBIDA_S };

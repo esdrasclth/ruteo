@@ -85,10 +85,19 @@ si Redis no está, la caché falla y los frenos degradan a memoria, pero se sigu
 trabajando. Aquí no hay degradación posible: decir «subido» sin haber subido
 nada es peor que un error.
 
-**Lo que se firma queda fijado.** `ContentType` y `ContentLength` van dentro de
-la firma, así que quien tenga la URL no puede usarla para subir otra cosa ni algo
-más grande de lo declarado. Validar solo en el navegador no sirve de nada: la URL
-firmada se puede usar a mano.
+**Lo que se firma queda fijado, pero hay que pedirlo explícitamente.** Pasarle
+`ContentType` al comando **no** lo mete en la firma: el SDK firma
+`content-length;host` y deja el tipo fuera. Comprobado contra el MinIO real, un
+`PUT` con `text/plain` sobre una URL firmada para `image/jpeg` devolvía **200** y
+el objeto quedaba guardado como texto. Eso convierte «URL para subir una foto» en
+«URL para subir lo que sea» durante quince minutos.
+
+La opción `signableHeaders: new Set(['content-type', 'content-length'])` lleva
+`SignedHeaders` a `content-length;content-type;host`, y entonces sí: los dos
+devuelven 403 si no coinciden. El tamaño ya se aplicaba por defecto; el tipo no.
+
+Validar solo en el navegador no sirve de nada: la URL firmada se puede usar a
+mano.
 
 **Vigencias cortas.** 15 minutos para subir (un operador con mala cobertura en
 una bodega), 5 para descargar (se pide justo antes de mostrar). Una URL firmada
