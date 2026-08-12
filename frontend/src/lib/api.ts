@@ -85,20 +85,37 @@ async function tryRefresh(): Promise<boolean> {
     refreshPromise = (async () => {
       const session = getSession();
       if (!session) return false;
-      const res = await fetch(`${API_URL}/auth/refresh`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.refreshToken}` },
-      });
-      if (!res.ok) {
+      // **Nunca lanza: devuelve `false` pase lo que pase.**
+      //
+      // Antes, un fallo de red o un cuerpo ilegible hacían que esta promesa se
+      // rechazara, y entonces el `if (!refreshed)` de `api()` no llegaba a
+      // correr: ni se limpiaba la sesión ni se redirigía. La sesión muerta se
+      // quedaba en `localStorage`, la pantalla reintentaba, volvía a fallar
+      // igual, y el usuario se quedaba mirando errores en bucle sin que nada le
+      // mandara a iniciar sesión.
+      //
+      // Un refresco que no se puede completar es un refresco fallido, sea por
+      // token caducado o porque no hubo respuesta. La diferencia no cambia lo
+      // que hay que hacer.
+      try {
+        const res = await fetch(`${API_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.refreshToken}` },
+        });
+        if (!res.ok) {
+          clearSession();
+          return false;
+        }
+        const tokens = (await res.json()) as {
+          accessToken: string;
+          refreshToken: string;
+        };
+        setSession({ ...session, ...tokens });
+        return true;
+      } catch {
         clearSession();
         return false;
       }
-      const tokens = (await res.json()) as {
-        accessToken: string;
-        refreshToken: string;
-      };
-      setSession({ ...session, ...tokens });
-      return true;
     })().finally(() => {
       refreshPromise = null;
     });
@@ -106,7 +123,40 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
+/**
+ * Rutas donde un 401 NO significa «tu sesión murió».
+ *
+ * En `/auth/login` significa contraseña incorrecta; en los flujos de código
+ * —restablecer, invitación, verificación— que el código no vale. Todos se usan
+ * SIN sesión y por definición, así que mandar a la pantalla de entrada ahí
+ * recargaría la propia pantalla en la que está el usuario y se tragaría el
+ * mensaje que necesita leer.
+ */
+const RUTAS_PUBLICAS =
+  /^\/(auth\/(login|register|refresh|handoff|forgot-password|reset-password|accept-invitation|verify-email|send-verification)|plans|tracking)/;
+
+function esRutaPublica(path: string): boolean {
+  return RUTAS_PUBLICAS.test(path);
+}
+
+/**
+ * A la pantalla de entrada, una sola vez.
+ *
+ * Asignar `location.href` no detiene el JavaScript que ya está corriendo: la
+ * página sigue viva hasta que el navegador navega, y en ese rato pueden caer
+ * varias respuestas 401 más. Sin esta bandera, cada una reasigna la URL y el
+ * navegador acumula navegaciones.
+ */
+let yendoALogin = false;
+function irALogin() {
+  if (typeof window === "undefined" || yendoALogin) return;
+  yendoALogin = true;
+  window.location.href = "/login";
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const habiaSesion = getSession() !== null;
+
   const doFetch = () => {
     const session = getSession();
     const headers: Record<string, string> = {
@@ -118,10 +168,27 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   };
 
   let res = await doFetch();
-  if (res.status === 401 && getSession()) {
-    const refreshed = await tryRefresh();
+  if (res.status === 401) {
+    // Solo se intenta refrescar si había sesión: sin ella no hay token de
+    // refresco que presentar.
+    const refreshed = habiaSesion ? await tryRefresh() : false;
     if (!refreshed) {
-      if (typeof window !== "undefined") window.location.href = "/login";
+      // **Quién decide si se redirige es el ENDPOINT, no si había sesión.**
+      //
+      // Antes la condición era `res.status === 401 && getSession()`, mirado
+      // DESPUÉS de la respuesta, y eso dejaba al usuario atrapado: la pantalla
+      // de recepción pide tres endpoints a la vez; el primer 401 refresca,
+      // falla y limpia la sesión, y a partir de ahí cualquier petición —las
+      // otras dos, y todas las que disparen los siguientes renders— ve
+      // `getSession()` nulo, se salta esta rama y solo lanza un error. Panel
+      // mostrando avisos y reintentando en bucle, sin que nada mande a entrar
+      // de nuevo. Es exactamente lo que se reportó.
+      //
+      // Mirando el endpoint, un 401 en `/lockers` siempre acaba en la pantalla
+      // de entrada, haya o no sesión guardada. Y en `/auth/login` nunca: ahí un
+      // 401 significa «contraseña incorrecta» y tiene que verse como mensaje,
+      // no recargar la pantalla y tragárselo.
+      if (!esRutaPublica(path)) irALogin();
       throw new ApiError(401, "Sesión expirada");
     }
     res = await doFetch();
@@ -948,4 +1015,75 @@ export interface ExceptionRow {
 export interface ResumenExcepciones {
   abiertas: number;
   porSeveridad: Partial<Record<ExceptionSeverity, number>>;
+}
+
+// ---- Fase 3: reglas aduaneras y expediente documental ----
+
+export type CustomsCategory = "A" | "B" | "C" | "ENVIO_FAMILIAR";
+
+export type DocumentType =
+  | "COMMERCIAL_INVOICE"
+  | "AIR_WAYBILL"
+  | "CUSTOMS_DECLARATION"
+  | "PERMIT"
+  | "IDENTIFICATION"
+  | "OTHER";
+
+export type ValueSource = "CUSTOMER" | "INVOICE" | "ESTIMATED" | "CUSTOMS";
+
+/**
+ * Regla aduanera vigente durante un periodo.
+ *
+ * Se cierra con `effectiveTo`, nunca se borra: una liquidacion vieja tiene que
+ * seguir pudiendo explicarse con la regla que se le aplico.
+ */
+export interface CustomsRule {
+  id: string;
+  country: string;
+  category: CustomsCategory;
+  maxValue: string | null;
+  currency: string;
+  requiresInvoice: boolean;
+  requiresPermit: boolean;
+  requiresBroker: boolean;
+  /** Fraccion, no porcentaje: 0.15 es el 15 %. */
+  dutyRate: string;
+  taxRate: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+/** Un documento del expediente, ya con URL firmada —que dura minutos—. */
+export interface ShipmentDocument {
+  id: string;
+  type: DocumentType;
+  notes: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+  originalName: string | null;
+  contentType: string;
+  url: string | null;
+}
+
+/**
+ * De donde salieron las cifras de una liquidacion.
+ *
+ * `defecto` significa que el tenant no tiene reglas configuradas y se uso el
+ * calculo antiguo. Se muestra en pantalla a proposito: un cobro con cifras que
+ * nadie configuro tiene que verse.
+ */
+export type FuenteLiquidacion = "regla" | "manual" | "defecto";
+
+export interface CustomsRecordDetalle extends CustomsRecord {
+  category: CustomsCategory | null;
+  productValue: string | null;
+  freightAmount: string | null;
+  insuranceAmount: string | null;
+  otherCharges: string | null;
+  customsValue: string | null;
+  valueSource: ValueSource | null;
+  rule: CustomsRule | null;
+  /** Documentos que la regla exige y todavia no estan. */
+  faltan: string[];
+  fuente?: FuenteLiquidacion;
 }
