@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Plan, Prisma, SubscriptionStatus } from '@prisma/client';
@@ -16,6 +18,8 @@ import { getPlan, PLANS } from './plans';
 
 @Injectable()
 export class BillingService {
+  private readonly log = new Logger(BillingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly payments: PaymentsService,
@@ -27,6 +31,30 @@ export class BillingService {
     return Object.values(PLANS);
   }
 
+  /**
+   * Cierra las pruebas vencidas y devuelve a FREE a esas empresas.
+   *
+   * Cruza todos los tenants, así que va por una función SECURITY DEFINER: el rol
+   * de la aplicación es NOBYPASSRLS y sin contexto de tenant no vería ni una
+   * fila. Mismo patrón que `purgar_idempotencia`.
+   *
+   * **Esto no es el control de acceso.** El plan efectivo ya lo resuelve
+   * `planEfectivo` en cada petición, así que una prueba vencida deja de dar
+   * acceso aunque este trabajo no haya corrido. Esto existe para que la base
+   * diga la verdad en informes y en el panel de plataforma.
+   */
+  async caducarPruebas(): Promise<number> {
+    const filas = await this.prisma.$queryRaw<{ caducar_pruebas: number }[]>`
+      SELECT caducar_pruebas()`;
+    const caducadas = filas[0]?.caducar_pruebas ?? 0;
+    if (caducadas > 0) {
+      this.log.log(
+        `Caducadas ${caducadas} pruebas; esas empresas pasan a FREE`,
+      );
+    }
+    return caducadas;
+  }
+
   /** Plan que la empresa tiene ahora mismo, que es contra el que se compara. */
   private async planActual(tenantId: string): Promise<Plan> {
     const tenant = await this.prisma.withTenant(tenantId, (tx) =>
@@ -36,6 +64,42 @@ export class BillingService {
       }),
     );
     return tenant.plan;
+  }
+
+  /**
+   * Sin estos datos no se puede emitir una factura a nombre de nadie.
+   *
+   * El error dice QUÉ falta, uno por uno. Un «faltan datos fiscales» genérico
+   * obliga a abrir la pantalla y comparar campo por campo para adivinar cuál.
+   */
+  private async exigirDatosFiscales(tenantId: string): Promise<void> {
+    const tenant = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: {
+          legalName: true,
+          taxId: true,
+          billingEmail: true,
+          billingAddress: true,
+        },
+      }),
+    );
+
+    const faltan = [
+      [tenant.legalName, 'razón social'],
+      [tenant.taxId, 'RTN'],
+      [tenant.billingEmail, 'correo de facturación'],
+      [tenant.billingAddress, 'dirección fiscal'],
+    ]
+      .filter(([valor]) => !valor)
+      .map(([, etiqueta]) => etiqueta as string);
+
+    if (faltan.length > 0) {
+      throw new BadRequestException(
+        `Para contratar un plan de pago faltan tus datos de facturación: ` +
+          `${faltan.join(', ')}. Complétalos en Facturación › Datos fiscales.`,
+      );
+    }
   }
 
   async getSubscription(tenantId: string) {
@@ -68,6 +132,15 @@ export class BillingService {
         `Para pasar al plan ${planDef.name} hay que contratarlo con nosotros: ` +
           'escríbenos y lo activamos. No se puede subir de plan desde aquí.',
       );
+    }
+
+    // Los datos fiscales se exigen AQUÍ y no en el alta. Es el mismo criterio
+    // que «no liberar de aduana con saldo pendiente»: se pide el dato en el
+    // momento en que hace falta, no por si acaso. Nadie necesita un RTN para
+    // rastrear un paquete, y meterlo en el registro solo sirve para que menos
+    // gente termine el registro.
+    if (planDef.monthlyAmount > 0) {
+      await this.exigirDatosFiscales(tenantId);
     }
 
     const result = await this.provider.startSubscription({
@@ -155,7 +228,8 @@ export class BillingService {
         periodEnd: end,
         shipmentLimit: limit,
         shipmentsUsed,
-        shipmentsRemaining: limit == null ? null : Math.max(0, limit - shipmentsUsed),
+        shipmentsRemaining:
+          limit == null ? null : Math.max(0, limit - shipmentsUsed),
       };
     });
   }
@@ -183,7 +257,9 @@ export class BillingService {
       };
     }
     const now = new Date();
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
     const end = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) - 1,
     );

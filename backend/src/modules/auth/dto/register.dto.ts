@@ -1,6 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Plan } from '@prisma/client';
 import {
   IsEmail,
+  IsEnum,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
@@ -62,4 +65,27 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password: string;
+
+  // Se pide en el alta —y es el ÚNICO campo que se añadió— porque un plan de
+  // prueba hay que cerrarlo hablando con alguien: una cuenta que pidió Pro y no
+  // deja forma de contactar es una venta perdida por no preguntar un dato.
+  //
+  // La validación es deliberadamente laxa: se acepta cualquier cosa con entre 8
+  // y 20 dígitos, con o sin `+`, espacios, guiones o paréntesis. Un patrón
+  // estricto de números hondureños rechazaría a un cliente con número de EE UU
+  // —que los hay, es un courier— y el coste de un teléfono mal escrito lo paga
+  // quien llama, no el sistema.
+  @ApiProperty({ example: '+504 9999-8888' })
+  @IsString()
+  @Matches(/^\+?[\d\s()-]{8,20}$/, {
+    message: 'El teléfono no parece válido.',
+  })
+  phone: string;
+
+  // Opcional: sin plan se entra en FREE. Con un plan de pago NO se activa nada
+  // cobrable —ver `AuthService.register`—, se abre una prueba con fecha de fin.
+  @ApiPropertyOptional({ enum: Plan, example: Plan.STARTER })
+  @IsOptional()
+  @IsEnum(Plan)
+  plan?: Plan;
 }

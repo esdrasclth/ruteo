@@ -6,7 +6,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
-import { Prisma, Role, UserStatus } from '@prisma/client';
+import {
+  Plan,
+  Prisma,
+  Role,
+  SubscriptionStatus,
+  UserStatus,
+} from '@prisma/client';
+import { DIAS_DE_PRUEBA, getPlan } from '../billing/plans';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import { urlDeTenant } from '../../common/tenant-host';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -121,12 +128,54 @@ export class AuthService {
       nombre: dto.tenantName,
     });
 
+    // El plan elegido en el alta NO activa nada cobrable. Con uno de pago se
+    // abre una PRUEBA con fecha de fin, y alguien de la casa la convierte —o no—
+    // en suscripción de verdad desde el panel de plataforma.
+    //
+    // Activarlo directamente sería un agujero por la puerta de atrás:
+    // `billing.service.ts` ya prohíbe subir de plan mientras el proveedor no
+    // cobre, así que dejar que el registro lo haga significaría que cualquiera
+    // se auto-registra en ENTERPRISE gratis y para siempre.
+    const plan = dto.plan ?? Plan.FREE;
+    const definicion = getPlan(plan);
+    const esDePago = definicion.monthlyAmount > 0;
+
     let user: { id: string; role: Role };
     try {
       user = await this.prisma.withTenant(tenantId, async (tx) => {
         await tx.tenant.create({
-          data: { id: tenantId, name: dto.tenantName, slug: dto.slug },
+          data: {
+            id: tenantId,
+            name: dto.tenantName,
+            slug: dto.slug,
+            phone: dto.phone,
+            plan,
+          },
         });
+
+        // Va DENTRO de la misma transacción que el tenant: si la suscripción
+        // fallara aparte, quedaría una empresa con plan PRO y sin nada que
+        // marque cuándo se acaba la prueba, o sea PRO gratis indefinido.
+        if (esDePago) {
+          const ahora = new Date();
+          await tx.subscription.create({
+            data: {
+              tenantId,
+              plan,
+              status: SubscriptionStatus.TRIALING,
+              // No es `manual`: eso significa "lo activó alguien de la casa".
+              // Esto no lo ha activado nadie todavía.
+              provider: 'trial',
+              amount: definicion.monthlyAmount,
+              currency: definicion.currency,
+              currentPeriodStart: ahora,
+              currentPeriodEnd: new Date(
+                ahora.getTime() + DIAS_DE_PRUEBA * 24 * 60 * 60 * 1000,
+              ),
+            },
+          });
+        }
+
         return tx.user.create({
           data: {
             tenantId,

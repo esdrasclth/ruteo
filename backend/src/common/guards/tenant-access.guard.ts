@@ -9,6 +9,7 @@ import { TenantModule, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { modulosEfectivos } from '../../modules/platform/modules.catalog';
+import { planEfectivo } from '../../modules/billing/plans';
 import { MODULO_KEY } from '../decorators/modulo.decorator';
 import type { PeticionHttp } from '../tipos-peticion';
 
@@ -101,15 +102,28 @@ export class TenantAccessGuard implements CanActivate {
           statusReason: true,
           plan: true,
           moduleOverrides: { select: { module: true, enabled: true } },
+          subscription: {
+            select: { status: true, currentPeriodEnd: true },
+          },
         },
       }),
     );
     if (!fila) return null;
 
+    // El plan que aplica AHORA, no el que dice la columna. Una prueba vencida
+    // vale lo mismo que no tener plan aunque `Tenant.plan` siga en PRO porque el
+    // trabajo de caducidad todavía no ha corrido.
+    //
+    // Se resuelve aquí y no solo en ese trabajo a propósito: si dependiera del
+    // trabajo, un Redis caído o un worker parado regalaría planes de pago
+    // indefinidamente. Y ese fallo es invisible —nadie llama para avisar de que
+    // le sobra plan—, así que se descubriría en la factura de alguien o nunca.
+    const plan = planEfectivo(fila.plan, fila.subscription);
+
     const estado: EstadoTenant = {
       status: fila.status,
       reason: fila.statusReason,
-      modulos: modulosEfectivos(fila.plan, fila.moduleOverrides),
+      modulos: modulosEfectivos(plan, fila.moduleOverrides),
     };
     await this.redis.setJson(key, estado, CACHE_S);
     return estado;

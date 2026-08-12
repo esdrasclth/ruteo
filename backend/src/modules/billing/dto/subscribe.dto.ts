@@ -10,7 +10,8 @@ export class SubscribeDto {
 
 export class CancelSubscriptionDto {
   @ApiPropertyOptional({
-    description: 'Cancel at the end of the current period instead of immediately',
+    description:
+      'Cancel at the end of the current period instead of immediately',
     default: false,
   })
   @IsOptional()

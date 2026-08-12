@@ -46,10 +46,7 @@ export class BillingController {
 
   @Post('cancel')
   @Roles(Role.OWNER, Role.ADMIN)
-  cancel(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: CancelSubscriptionDto,
-  ) {
+  cancel(@CurrentUser() user: AuthUser, @Body() dto: CancelSubscriptionDto) {
     return this.billing.cancel(user, dto.atPeriodEnd ?? false);
   }
 }

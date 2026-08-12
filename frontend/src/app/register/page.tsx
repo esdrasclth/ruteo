@@ -1,10 +1,17 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { api, setSession, ApiError, CurrentUser } from "@/lib/api";
+import {
+  api,
+  setSession,
+  ApiError,
+  CurrentUser,
+  Plan,
+  PlanDefinition,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +54,14 @@ function slugTecleado(valor: string): string {
     .slice(0, 40);
 }
 
-const TOTAL_PASOS = 2;
+const TOTAL_PASOS = 3;
+
+const ETIQUETA_PASO = ["Datos de la empresa", "Plan", "Tu cuenta"];
+
+// Espejo de `DIAS_DE_PRUEBA` en el backend. Aquí es solo un texto: quien decide
+// la fecha de fin es el backend al crear la suscripción, así que si se
+// desincroniza se lee raro pero no se cobra ni se caduca nada distinto.
+const DIAS_DE_PRUEBA_TEXTO = "14 días";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -57,9 +71,25 @@ export default function RegisterPage() {
   // El autocompletado se apaga en cuanto el usuario escribe su propio slug, para
   // no pisarle lo que eligió si después retoca el nombre de la empresa.
   const [slugManual, setSlugManual] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [plan, setPlan] = useState<Plan>("FREE");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // El catálogo se lee de la API y no se copia aquí: con los precios duplicados
+  // en el frontend, cambiar uno en `plans.ts` deja el registro vendiendo el
+  // precio viejo. Si la petición falla, el paso del plan se salta solo y la
+  // cuenta se crea en FREE: quedarse sin poder registrarse porque no cargó una
+  // tabla de precios sería lo peor de los dos mundos.
+  const [planes, setPlanes] = useState<PlanDefinition[] | null>(null);
+  useEffect(() => {
+    void api<PlanDefinition[]>("/plans")
+      .then(setPlanes)
+      .catch(() => setPlanes([]));
+  }, []);
+
+  const elegido = planes?.find((p) => p.plan === plan);
 
   function onNombreChange(valor: string) {
     setTenantName(valor);
@@ -81,8 +111,9 @@ export default function RegisterPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
 
-    // El submit del paso 1 solo avanza; así la validación nativa del navegador
-    // corre sobre los campos visibles y no sobre los que aún no existen.
+    // Los submits intermedios solo avanzan; así la validación nativa del
+    // navegador corre sobre los campos visibles y no sobre los que aún no
+    // existen.
     if (paso === 1) {
       const limpio = slugify(slug);
       if (limpio.length < 2) {
@@ -90,7 +121,14 @@ export default function RegisterPage() {
         return;
       }
       setSlug(limpio);
-      setPaso(2);
+      // Sin catálogo no hay nada que elegir: se salta al paso de la cuenta y se
+      // crea en FREE.
+      setPaso(planes && planes.length > 0 ? 2 : 3);
+      return;
+    }
+
+    if (paso === 2) {
+      setPaso(3);
       return;
     }
 
@@ -104,8 +142,10 @@ export default function RegisterPage() {
           body: JSON.stringify({
             tenantName,
             slug: slugFinal,
+            phone,
             email,
             password,
+            plan,
           }),
         },
       );
@@ -145,8 +185,11 @@ export default function RegisterPage() {
       label: "Identificador",
       value: slug ? <span className="font-mono text-xs">{slug}</span> : "—",
     },
+    { label: "Teléfono", value: phone || "—" },
     { label: "Propietario", value: email || "—" },
   ];
+
+  const esDePago = (elegido?.monthlyAmount ?? 0) > 0;
 
   return (
     <AuthShell
@@ -154,7 +197,7 @@ export default function RegisterPage() {
         <AuthStepper
           paso={paso}
           total={TOTAL_PASOS}
-          etiqueta={paso === 1 ? "Datos de la empresa" : "Tu cuenta"}
+          etiqueta={ETIQUETA_PASO[paso - 1]}
         />
       }
       aside={
@@ -169,17 +212,28 @@ export default function RegisterPage() {
         >
           <AuthSummary
             title="Tu cuenta"
-            chips={["Plan gratis", "Propietario"]}
+            chips={[
+              elegido ? `Plan ${elegido.name}` : "Plan Free",
+              esDePago ? "Prueba de 14 días" : "Propietario",
+            ]}
             rows={resumen}
-            total={{ label: "Incluye", value: "50 envíos/mes" }}
+            total={{
+              label: "Incluye",
+              value:
+                elegido?.shipmentLimit === null
+                  ? "Envíos sin límite"
+                  : `${(elegido?.shipmentLimit ?? 50).toLocaleString("es-HN")} envíos/mes`,
+            }}
           />
         </AuthAside>
       }
     >
       <AuthBrand />
 
-      {paso === 2 ? (
-        <AuthBack onClick={() => setPaso(1)}>Datos de la empresa</AuthBack>
+      {paso > 1 ? (
+        <AuthBack onClick={() => setPaso(paso - 1)}>
+          {ETIQUETA_PASO[paso - 2]}
+        </AuthBack>
       ) : (
         <AuthBack href="/login">Volver a iniciar sesión</AuthBack>
       )}
@@ -188,6 +242,11 @@ export default function RegisterPage() {
         <AuthHeading
           title="Cuéntanos de tu empresa"
           description="El identificador es el nombre corto con el que tu equipo entrará al panel."
+        />
+      ) : paso === 2 ? (
+        <AuthHeading
+          title="¿Con qué plan empiezas?"
+          description="Puedes cambiarlo cuando quieras. Ninguno pide tarjeta ahora."
         />
       ) : (
         <AuthHeading
@@ -236,7 +295,75 @@ export default function RegisterPage() {
                   : "Se genera solo desde el nombre. Puedes editarlo."}
               </p>
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="phone" className="text-white/80">
+                Teléfono o WhatsApp
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                className="auth-field h-11"
+                placeholder="+504 9999-8888"
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                aria-describedby="phone-hint"
+                required
+              />
+              <p id="phone-hint" className="text-xs text-white/40">
+                Para avisarte de tu cuenta y activarte el plan si eliges uno de
+                pago.
+              </p>
+            </div>
           </>
+        ) : paso === 2 ? (
+          <div
+            className="grid gap-2"
+            role="radiogroup"
+            aria-label="Elige tu plan"
+          >
+            {(planes ?? []).map((p) => {
+              const activo = p.plan === plan;
+              return (
+                <button
+                  key={p.plan}
+                  type="button"
+                  role="radio"
+                  aria-checked={activo}
+                  onClick={() => setPlan(p.plan)}
+                  className={`rounded-lg border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#56b3a5] ${
+                    activo
+                      ? "border-[#56b3a5] bg-white/10"
+                      : "border-white/10 bg-white/5 hover:border-white/30"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-medium text-white">{p.name}</span>
+                    <span className="text-sm text-white/70">
+                      {p.monthlyAmount === 0
+                        ? "Gratis"
+                        : `${p.currency} ${p.monthlyAmount.toLocaleString("es-HN")}/mes`}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/50">
+                    {p.shipmentLimit === null
+                      ? "Envíos sin límite"
+                      : `Hasta ${p.shipmentLimit.toLocaleString("es-HN")} envíos/mes`}
+                    {p.features.length > 0 && ` · ${p.features.join(" · ")}`}
+                  </p>
+                </button>
+              );
+            })}
+
+            {/* Se dice ANTES de elegir, no después de pagar. Que un plan de pago
+                empiece como prueba y no como cobro es exactamente lo que el
+                usuario necesita saber para decidir sin miedo. */}
+            <p className="mt-2 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+              {esDePago
+                ? `Empiezas con ${DIAS_DE_PRUEBA_TEXTO} de prueba, sin tarjeta. Te contactamos para activarlo antes de que termine; si no, tu cuenta pasa a Free y no pierdes nada de lo que hayas cargado.`
+                : "El plan Free no caduca. Puedes cambiar de plan cuando quieras desde el panel."}
+            </p>
+          </div>
         ) : (
           <>
             <div className="grid gap-2">
@@ -279,7 +406,7 @@ export default function RegisterPage() {
           disabled={loading}
           className="auth-cta mt-2 h-11 w-full text-sm font-semibold hover:opacity-100"
         >
-          {paso === 1
+          {paso < TOTAL_PASOS
             ? "Continuar"
             : loading
               ? "Creando…"

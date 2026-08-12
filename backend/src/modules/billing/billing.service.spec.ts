@@ -8,13 +8,31 @@ import type { BillingProvider } from './billing-provider';
 // decide qué módulos ve y cuántos envíos puede crear. Si esto se afloja, todo
 // el sistema de planes —`@Modulo` incluido— se sortea con una petición.
 
-function montar(opciones: { cobra: boolean; planActual: Plan }) {
+/** Ficha fiscal completa; es el caso normal de una empresa que ya contrató. */
+const FISCALES_COMPLETOS = {
+  legalName: 'Aviotech S. de R.L.',
+  taxId: '08019995123456',
+  billingEmail: 'facturacion@aviotech.com',
+  billingAddress: 'Col. Palmira, Tegucigalpa',
+};
+
+function montar(opciones: {
+  cobra: boolean;
+  planActual: Plan;
+  /** Lo que hay en la ficha fiscal. Por defecto, completa. */
+  fiscales?: Partial<typeof FISCALES_COMPLETOS>;
+}) {
   const tenantUpdate = jest.fn().mockResolvedValue({});
   const tx = {
     tenant: {
-      findUniqueOrThrow: jest
-        .fn()
-        .mockResolvedValue({ plan: opciones.planActual }),
+      // Devuelve plan Y datos fiscales: `subscribe` consulta el tenant dos
+      // veces —para el plan actual y para exigir la ficha— y este doble
+      // responde a las dos con el mismo objeto.
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        plan: opciones.planActual,
+        ...FISCALES_COMPLETOS,
+        ...opciones.fiscales,
+      }),
       update: tenantUpdate,
     },
     subscription: {
@@ -53,6 +71,48 @@ function montar(opciones: { cobra: boolean; planActual: Plan }) {
 }
 
 const actor = { userId: 'u1', tenantId: 't1', role: 'OWNER' } as AuthUser;
+
+describe('BillingService.subscribe — datos fiscales', () => {
+  // Se exigen aquí y NO en el alta: nadie necesita un RTN para rastrear un
+  // paquete, y pedirlo en el registro solo consigue que menos gente lo termine.
+  // Este es el momento en que de verdad hacen falta.
+  it('no deja contratar un plan de pago con la ficha fiscal incompleta', async () => {
+    const { servicio, inicioSuscripcion } = montar({
+      cobra: true,
+      planActual: Plan.FREE,
+      fiscales: { taxId: null as unknown as string, billingAddress: '' },
+    });
+
+    await expect(
+      servicio.subscribe(actor, { plan: Plan.STARTER }),
+    ).rejects.toThrow(/RTN.*dirección fiscal|dirección fiscal.*RTN/);
+    expect(inicioSuscripcion).not.toHaveBeenCalled();
+  });
+
+  it('con la ficha completa, contrata', async () => {
+    const { servicio, inicioSuscripcion } = montar({
+      cobra: true,
+      planActual: Plan.FREE,
+    });
+
+    await servicio.subscribe(actor, { plan: Plan.STARTER });
+    expect(inicioSuscripcion).toHaveBeenCalled();
+  });
+
+  // Bajar a FREE no cuesta dinero, así que no hay factura que emitir. Exigir la
+  // ficha aquí dejaría atrapada en un plan de pago a una empresa que solo
+  // quiere dejar de pagarlo.
+  it('bajar a FREE no exige ficha fiscal', async () => {
+    const { servicio, inicioSuscripcion } = montar({
+      cobra: true,
+      planActual: Plan.PRO,
+      fiscales: { taxId: null as unknown as string },
+    });
+
+    await servicio.subscribe(actor, { plan: Plan.FREE });
+    expect(inicioSuscripcion).toHaveBeenCalled();
+  });
+});
 
 describe('BillingService.subscribe', () => {
   describe('con un proveedor que no cobra (el de hoy)', () => {
