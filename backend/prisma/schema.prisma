@@ -281,7 +281,27 @@ model Tenant {
   id        String       @id @default(uuid()) @db.Uuid
   name      String
   slug      String       @unique
+  /// Teléfono o WhatsApp de contacto. Se pide en el alta porque es por donde se
+  /// cierra la activación de un plan de prueba, y una cuenta con plan pedido y
+  /// sin forma de contactar es una venta perdida por falta de un campo.
+  phone     String?
   plan      Plan         @default(FREE)
+
+  /// --- Datos fiscales -------------------------------------------------------
+  /// NO se piden en el alta a propósito: no hacen falta para que la cuenta
+  /// funcione, y cada campo en un registro cuesta conversión. Se exigen cuando
+  /// de verdad hacen falta —al activar un plan de pago—, que es el mismo patrón
+  /// de «no liberar de aduana con saldo pendiente».
+  ///
+  /// Esto es lo que Ruteo necesita para facturar A LA EMPRESA. Lo que la empresa
+  /// necesita para facturar A SUS CLIENTES es otra cosa —en Honduras, CAI, rango
+  /// de correlativos y fecha límite de emisión— y no cabe aquí: caduca y hay que
+  /// renovarlo, así que necesita su propia pantalla con avisos.
+  legalName      String? @map("legal_name")
+  /// RTN en Honduras. Se guarda solo con dígitos, sin guiones ni espacios.
+  taxId          String? @map("tax_id")
+  billingEmail   String? @map("billing_email")
+  billingAddress String? @map("billing_address")
   status    TenantStatus @default(ACTIVE)
   /// Por qué se suspendió y desde cuándo. El estado sin motivo obliga a
   /// preguntar por WhatsApp qué pasó con una empresa.
@@ -833,6 +853,10 @@ model Subscription {
   currentPeriodEnd   DateTime           @map("current_period_end")
   cancelAtPeriodEnd  Boolean            @default(false) @map("cancel_at_period_end")
   canceledAt         DateTime?          @map("canceled_at")
+  /// Cuándo se avisó de que la prueba está por vencer. Es lo que impide que el
+  /// aviso se repita en cada pasada del trabajo: sin esta marca, una prueba a
+  /// tres días de vencer generaría un correo cada doce horas hasta que caduque.
+  trialWarnedAt      DateTime?          @map("trial_warned_at")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 

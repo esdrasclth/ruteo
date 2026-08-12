@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DatosFiscales } from "./datos-fiscales";
 
 export default function BillingPage() {
   const [plans, setPlans] = useState<PlanDefinition[] | null>(null);
@@ -285,6 +286,10 @@ export default function BillingPage() {
           );
         })}
       </div>
+
+      {/* Debajo de los planes a propósito: es el dato que hace falta para
+          contratar uno, así que se encuentra justo cuando se busca. */}
+      <DatosFiscales />
     </div>
   );
 }

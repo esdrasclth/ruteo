@@ -1,6 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/** Lo que la propia empresa puede cambiar de su ficha. */
+export interface DatosDeEmpresa {
+  name?: string;
+  phone?: string;
+  legalName?: string;
+  taxId?: string;
+  billingEmail?: string;
+  billingAddress?: string;
+}
+
 /** Una empresa donde existe un correo. Ver `candidatosPorCorreo`. */
 export interface CandidatoDeAcceso {
   tenantId: string;
@@ -53,6 +63,59 @@ export class TenantsService {
       userId: f.out_user_id,
       userStatus: f.out_user_status,
     }));
+  }
+
+  /** Ficha de la empresa, con el estado de sus datos fiscales ya resuelto. */
+  async perfil(tenantId: string) {
+    const tenant = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          phone: true,
+          plan: true,
+          status: true,
+          legalName: true,
+          taxId: true,
+          billingEmail: true,
+          billingAddress: true,
+          subscription: {
+            select: { status: true, currentPeriodEnd: true, plan: true },
+          },
+        },
+      }),
+    );
+
+    // Se calcula aquí y no en el panel para que la regla viva en un solo sitio.
+    // Con la lista repetida en el frontend, añadir un campo obligatorio deja la
+    // pantalla diciendo «completo» mientras el backend rechaza la contratación.
+    const faltantes = (
+      [
+        ['legalName', tenant.legalName],
+        ['taxId', tenant.taxId],
+        ['billingEmail', tenant.billingEmail],
+        ['billingAddress', tenant.billingAddress],
+      ] as const
+    )
+      .filter(([, valor]) => !valor)
+      .map(([campo]) => campo);
+
+    return {
+      ...tenant,
+      facturacion: {
+        completa: faltantes.length === 0,
+        faltantes,
+      },
+    };
+  }
+
+  async actualizarPerfil(tenantId: string, datos: DatosDeEmpresa) {
+    await this.prisma.withTenant(tenantId, (tx) =>
+      tx.tenant.update({ where: { id: tenantId }, data: datos }),
+    );
+    return this.perfil(tenantId);
   }
 
   async findById(tenantId: string) {

@@ -538,6 +538,33 @@ export interface Subscription {
   canceledAt: string | null;
 }
 
+/**
+ * Ficha de la propia empresa. `facturacion.completa` la calcula el BACKEND: si
+ * el panel repitiera la lista de campos obligatorios, añadir uno dejaría esta
+ * pantalla diciendo «completo» mientras la contratación se rechaza.
+ */
+export interface TenantProfile {
+  id: string;
+  name: string;
+  slug: string;
+  phone: string | null;
+  plan: Plan;
+  status: "ACTIVE" | "SUSPENDED" | "CANCELLED";
+  legalName: string | null;
+  taxId: string | null;
+  billingEmail: string | null;
+  billingAddress: string | null;
+  subscription: {
+    status: SubscriptionStatus;
+    currentPeriodEnd: string;
+    plan: Plan;
+  } | null;
+  facturacion: {
+    completa: boolean;
+    faltantes: string[];
+  };
+}
+
 export interface BillingUsage {
   plan: Plan;
   periodStart: string;
