@@ -136,6 +136,49 @@ class EnvironmentVariables {
   @IsString()
   QUEUE_PREFIX: string = 'bull';
 
+  // --- Almacenamiento de archivos (S3 / MinIO) ------------------------------
+  // Fotos de bodega, facturas, declaraciones, firmas de entrega y evidencia de
+  // reclamos. Opcional a propósito: sin configurar, el módulo queda dormido y
+  // se puede trabajar en local sin levantar un MinIO. Lo que NO se admite es
+  // configurarlo a medias, y de eso se encarga `comprobarAlmacenamiento`.
+  //
+  // El endpoint es la API S3 (`https://s3.…`), NO la consola web (`storage.…`),
+  // que es una aplicación distinta en otro puerto. Apuntar a la consola da un
+  // error de XML mal formado que no señala a ningún sitio.
+  @IsOptional()
+  @IsString()
+  S3_ENDPOINT: string = '';
+
+  @IsOptional()
+  @IsString()
+  S3_ACCESS_KEY: string = '';
+
+  @IsOptional()
+  @IsString()
+  S3_SECRET_KEY: string = '';
+
+  @IsOptional()
+  @IsString()
+  S3_BUCKET: string = '';
+
+  @IsOptional()
+  @IsString()
+  S3_REGION: string = 'us-east-1';
+
+  // MinIO sirve los buckets como ruta (`/bucket/clave`). Con esto en `false`,
+  // el SDK busca `bucket.host`, que no resuelve.
+  @IsOptional()
+  @IsString()
+  S3_FORCE_PATH_STYLE: string = 'true';
+
+  // Dominio para SERVIR archivos al navegador. Se separa del endpoint de la API
+  // porque son dos usos distintos del mismo almacenamiento: uno lo consume el
+  // backend para firmar, el otro lo consume el navegador para descargar, y al
+  // segundo se le puede poner caché o CDN delante sin tocar el primero.
+  @IsOptional()
+  @IsString()
+  S3_PUBLIC_URL: string = '';
+
   // Origen del panel RAÍZ: la única pantalla sin tenant todavía (el alta).
   @IsOptional()
   @IsString()
@@ -170,6 +213,55 @@ const SECRETOS_DE_EJEMPLO = new Set([
 // estándar; es el punto donde `openssl rand -base64 24` ya no cabe y obliga a
 // generar en serio en vez de teclear algo.
 const LARGO_MINIMO_SECRETO = 32;
+
+/**
+ * El almacenamiento se configura entero o no se configura.
+ *
+ * A medias es el peor de los tres estados: el módulo arranca creyéndose
+ * apagado, las pantallas ofrecen subir archivos y cada intento falla con
+ * «no está configurado» en un entorno donde alguien SÍ puso las claves. Se
+ * comprueba en todos los entornos, no solo en producción, porque el que se
+ * configura a medias suele ser el de desarrollo.
+ */
+function comprobarAlmacenamiento(env: EnvironmentVariables): string[] {
+  const piezas: [string, string][] = [
+    ['S3_ENDPOINT', env.S3_ENDPOINT],
+    ['S3_ACCESS_KEY', env.S3_ACCESS_KEY],
+    ['S3_SECRET_KEY', env.S3_SECRET_KEY],
+    ['S3_BUCKET', env.S3_BUCKET],
+  ];
+  const puestas = piezas.filter(([, v]) => v);
+  if (puestas.length === 0) return [];
+
+  const fallos: string[] = [];
+  const faltan = piezas.filter(([, v]) => !v).map(([n]) => n);
+  if (faltan.length > 0) {
+    fallos.push(
+      `El almacenamiento está configurado a medias. Falta: ${faltan.join(', ')}.`,
+    );
+  }
+
+  // La consola web de MinIO y la API S3 son dos servicios distintos. Apuntar
+  // aquí a la consola falla al primer intento de firmar, con un error de XML
+  // que no menciona la palabra "consola" por ningún lado.
+  if (env.S3_ENDPOINT && /(^|\/\/)storage\./.test(env.S3_ENDPOINT)) {
+    fallos.push(
+      `S3_ENDPOINT parece la consola web (${env.S3_ENDPOINT}), no la API S3. Usa el dominio de la API.`,
+    );
+  }
+
+  if (
+    env.NODE_ENV === NodeEnv.Production &&
+    env.S3_ENDPOINT &&
+    !env.S3_ENDPOINT.startsWith('https://')
+  ) {
+    fallos.push(
+      'S3_ENDPOINT debe usar https:// en producción: por ahí viajan las claves firmadas.',
+    );
+  }
+
+  return fallos;
+}
 
 /**
  * Comprobaciones que solo aplican con `NODE_ENV=production`.
@@ -280,7 +372,10 @@ export function validateEnv(config: Record<string, unknown>) {
 
   // Va DESPUÉS de la validación de forma: sin ella los campos podrían no ser
   // ni siquiera cadenas y las comprobaciones de abajo mentirían.
-  const inseguros = comprobarSecretosDeProduccion(validated);
+  const inseguros = [
+    ...comprobarSecretosDeProduccion(validated),
+    ...comprobarAlmacenamiento(validated),
+  ];
   if (inseguros.length > 0) {
     throw new Error(
       `Configuración insegura para producción:\n${inseguros

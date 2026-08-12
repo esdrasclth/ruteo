@@ -6,6 +6,7 @@ import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
+import { StorageModule } from './storage/storage.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -40,6 +41,7 @@ import { SearchModule } from './modules/search/search.module';
     }),
     PrismaModule,
     RedisModule,
+    StorageModule,
     QueueModule,
     TenantsModule,
     AuthModule,

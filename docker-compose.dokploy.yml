@@ -165,6 +165,24 @@ services:
       # Un solo origen: el panel. La landing no llama a la API.
       CORS_ORIGIN: ${PUBLIC_PANEL_URL}
 
+      # --- Almacenamiento de archivos (MinIO) --------------------------------
+      # `S3_ENDPOINT` es la API S3, no la consola web: son dos aplicaciones
+      # distintas y apuntar a la consola falla con un error de XML que no
+      # explica nada. `S3_PUBLIC_URL` es por donde el NAVEGADOR descarga, y se
+      # separa para poder ponerle caché o CDN delante sin tocar el endpoint que
+      # usa el backend para firmar.
+      #
+      # Las cuatro primeras van juntas o no van: el arranque rechaza una
+      # configuración a medias, porque a medias el módulo se cree apagado
+      # mientras las pantallas ofrecen subir archivos.
+      S3_ENDPOINT: ${S3_ENDPOINT:?define S3_ENDPOINT en el Environment de Dokploy}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?define S3_ACCESS_KEY en el Environment de Dokploy}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?define S3_SECRET_KEY en el Environment de Dokploy}
+      S3_BUCKET: ${S3_BUCKET:-ruteo}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: '${S3_FORCE_PATH_STYLE:-true}'
+
       # Con `true`, un tenant puede apuntar un webhook al metadata del proveedor
       # de nube o a los servicios internos del propio VPS —incluido el panel de
       # Dokploy—. Fijo en `false`, no interpolado: no es algo que deba poder
