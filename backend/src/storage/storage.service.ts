@@ -110,6 +110,19 @@ export class StorageService implements OnModuleInit {
       endpoint,
       region: this.config.get<string>('S3_REGION', 'us-east-1'),
       credentials: { accessKeyId, secretAccessKey },
+      // **Sin esto, el SDK mete un checksum MENTIROSO en la URL firmada.**
+      //
+      // Desde la versión 3.729 el SDK calcula un CRC32 del cuerpo por defecto.
+      // Al FIRMAR no hay cuerpo todavía, así que calcula el del vacío y lo deja
+      // en la URL: `x-amz-checksum-crc32=AAAAAA==`. Después el navegador sube un
+      // archivo real, cuyo CRC32 no es ese, y el servidor puede rechazarlo con
+      // un 403 —según versión e implementación de S3—.
+      //
+      // Es un parámetro que además no sirve para nada aquí: no protege la
+      // subida, porque describe un cuerpo que nunca se va a enviar. Quitarlo no
+      // pierde ninguna comprobación; lo que de verdad acota la subida son el
+      // `content-type` y el `content-length` firmados.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
       // MinIO sirve los buckets como RUTA (`/bucket/clave`) y no como
       // subdominio (`bucket.host/clave`), que es lo que AWS hace por defecto.
       // Sin esto el SDK resuelve `ruteo.s3.brandsofts.com`, que no existe, y el

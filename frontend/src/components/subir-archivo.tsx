@@ -47,6 +47,26 @@ interface Props {
 
 type Estado = "vacio" | "subiendo" | "listo";
 
+/**
+ * Saca el motivo del XML de error de S3.
+ *
+ * No se parsea con `DOMParser` ni se trae una librería: son dos etiquetas y el
+ * cuerpo puede no ser XML válido si quien responde es un proxy por medio. Una
+ * expresión regular tolerante devuelve algo útil en los dos casos, que es lo que
+ * hace falta cuando lo que se busca es poder reportar el fallo.
+ */
+async function razonDeS3(res: Response): Promise<string> {
+  try {
+    const cuerpo = await res.text();
+    const codigo = /<Code>([^<]+)<\/Code>/.exec(cuerpo)?.[1];
+    const mensaje = /<Message>([^<]+)<\/Message>/.exec(cuerpo)?.[1];
+    if (codigo) return mensaje ? `${codigo}: ${mensaje}` : codigo;
+    return cuerpo.slice(0, 200);
+  } catch {
+    return "";
+  }
+}
+
 export function SubirArchivo({
   categoria,
   propietarioId,
@@ -85,7 +105,14 @@ export function SubirArchivo({
         headers: { "content-type": archivo.type },
       });
       if (!res.ok) {
-        throw new Error(`El almacenamiento respondió ${res.status}`);
+        // El cuerpo del error trae el motivo REAL —`SignatureDoesNotMatch`,
+        // `XAmzContentSHA256Mismatch`, `EntityTooLarge`…— en un XML de S3.
+        // Antes se descartaba y quedaba «respondió 403», que no permite
+        // distinguir un problema de firma de uno de permisos ni de tamaño, y
+        // deja a quien lo sufre sin nada que reportar.
+        throw new Error(
+          `${res.status} — ${(await razonDeS3(res)) || "sin detalle"}`,
+        );
       }
 
       let fileId: string | undefined;
