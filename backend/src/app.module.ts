@@ -8,6 +8,9 @@ import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { StorageModule } from './storage/storage.module';
 import { FilesModule } from './modules/files/files.module';
+import { WarehousesModule } from './modules/warehouses/warehouses.module';
+import { ManifestsModule } from './modules/manifests/manifests.module';
+import { ExceptionsModule } from './modules/exceptions/exceptions.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -44,6 +47,9 @@ import { SearchModule } from './modules/search/search.module';
     RedisModule,
     StorageModule,
     FilesModule,
+    WarehousesModule,
+    ManifestsModule,
+    ExceptionsModule,
     QueueModule,
     TenantsModule,
     AuthModule,

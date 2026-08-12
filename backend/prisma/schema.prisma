@@ -124,6 +124,70 @@ enum PackageCategory {
   OTHER
 }
 
+/// Qué papel juega una bodega en la operación.
+enum WarehouseType {
+  /// Donde se recibe del comercio: Miami, típicamente.
+  ORIGIN
+  /// Donde llega la carga y se desconsolida: la del país de destino.
+  DESTINATION
+  /// Sucursal donde el cliente puede retirar.
+  BRANCH
+}
+
+/// Estado del viaje que transporta la carga.
+enum TripStatus {
+  PLANNED
+  IN_TRANSIT
+  ARRIVED
+  CANCELLED
+}
+
+/// Estado del manifiesto.
+///
+/// `RECONCILED` es el que importa: significa que lo declarado se contó contra lo
+/// que llegó de verdad. Sin ese paso, el manifiesto es una lista de intenciones.
+enum ManifestStatus {
+  DRAFT
+  TRANSMITTED
+  ARRIVED
+  RECONCILED
+}
+
+/// Qué salió mal.
+///
+/// La lista es cerrada a propósito: una excepción con el motivo en texto libre
+/// no se puede contar, y lo primero que se pregunta al final del mes es cuántos
+/// faltantes hubo.
+enum ExceptionType {
+  /// Lo manifestado no cuadra con lo recibido. Ver `ManifestsService.cotejar`.
+  MANIFEST_MISMATCH
+  /// Llegaron menos bultos de los declarados.
+  MISSING
+  /// Llegaron más. También es un problema: alguien tiene un paquete sin dueño.
+  OVERAGE
+  DAMAGED
+  OVERWEIGHT
+  CUSTOMS_HOLD
+  DOCUMENTATION_REQUIRED
+  ADDRESS_PROBLEM
+  OTHER
+}
+
+enum ExceptionStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  /// Se asume la pérdida y se cierra. Es distinto de RESOLVED: uno se arregló,
+  /// el otro se pagó. Mezclarlos hace imposible medir cuánto cuestan.
+  WRITTEN_OFF
+}
+
+enum ExceptionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum PackagePhotoType {
   /// La caja tal como llegó.
   EXTERIOR
@@ -293,6 +357,11 @@ enum TenantModule {
   AUDIT
   INTEGRATIONS
   CUSTOMS
+  /// Manifiestos de carga y viajes. Es el nivel por encima de la consolidación:
+  /// agrupar los bultos de todos los clientes en el vuelo del martes.
+  MANIFESTS
+  /// Excepciones: faltantes, sobrantes, daños, retenciones.
+  EXCEPTIONS
 }
 
 /// Excepción al conjunto de módulos que trae el plan.
@@ -378,6 +447,11 @@ model Tenant {
   webhookDeliveries WebhookDelivery[]
   files             FileObject[]
   packagePhotos     PackagePhoto[]
+  warehouses        Warehouse[]
+  trips             Trip[]
+  manifests         Manifest[]
+  manifestItems     ManifestItem[]
+  exceptions        Exception[]
   subscription   Subscription?
   notifications  Notification[]
   auditLogs      AuditLog[]
@@ -512,6 +586,8 @@ model Shipment {
   pods       ProofOfDelivery[]
   payments   Payment[]
   notifications Notification[]
+  manifestItems ManifestItem[]
+  exceptions    Exception[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -585,6 +661,7 @@ model Carrier {
 
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   legs   ShipmentLeg[]
+  trips  Trip[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -670,17 +747,210 @@ model LockerPackage {
   /// Quién lo recibió. Un daño que aparece después necesita saber quién lo tuvo
   /// delante, y sin esto la respuesta es «alguien de bodega».
   receivedByUserId String?          @map("received_by_user_id") @db.Uuid
+  /// En qué bodega se recibió. Quedó pendiente en la fase 1 esperando a que
+  /// `Warehouse` existiera: una columna nulable que nadie llena es
+  /// indistinguible de un olvido.
+  warehouseId      String?          @map("warehouse_id") @db.Uuid
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   locker   Locker    @relation(fields: [lockerId], references: [id], onDelete: Cascade)
   shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
-  invoice  FileObject? @relation("FacturaDePaquete", fields: [invoiceFileId], references: [id], onDelete: SetNull)
-  photos   PackagePhoto[]
+  invoice   FileObject? @relation("FacturaDePaquete", fields: [invoiceFileId], references: [id], onDelete: SetNull)
+  warehouse Warehouse?  @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  photos    PackagePhoto[]
+  exceptions Exception[]
 
   @@index([tenantId])
   @@index([lockerId])
   @@index([shipmentId])
   @@map("locker_packages")
+}
+
+/// Una bodega o sucursal física.
+///
+/// Antes «Miami» y «bodega HN» eran cadenas de texto dentro de `originLabel`.
+/// Con una fila detrás se puede filtrar, contar, y —lo que hace falta para el
+/// cotejo— decir contra qué bodega se está contando lo que llegó.
+model Warehouse {
+  id       String        @id @default(uuid()) @db.Uuid
+  tenantId String        @map("tenant_id") @db.Uuid
+  /// Corto y legible: MIA-01, SPS-01. Es lo que se dice por radio.
+  code     String
+  name     String
+  type     WarehouseType @default(ORIGIN)
+  country  String
+  city     String?
+  addressLine String?    @map("address_line")
+  /// Si el cliente puede venir a retirar aquí. Lo necesita el modo de entrega
+  /// de la fase 5, y se declara desde ya para no tener que migrar después.
+  allowsPickup Boolean   @default(false) @map("allows_pickup")
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packages LockerPackage[]
+  tripsFrom Trip[]         @relation("BodegaOrigen")
+  tripsTo   Trip[]         @relation("BodegaDestino")
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("warehouses")
+}
+
+/// El vuelo (o el viaje) en el que se mueve la carga.
+///
+/// Va por encima del manifiesto y no dentro: un mismo vuelo puede llevar varios
+/// manifiestos, y un manifiesto se prepara antes de saber en qué vuelo sale.
+model Trip {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  carrierId    String?    @map("carrier_id") @db.Uuid
+  /// Número de vuelo o de viaje. Es lo que se le dice a la aduana.
+  flightNumber String?    @map("flight_number")
+  originWarehouseId      String? @map("origin_warehouse_id") @db.Uuid
+  destinationWarehouseId String? @map("destination_warehouse_id") @db.Uuid
+  departureAt  DateTime?  @map("departure_at")
+  arrivalAt    DateTime?  @map("arrival_at")
+  status       TripStatus @default(PLANNED)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  carrier     Carrier?   @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  origin      Warehouse? @relation("BodegaOrigen", fields: [originWarehouseId], references: [id], onDelete: SetNull)
+  destination Warehouse? @relation("BodegaDestino", fields: [destinationWarehouseId], references: [id], onDelete: SetNull)
+  manifests   Manifest[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("trips")
+}
+
+/// El manifiesto de carga: la guía madre y el detalle de sus guías hijas.
+///
+/// Esto es lo que faltaba para que «consolidación» dejara de significar dos
+/// cosas. Juntar tres paquetes de un cliente en un envío ya existía; agrupar
+/// ciento cincuenta bultos de todos los clientes en el vuelo del martes es esto.
+model Manifest {
+  id       String         @id @default(uuid()) @db.Uuid
+  tenantId String         @map("tenant_id") @db.Uuid
+  /// El número que exige Aduanas. Único por empresa.
+  number   String
+  tripId   String?        @map("trip_id") @db.Uuid
+  status   ManifestStatus @default(DRAFT)
+
+  /// Totales DECLARADOS. Se calculan al cerrar el manifiesto, sumando sus
+  /// líneas, y se congelan: son lo que se transmitió, y el cotejo compara
+  /// contra ellos. Recalcularlos al leer haría que añadir una línea después
+  /// cambiara retroactivamente lo que se declaró.
+  totalPieces   Int     @default(0) @map("total_pieces")
+  totalWeightKg Decimal @default(0) @map("total_weight_kg") @db.Decimal(12, 3)
+
+  /// Totales CONTADOS al recibir. Nulos hasta que alguien cotea.
+  receivedPieces   Int?     @map("received_pieces")
+  receivedWeightKg Decimal? @map("received_weight_kg") @db.Decimal(12, 3)
+  reconciledAt     DateTime? @map("reconciled_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trip       Trip?          @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  items      ManifestItem[]
+  exceptions Exception[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("manifests")
+}
+
+/// Una guía hija dentro del manifiesto.
+///
+/// Los campos no son decorativos: número de guía, bultos, peso, descripción,
+/// consignatario, flete y valor FOB son los que el procedimiento de courier pide
+/// que se detallen. Se COPIAN del envío al añadir la línea en vez de leerse por
+/// relación, porque el manifiesto es un documento: tiene que seguir diciendo lo
+/// que decía el día que se transmitió, aunque el envío cambie después.
+model ManifestItem {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  manifestId String @map("manifest_id") @db.Uuid
+  shipmentId String @map("shipment_id") @db.Uuid
+
+  pieces      Int      @default(1)
+  weightKg    Decimal  @db.Decimal(10, 3)
+  description String?
+  consignee   String?
+  freightAmount Decimal? @map("freight_amount") @db.Decimal(12, 2)
+  fobValue      Decimal? @map("fob_value") @db.Decimal(12, 2)
+  currency      String   @default("USD")
+
+  /// Lo contado para ESTA línea. El cotejo por línea es lo que permite decir
+  /// qué guía falta, en vez de solo que faltan tres bultos de ciento cincuenta.
+  receivedPieces   Int?     @map("received_pieces")
+  receivedWeightKg Decimal? @map("received_weight_kg") @db.Decimal(10, 3)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manifest Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  /// Un envío no puede ir dos veces en el mismo manifiesto.
+  @@unique([manifestId, shipmentId])
+  @@index([tenantId])
+  @@index([manifestId])
+  @@map("manifest_items")
+}
+
+/// Algo que salió mal y hay que resolver.
+///
+/// **Es una entidad y no un estado, y ahí está todo el punto.** Un envío puede
+/// estar a la vez «en aduana» y «con documentación pendiente»; con el problema
+/// metido en `ShipmentStatus` habría que elegir cuál de las dos cosas contar, y
+/// la operación real necesita las dos. Además cuelga de lo que sea —envío,
+/// bulto o manifiesto—, y un estado solo puede vivir en una tabla.
+model Exception {
+  id       String            @id @default(uuid()) @db.Uuid
+  tenantId String            @map("tenant_id") @db.Uuid
+  type     ExceptionType
+  status   ExceptionStatus   @default(OPEN)
+  severity ExceptionSeverity @default(MEDIUM)
+
+  /// A qué se refiere. Los tres son opcionales y al menos uno debería venir;
+  /// no se fuerza en el esquema porque una excepción manual puede no colgar de
+  /// nada todavía —«llegó un bulto sin etiqueta»—.
+  shipmentId String? @map("shipment_id") @db.Uuid
+  packageId  String? @map("package_id") @db.Uuid
+  manifestId String? @map("manifest_id") @db.Uuid
+
+  description String
+  /// Qué se esperaba y qué había. Texto y no números: sirve igual para «100
+  /// bultos / 1000 kg» que para «factura comercial», y una excepción que solo
+  /// admitiera cifras no podría describir la mitad de los casos.
+  expectedValue String? @map("expected_value")
+  actualValue   String? @map("actual_value")
+
+  assignedToUserId String?   @map("assigned_to_user_id") @db.Uuid
+  createdByUserId  String?   @map("created_by_user_id") @db.Uuid
+  resolution       String?
+  resolvedAt       DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  package  LockerPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  manifest Manifest?      @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([shipmentId])
+  @@map("exceptions")
 }
 
 /// Un archivo subido al almacenamiento de objetos.

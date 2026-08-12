@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  ClipboardList,
+  TriangleAlert,
   Archive,
   Bell,
   CreditCard,
@@ -100,6 +102,18 @@ const NAV: NavGroup[] = [
         href: "/carriers",
         label: "Transportistas",
         icon: Plane,
+        roles: OFICINA_Y_SOPORTE,
+      },
+      {
+        href: "/manifests",
+        label: "Manifiestos",
+        icon: ClipboardList,
+        roles: OFICINA_Y_SOPORTE,
+      },
+      {
+        href: "/exceptions",
+        label: "Excepciones",
+        icon: TriangleAlert,
         roles: OFICINA_Y_SOPORTE,
       },
     ],

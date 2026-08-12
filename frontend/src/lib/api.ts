@@ -841,3 +841,111 @@ export interface AuditLog {
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
+
+// ---- Fase 2: manifiestos, viajes y excepciones ----
+
+export type WarehouseType = "ORIGIN" | "DESTINATION" | "BRANCH";
+export type TripStatus = "PLANNED" | "IN_TRANSIT" | "ARRIVED" | "CANCELLED";
+export type ManifestStatus = "DRAFT" | "TRANSMITTED" | "ARRIVED" | "RECONCILED";
+
+export type ExceptionType =
+  | "MANIFEST_MISMATCH"
+  | "MISSING"
+  | "OVERAGE"
+  | "DAMAGED"
+  | "OVERWEIGHT"
+  | "CUSTOMS_HOLD"
+  | "DOCUMENTATION_REQUIRED"
+  | "ADDRESS_PROBLEM"
+  | "OTHER";
+
+export type ExceptionStatus =
+  | "OPEN"
+  | "INVESTIGATING"
+  | "RESOLVED"
+  /** Se asume la pérdida. Distinto de RESOLVED: uno se arregló, el otro se pagó. */
+  | "WRITTEN_OFF";
+
+export type ExceptionSeverity = "LOW" | "MEDIUM" | "HIGH";
+
+export interface Warehouse {
+  id: string;
+  code: string;
+  name: string;
+  type: WarehouseType;
+  country: string;
+  city: string | null;
+  addressLine: string | null;
+  allowsPickup: boolean;
+  active: boolean;
+}
+
+export interface Trip {
+  id: string;
+  flightNumber: string | null;
+  status: TripStatus;
+  departureAt: string | null;
+  arrivalAt: string | null;
+  carrier: { id: string; name: string } | null;
+  origin: { id: string; code: string } | null;
+  destination: { id: string; code: string } | null;
+  _count?: { manifests: number };
+}
+
+export interface ManifestItem {
+  id: string;
+  shipmentId: string;
+  pieces: number;
+  weightKg: string;
+  description: string | null;
+  consignee: string | null;
+  freightAmount: string | null;
+  fobValue: string | null;
+  currency: string;
+  /** Lo contado al descargar. Nulo mientras nadie coteje. */
+  receivedPieces: number | null;
+  receivedWeightKg: string | null;
+  shipment: { id: string; trackingNumber: string; status: ShipmentStatus };
+}
+
+export interface ManifestRow {
+  id: string;
+  number: string;
+  status: ManifestStatus;
+  totalPieces: number;
+  totalWeightKg: string;
+  receivedPieces: number | null;
+  receivedWeightKg: string | null;
+  reconciledAt: string | null;
+  createdAt: string;
+  trip: { id: string; flightNumber: string | null } | null;
+  _count: { items: number; exceptions: number };
+}
+
+export interface ManifestDetail extends Omit<ManifestRow, "_count" | "trip"> {
+  trip: Trip | null;
+  items: ManifestItem[];
+  exceptions: ExceptionRow[];
+}
+
+export interface ExceptionRow {
+  id: string;
+  type: ExceptionType;
+  status: ExceptionStatus;
+  severity: ExceptionSeverity;
+  description: string;
+  expectedValue: string | null;
+  actualValue: string | null;
+  resolution: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  shipmentId: string | null;
+  manifestId: string | null;
+  shipment?: { id: string; trackingNumber: string; status: ShipmentStatus } | null;
+  manifest?: { id: string; number: string } | null;
+}
+
+export interface ResumenExcepciones {
+  abiertas: number;
+  porSeveridad: Partial<Record<ExceptionSeverity, number>>;
+}
