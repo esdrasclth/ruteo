@@ -389,6 +389,36 @@ export interface Locker {
   createdAt: string;
 }
 
+/** En qué estado llegó el bulto. Espejo de `PackageCondition` del backend. */
+export type PackageCondition = "GOOD" | "DAMAGED" | "WET" | "OPENED";
+
+/**
+ * Qué hay dentro, a ojos de la operación. **No es una clasificación
+ * arancelaria**: las partidas y los límites de aduana van en `CustomsRule`, que
+ * se versiona por fechas porque la normativa cambia.
+ */
+export type PackageCategory =
+  | "ELECTRONICS"
+  | "CLOTHING"
+  | "FOOTWEAR"
+  | "HOME"
+  | "AUTO_PARTS"
+  | "COSMETICS"
+  | "MEDICINE"
+  | "DOCUMENTS"
+  | "OTHER";
+
+export type PackagePhotoType = "EXTERIOR" | "LABEL" | "CONTENT" | "DAMAGE";
+
+/** Una foto de bulto, ya con su URL firmada —que dura minutos—. */
+export interface PackagePhoto {
+  id: string;
+  type: PackagePhotoType;
+  createdAt: string;
+  originalName: string | null;
+  url: string | null;
+}
+
 export interface LockerPackage {
   id: string;
   lockerId: string;
@@ -402,6 +432,25 @@ export interface LockerPackage {
   status: PackageStatus;
   preAlertedAt: string;
   receivedAt: string | null;
+
+  // Prealerta: lo que el cliente sabe antes de que el bulto exista.
+  storeName: string | null;
+  orderNumber: string | null;
+  estimatedArrival: string | null;
+  category: PackageCategory | null;
+  invoiceFileId: string | null;
+
+  // Recepción: lo que mide la bodega. Los TRES pesos se conservan — el real es
+  // lo que cobra la aerolínea, el volumétrico justifica el cobro ante el cliente
+  // que reclama, y el cobrable es el que se usa.
+  lengthCm: string | null;
+  widthCm: string | null;
+  heightCm: string | null;
+  volumetricWeightKg: string | null;
+  chargeableWeightKg: string | null;
+  pieces: number;
+  condition: PackageCondition;
+  receivedByUserId: string | null;
 }
 
 export interface LockerDetail extends Locker {

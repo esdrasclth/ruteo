@@ -14,6 +14,8 @@ import {
 } from '@prisma/client';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
+import { firmarPodsDeParadas } from '../../storage/firmar-pod';
+import { StorageService } from '../../storage/storage.service';
 import { TrackingGateway } from '../realtime/tracking.gateway';
 import { PaymentsService } from '../payments/payments.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
@@ -91,6 +93,7 @@ export class ShipmentsService {
     private readonly notifications: NotificationsService,
     private readonly billing: BillingService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
     private readonly search: SearchService,
   ) {}
 
@@ -284,7 +287,17 @@ export class ShipmentsService {
     if (!shipment) {
       throw new NotFoundException('Shipment not found');
     }
-    return shipment;
+    // El detalle del envío muestra la prueba de entrega igual que la ruta, así
+    // que la evidencia hay que firmarla aquí también. Si esto se olvidara, la
+    // misma foto se vería desde la ruta y no desde el envío.
+    return {
+      ...shipment,
+      routeStops: await firmarPodsDeParadas(
+        this.storage,
+        shipment.routeStops,
+        tenantId,
+      ),
+    };
   }
 
   async updateStatus(user: AuthUser, id: string, dto: UpdateStatusDto) {

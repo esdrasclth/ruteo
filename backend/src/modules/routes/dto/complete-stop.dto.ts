@@ -4,11 +4,21 @@ import {
   IsLongitude,
   IsOptional,
   IsString,
-  IsUrl,
   MaxLength,
 } from 'class-validator';
 
-// Proof of delivery captured when a stop is completed.
+/**
+ * Prueba de entrega de una parada completada.
+ *
+ * Firma y foto llegan como CLAVE del almacenamiento —lo que devuelve
+ * `POST /files/upload-url`— y no como URL.
+ *
+ * Antes eran `@IsUrl()`, y eso tenía dos problemas a la vez: no había forma de
+ * subir un archivo, así que nadie las llenaba nunca; y de haberlas llenado,
+ * cualquiera podía dejar la «prueba de entrega» apuntando a un servidor suyo,
+ * que el panel habría renderizado tal cual. La evidencia de una entrega tiene
+ * que ser un archivo que custodiamos nosotros, o no prueba nada.
+ */
 export class CompleteStopDto {
   @ApiPropertyOptional({ example: 'María López' })
   @IsOptional()
@@ -16,17 +26,23 @@ export class CompleteStopDto {
   @MaxLength(160)
   receivedBy?: string;
 
-  @ApiPropertyOptional({ example: 'https://cdn.ruteo.app/pod/sig-123.png' })
+  @ApiPropertyOptional({
+    example: 't/9f3c…/prueba-entrega/1a2b…/7d8e9f10-….png',
+    description: 'Clave devuelta por POST /files/upload-url',
+  })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   @MaxLength(500)
-  signatureUrl?: string;
+  signatureKey?: string;
 
-  @ApiPropertyOptional({ example: 'https://cdn.ruteo.app/pod/photo-123.jpg' })
+  @ApiPropertyOptional({
+    example: 't/9f3c…/prueba-entrega/1a2b…/a1b2c3d4-….jpg',
+    description: 'Clave devuelta por POST /files/upload-url',
+  })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   @MaxLength(500)
-  photoUrl?: string;
+  photoKey?: string;
 
   @ApiPropertyOptional({ example: 14.0932 })
   @IsOptional()

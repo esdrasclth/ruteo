@@ -2,7 +2,14 @@
 
 import { FormEvent, use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Plus, Wand2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Image as ImageIcon,
+  MapPin,
+  PenLine,
+  Plus,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -48,6 +55,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StopsMap } from "@/components/stops-map";
+import { SubirArchivo } from "@/components/subir-archivo";
 import {
   Table,
   TableBody,
@@ -75,6 +83,10 @@ export default function RouteDetailPage({
   const [receivedBy, setReceivedBy] = useState("");
   const [failStop, setFailStop] = useState<RouteStop | null>(null);
   const [failureReason, setFailureReason] = useState("");
+  // Claves del almacenamiento, no URLs: la foto ya está subida cuando esto se
+  // llena, y lo único que viaja al backend al cerrar la parada es la clave.
+  const [fotoEntrega, setFotoEntrega] = useState<string | null>(null);
+  const [fotoFallo, setFotoFallo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -201,13 +213,15 @@ export default function RouteDetailPage({
     try {
       await api(`/routes/${id}/stops/${completeStop.id}/complete`, {
         method: "POST",
-        body: JSON.stringify(
-          receivedBy.trim() ? { receivedBy: receivedBy.trim() } : {},
-        ),
+        body: JSON.stringify({
+          ...(receivedBy.trim() ? { receivedBy: receivedBy.trim() } : {}),
+          ...(fotoEntrega ? { photoKey: fotoEntrega } : {}),
+        }),
       });
       toast.success("Parada completada");
       setCompleteStop(null);
       setReceivedBy("");
+      setFotoEntrega(null);
       await load();
     } catch (err) {
       toast.error(
@@ -225,11 +239,15 @@ export default function RouteDetailPage({
     try {
       await api(`/routes/${id}/stops/${failStop.id}/fail`, {
         method: "POST",
-        body: JSON.stringify({ failureReason: failureReason.trim() }),
+        body: JSON.stringify({
+          failureReason: failureReason.trim(),
+          ...(fotoFallo ? { photoKey: fotoFallo } : {}),
+        }),
       });
       toast.success("Parada marcada como fallida");
       setFailStop(null);
       setFailureReason("");
+      setFotoFallo(null);
       await load();
     } catch (err) {
       toast.error(
@@ -418,11 +436,43 @@ export default function RouteDetailPage({
                       </Badge>
                     </TableCell>
                     <TableCell className="max-w-40 text-muted-foreground">
-                      {stop.pod
-                        ? (stop.pod.receivedBy ??
-                          stop.pod.failureReason ??
-                          "Registrada")
-                        : "—"}
+                      {stop.pod ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="truncate">
+                            {stop.pod.receivedBy ??
+                              stop.pod.failureReason ??
+                              "Registrada"}
+                          </span>
+                          {/* La URL viene firmada y dura pocos minutos: se abre
+                              en una pestaña en vez de incrustarse, para que una
+                              pantalla abierta media hora no acabe llena de
+                              imágenes rotas. */}
+                          {stop.pod.photoUrl && (
+                            <a
+                              href={stop.pod.photoUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex w-fit items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                            >
+                              <ImageIcon className="size-3" aria-hidden />
+                              Ver foto
+                            </a>
+                          )}
+                          {stop.pod.signatureUrl && (
+                            <a
+                              href={stop.pod.signatureUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex w-fit items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                            >
+                              <PenLine className="size-3" aria-hidden />
+                              Ver firma
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {route.status === "IN_PROGRESS" ? (
@@ -521,6 +571,18 @@ export default function RouteDetailPage({
                 onChange={(e) => setReceivedBy(e.target.value)}
               />
             </div>
+            {/* `key` con el id de la parada: sin él, React reutiliza el mismo
+                componente al abrir el diálogo de otra parada y la foto de la
+                anterior seguiría marcada como subida. */}
+            {completeStop && (
+              <SubirArchivo
+                key={completeStop.id}
+                categoria="prueba-entrega"
+                propietarioId={completeStop.id}
+                onSubido={(a) => setFotoEntrega(a?.clave ?? null)}
+                etiqueta="Foto de la entrega (opcional)"
+              />
+            )}
             <DialogFooter>
               <Button type="submit" disabled={busy}>
                 Confirmar entrega
@@ -548,6 +610,17 @@ export default function RouteDetailPage({
                 onChange={(e) => setFailureReason(e.target.value)}
               />
             </div>
+            {/* La evidencia del fallo es la que más falta hace: una entrega
+                buena rara vez se discute, la que no se pudo hacer sí. */}
+            {failStop && (
+              <SubirArchivo
+                key={failStop.id}
+                categoria="prueba-entrega"
+                propietarioId={failStop.id}
+                onSubido={(a) => setFotoFallo(a?.clave ?? null)}
+                etiqueta="Foto del intento (opcional)"
+              />
+            )}
             <DialogFooter>
               <Button type="submit" variant="destructive" disabled={busy}>
                 Registrar fallo

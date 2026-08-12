@@ -57,8 +57,18 @@ export class ConsolidationService {
             );
           }
 
+          // Se suma el peso COBRABLE, no el real.
+          //
+          // Sumar el real es regalar el flete: tres cajas de almohadas de dos
+          // kilos ocupan medio pallet y se facturan por lo que ocupan. El
+          // cobrable ya es el máximo entre real y volumétrico, congelado al
+          // recibir cada bulto (ver `pesos.ts`), así que aquí solo hay que
+          // sumarlo.
+          //
+          // El `?? p.weightKg` cubre los bultos recibidos ANTES de que existiera
+          // la medición: no tienen cobrable, y usar cero los haría gratis.
           const totalWeight = packages.reduce(
-            (sum, p) => sum.plus(p.weightKg ?? 0),
+            (sum, p) => sum.plus(p.chargeableWeightKg ?? p.weightKg ?? 0),
             new Prisma.Decimal(0),
           );
           const totalValue = packages.reduce(

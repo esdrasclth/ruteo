@@ -94,6 +94,47 @@ enum PackageStatus {
   SHIPPED
 }
 
+/// En qué estado llegó el bulto a la bodega.
+///
+/// Se registra SIEMPRE, aunque sea `GOOD`: «no se anotó nada» y «se revisó y
+/// estaba bien» son cosas distintas el día que alguien reclama, y sin un valor
+/// por defecto explícito no hay forma de distinguirlas.
+enum PackageCondition {
+  GOOD
+  DAMAGED
+  WET
+  OPENED
+}
+
+/// Qué hay dentro, a ojos de la operación.
+///
+/// **No es una clasificación arancelaria.** Es la que usa el operador para
+/// decidir si algo necesita revisión y para que la fase 3 sepa qué documentos
+/// pedir. Las partidas y los límites de aduana van en `CustomsRule`, que se
+/// versiona por fechas porque la normativa cambia; esta lista no.
+enum PackageCategory {
+  ELECTRONICS
+  CLOTHING
+  FOOTWEAR
+  HOME
+  AUTO_PARTS
+  COSMETICS
+  MEDICINE
+  DOCUMENTS
+  OTHER
+}
+
+enum PackagePhotoType {
+  /// La caja tal como llegó.
+  EXTERIOR
+  /// La etiqueta del transportista, que es de donde sale el tracking.
+  LABEL
+  /// El contenido, cuando el servicio contratado lo permite.
+  CONTENT
+  /// El daño concreto, para el reclamo.
+  DAMAGE
+}
+
 enum CustomsStatus {
   PENDING
   IN_REVIEW
@@ -302,6 +343,14 @@ model Tenant {
   taxId          String? @map("tax_id")
   billingEmail   String? @map("billing_email")
   billingAddress String? @map("billing_address")
+
+  /// Divisor del peso volumétrico: `largo × ancho × alto (cm) / divisor`.
+  ///
+  /// Configurable y no constante en el código porque cambia por courier y por
+  /// acuerdo comercial: 5000 es lo habitual en carga aérea, 6000 lo usan
+  /// algunos couriers, y un cliente grande negocia el suyo. Con el valor en el
+  /// código, cada acuerdo obligaría a un despliegue.
+  volumetricDivisor Int @default(5000) @map("volumetric_divisor")
   status    TenantStatus @default(ACTIVE)
   /// Por qué se suspendió y desde cuándo. El estado sin motivo obliga a
   /// preguntar por WhatsApp qué pasó con una empresa.
@@ -327,6 +376,8 @@ model Tenant {
   apiKeys        ApiKey[]
   webhooks       WebhookEndpoint[]
   webhookDeliveries WebhookDelivery[]
+  files             FileObject[]
+  packagePhotos     PackagePhoto[]
   subscription   Subscription?
   notifications  Notification[]
   auditLogs      AuditLog[]
@@ -585,14 +636,105 @@ model LockerPackage {
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
 
+  /// --- Prealerta: lo que el cliente sabe antes de que el bulto exista -------
+  /// Tienda y número de orden. Sin esto, un paquete que llega sin etiqueta
+  /// legible no se puede casar con nada y acaba en el montón de «sin dueño».
+  storeName        String?   @map("store_name")
+  orderNumber      String?   @map("order_number")
+  /// Cuándo dice el comercio que llega. Es lo que permite avisar de un paquete
+  /// que se retrasó, en vez de esperar a que el cliente pregunte.
+  estimatedArrival DateTime? @map("estimated_arrival")
+  /// Qué es. Lo declara el cliente y lo confirma quien recibe; la fase 3 lo
+  /// usará para decidir qué documentos exige la aduana.
+  category         PackageCategory?
+  /// Factura de compra. La aduana la pide y el cliente la tiene el día que
+  /// compra, no el día que el paquete llega a la bodega.
+  invoiceFileId    String?   @map("invoice_file_id") @db.Uuid
+
+  /// --- Recepción: lo que la bodega mide -------------------------------------
+  lengthCm Decimal? @map("length_cm") @db.Decimal(8, 2)
+  widthCm  Decimal? @map("width_cm") @db.Decimal(8, 2)
+  heightCm Decimal? @map("height_cm") @db.Decimal(8, 2)
+  /// Los TRES pesos se conservan, y no es redundancia:
+  ///   - `weightKg` (el real) es lo que cobra la aerolínea.
+  ///   - `volumetricWeightKg` justifica el cobro ante el cliente que reclama
+  ///     que su caja de almohadas pesa dos kilos.
+  ///   - `chargeableWeightKg` es el máximo de los dos, CONGELADO al recibir:
+  ///     recalcularlo después cambiaría facturas ya emitidas si alguien toca el
+  ///     divisor volumétrico del tenant.
+  volumetricWeightKg Decimal? @map("volumetric_weight_kg") @db.Decimal(10, 3)
+  chargeableWeightKg Decimal? @map("chargeable_weight_kg") @db.Decimal(10, 3)
+  /// Bultos dentro del mismo envío del comercio (una compra, tres cajas).
+  pieces           Int              @default(1)
+  condition        PackageCondition @default(GOOD)
+  /// Quién lo recibió. Un daño que aparece después necesita saber quién lo tuvo
+  /// delante, y sin esto la respuesta es «alguien de bodega».
+  receivedByUserId String?          @map("received_by_user_id") @db.Uuid
+
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   locker   Locker    @relation(fields: [lockerId], references: [id], onDelete: Cascade)
   shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  invoice  FileObject? @relation("FacturaDePaquete", fields: [invoiceFileId], references: [id], onDelete: SetNull)
+  photos   PackagePhoto[]
 
   @@index([tenantId])
   @@index([lockerId])
   @@index([shipmentId])
   @@map("locker_packages")
+}
+
+/// Un archivo subido al almacenamiento de objetos.
+///
+/// La prueba de entrega no necesitó esta tabla —tiene dos huecos fijos, firma y
+/// foto, y dos columnas de clave bastaban—. Aquí sí hace falta: un bulto lleva
+/// N fotos y no se sabe cuántas de antemano, así que la relación necesita filas.
+///
+/// **Es metadato, no el archivo.** El binario vive en MinIO bajo `key`. Esta
+/// fila existe para poder listar, contar, atribuir y borrar sin recorrer el
+/// bucket, y para que un reclamo pueda apoyarse en el tamaño y el tipo que se
+/// registraron al subir.
+model FileObject {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  /// Clave en el bucket. Única: dos filas apuntando al mismo objeto harían que
+  /// borrar una dejara a la otra señalando a la nada.
+  key          String   @unique
+  contentType  String   @map("content_type")
+  sizeBytes    Int      @map("size_bytes")
+  /// Nombre con el que el usuario lo subió. Solo para mostrar: la ruta real es
+  /// un UUID, precisamente para que este nombre no forme parte de ella.
+  originalName String?  @map("original_name")
+  uploadedByUserId String? @map("uploaded_by_user_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packagePhotos PackagePhoto[]
+  facturaDe     LockerPackage[] @relation("FacturaDePaquete")
+
+  @@index([tenantId])
+  @@map("file_objects")
+}
+
+/// Foto de un bulto en la recepción.
+///
+/// Es lo que convierte «llegó dañado» en una discusión con datos. Sin foto al
+/// recibir, un daño reclamado tres días después no se puede atribuir a nadie: ni
+/// al transportista, ni a la bodega, ni al cliente.
+model PackagePhoto {
+  id        String            @id @default(uuid()) @db.Uuid
+  tenantId  String            @map("tenant_id") @db.Uuid
+  packageId String            @map("package_id") @db.Uuid
+  fileId    String            @map("file_id") @db.Uuid
+  type      PackagePhotoType  @default(EXTERIOR)
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  package LockerPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  file    FileObject    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([packageId])
+  @@map("package_photos")
 }
 
 model CustomsRecord {
@@ -743,8 +885,15 @@ model ProofOfDelivery {
   shipmentId    String    @map("shipment_id") @db.Uuid
   routeStopId   String?   @unique @map("route_stop_id") @db.Uuid
   receivedBy    String?   @map("received_by")
-  signatureUrl  String?   @map("signature_url")
-  photoUrl      String?   @map("photo_url")
+  /// Clave del objeto en el almacenamiento, NO una URL.
+  ///
+  /// Antes eran `signature_url`/`photo_url` y aceptaban cualquier URL que
+  /// mandara quien llamaba: nadie las llenaba —no había forma de subir un
+  /// archivo— y, de haberlas llenado, el panel habría renderizado un `<img>`
+  /// apuntando a donde el cliente quisiera. Ahora se guarda la clave que
+  /// devuelve la subida firmada y la URL se firma al leer, con vigencia corta.
+  signatureKey  String?   @map("signature_key")
+  photoKey      String?   @map("photo_key")
   failureReason String?   @map("failure_reason")
   lat           Float?
   lng           Float?
@@ -863,6 +1012,11 @@ model Subscription {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+  // Lo usa el barrido de `caducar_pruebas()`. Se declara aquí y no solo en la
+  // migración que lo creó porque, si no, Prisma lo ve como deriva y la
+  // siguiente `migrate dev` genera un DROP INDEX silencioso: el barrido pasaría
+  // a recorrer la tabla entera sin que nadie se entere.
+  @@index([status, currentPeriodEnd], map: "subscriptions_status_period_end_idx")
   @@map("subscriptions")
 }
 

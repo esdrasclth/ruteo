@@ -25,6 +25,9 @@ import { OptimizeRouteDto } from './dto/optimize-route.dto';
 import { QueryRoutesDto } from './dto/query-routes.dto';
 import { UpdateRouteStatusDto } from './dto/update-route-status.dto';
 import { generateRouteCode } from './route-code';
+import { CATEGORIAS, prefijoDe } from '../../storage/claves';
+import { firmarPodsDeParadas } from '../../storage/firmar-pod';
+import { StorageService } from '../../storage/storage.service';
 
 const routeDetail = {
   driver: true,
@@ -42,6 +45,7 @@ export class RoutesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shipments: ShipmentsService,
+    private readonly storage: StorageService,
   ) {}
 
   async create(tenantId: string, dto: CreateRouteDto) {
@@ -114,7 +118,13 @@ export class RoutesService {
     if (!route) {
       throw new NotFoundException('Route not found');
     }
-    return route;
+    // La evidencia se guarda como CLAVE y se firma al leer, nunca al guardar:
+    // una URL firmada es un pase que funciona sin sesión, y guardarla sería
+    // dejarlo escrito para siempre.
+    return {
+      ...route,
+      stops: await firmarPodsDeParadas(this.storage, route.stops, tenantId),
+    };
   }
 
   async updateStatus(tenantId: string, id: string, dto: UpdateRouteStatusDto) {
@@ -209,11 +219,11 @@ export class RoutesService {
         );
       }
 
-      const order = nearestNeighbourOrder({ lat: start.lat, lng: start.lng }, geoStops);
-      const ordered = [
-        ...order.map((i) => geoStops[i]),
-        ...flatStops,
-      ];
+      const order = nearestNeighbourOrder(
+        { lat: start.lat, lng: start.lng },
+        geoStops,
+      );
+      const ordered = [...order.map((i) => geoStops[i]), ...flatStops];
 
       // Two-pass to avoid colliding with the unique [routeId, sequence] index.
       await Promise.all(
@@ -260,6 +270,15 @@ export class RoutesService {
     dto: CompleteStopDto,
   ) {
     const { tenantId } = user;
+
+    // Se comprueban ANTES de abrir la transacción: son llamadas de red al
+    // almacenamiento, y una transacción de base de datos abierta esperando a un
+    // servicio externo es la forma clásica de agotar el pool de conexiones.
+    const [signatureKey, photoKey] = await Promise.all([
+      this.comprobarEvidencia(tenantId, stopId, dto.signatureKey),
+      this.comprobarEvidencia(tenantId, stopId, dto.photoKey),
+    ]);
+
     const info = await this.prisma.withTenant(tenantId, async (tx) => {
       const stop = await this.loadStop(tx, routeId, stopId);
       this.assertNotFinal(stop.status);
@@ -278,15 +297,15 @@ export class RoutesService {
           shipmentId: stop.shipmentId,
           routeStopId: stopId,
           receivedBy: dto.receivedBy,
-          signatureUrl: dto.signatureUrl,
-          photoUrl: dto.photoUrl,
+          signatureKey,
+          photoKey,
           lat: dto.lat,
           lng: dto.lng,
         },
         update: {
           receivedBy: dto.receivedBy,
-          signatureUrl: dto.signatureUrl,
-          photoUrl: dto.photoUrl,
+          signatureKey,
+          photoKey,
           lat: dto.lat,
           lng: dto.lng,
           failureReason: null,
@@ -311,6 +330,12 @@ export class RoutesService {
     dto: FailStopDto,
   ) {
     const { tenantId } = user;
+    const photoKey = await this.comprobarEvidencia(
+      tenantId,
+      stopId,
+      dto.photoKey,
+    );
+
     const info = await this.prisma.withTenant(tenantId, async (tx) => {
       const stop = await this.loadStop(tx, routeId, stopId);
       this.assertNotFinal(stop.status);
@@ -329,11 +354,13 @@ export class RoutesService {
           shipmentId: stop.shipmentId,
           routeStopId: stopId,
           failureReason: dto.failureReason,
+          photoKey,
           lat: dto.lat,
           lng: dto.lng,
         },
         update: {
           failureReason: dto.failureReason,
+          photoKey,
           lat: dto.lat,
           lng: dto.lng,
         },
@@ -351,6 +378,50 @@ export class RoutesService {
     );
 
     return this.findOne(tenantId, routeId);
+  }
+
+  /**
+   * Valida una clave de evidencia antes de guardarla.
+   *
+   * Tres comprobaciones, y cada una tapa un agujero distinto:
+   *
+   *  1. **Que sea de esta parada.** La clave viaja en el cuerpo y quien llama
+   *     la controla. Sin esto, mandar la clave de la firma de OTRA entrega
+   *     dejaría esa foto como prueba de esta, que es exactamente lo que un
+   *     repartidor haría para cerrar una parada que no completó.
+   *  2. **Que la empresa sea la propia.** Lo hace `StorageService` al firmar y
+   *     al consultar, comparando el prefijo. El almacenamiento de objetos no
+   *     tiene RLS: aquí no hay nada que lo haga por nosotros.
+   *  3. **Que el objeto exista.** La URL de subida se entrega y después no se
+   *     sabe qué pasó: el móvil del repartidor pudo perder la cobertura a
+   *     mitad. Sin este `HEAD`, la parada queda cerrada «con foto» y la foto no
+   *     está, y eso se descubre semanas después, cuando alguien reclama.
+   */
+  private async comprobarEvidencia(
+    tenantId: string,
+    stopId: string,
+    clave?: string,
+  ): Promise<string | undefined> {
+    if (!clave) return undefined;
+
+    const prefijoEsperado = prefijoDe(
+      tenantId,
+      CATEGORIAS.PRUEBA_ENTREGA,
+      stopId,
+    );
+    if (!clave.startsWith(prefijoEsperado)) {
+      throw new BadRequestException(
+        'El archivo no corresponde a esta parada. Vuelve a subirlo.',
+      );
+    }
+
+    const objeto = await this.storage.comprobar(clave, tenantId);
+    if (!objeto) {
+      throw new BadRequestException(
+        'La subida del archivo no se completó. Vuelve a intentarlo.',
+      );
+    }
+    return clave;
   }
 
   private async advanceShipment(

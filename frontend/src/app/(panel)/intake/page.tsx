@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, PackageCheck, Search } from "lucide-react";
+import { Camera, Check, PackageCheck, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -10,6 +10,8 @@ import {
   IntakeResult,
   Locker,
   LockerPackageWithLocker,
+  PackageCategory,
+  PackageCondition,
 } from "@/lib/api";
 import {
   PACKAGE_STATUS_LABELS,
@@ -35,6 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { FotosDelBulto } from "./fotos-del-bulto";
 
 const EMPTY = {
   externalTracking: "",
@@ -42,7 +45,38 @@ const EMPTY = {
   description: "",
   weightKg: "",
   declaredValue: "",
+  // Las tres o ninguna: con dos de tres no hay volumen que calcular.
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
+  pieces: "1",
+  condition: "GOOD" as PackageCondition,
+  category: "" as PackageCategory | "",
 };
+
+// Espejo de `DIVISOR_POR_DEFECTO` del backend, solo para PREVISUALIZAR el peso
+// cobrable mientras se teclea. El valor que se guarda lo calcula el backend con
+// el divisor del tenant, que puede ser otro: esto orienta, no decide.
+const DIVISOR_PREVIO = 5000;
+
+const CONDICIONES: { valor: PackageCondition; etiqueta: string }[] = [
+  { valor: "GOOD", etiqueta: "Bien" },
+  { valor: "DAMAGED", etiqueta: "Dañado" },
+  { valor: "WET", etiqueta: "Mojado" },
+  { valor: "OPENED", etiqueta: "Abierto" },
+];
+
+const CATEGORIAS: { valor: PackageCategory; etiqueta: string }[] = [
+  { valor: "ELECTRONICS", etiqueta: "Electrónica" },
+  { valor: "CLOTHING", etiqueta: "Ropa" },
+  { valor: "FOOTWEAR", etiqueta: "Calzado" },
+  { valor: "HOME", etiqueta: "Hogar" },
+  { valor: "AUTO_PARTS", etiqueta: "Repuestos" },
+  { valor: "COSMETICS", etiqueta: "Cosméticos" },
+  { valor: "MEDICINE", etiqueta: "Medicamentos" },
+  { valor: "DOCUMENTS", etiqueta: "Documentos" },
+  { valor: "OTHER", etiqueta: "Otro" },
+];
 
 export default function IntakePage() {
   const [lockers, setLockers] = useState<Locker[] | null>(null);
@@ -51,9 +85,27 @@ export default function IntakePage() {
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
 
+  // Previsualización del peso cobrable. Es solo orientativa: el valor que se
+  // guarda lo calcula el backend con el divisor del tenant, que puede diferir.
+  const previo = useMemo(() => {
+    const l = Number(form.lengthCm);
+    const w = Number(form.widthCm);
+    const h = Number(form.heightCm);
+    if (!(l > 0 && w > 0 && h > 0)) return null;
+    const volumetrico = (l * w * h) / DIVISOR_PREVIO;
+    const real = Number(form.weightKg) || 0;
+    const cobrable = Math.max(real, volumetrico);
+    return {
+      volumetrico: volumetrico.toFixed(3),
+      cobrable: cobrable.toFixed(3),
+      mandaVolumen: volumetrico > real,
+    };
+  }, [form.lengthCm, form.widthCm, form.heightCm, form.weightKg]);
+
   const [pending, setPending] = useState<LockerPackageWithLocker[] | null>(null);
   const [recent, setRecent] = useState<LockerPackageWithLocker[] | null>(null);
   const [pendingQuery, setPendingQuery] = useState("");
+  const [fotosDe, setFotosDe] = useState<LockerPackageWithLocker | null>(null);
 
   const loadLockers = useCallback(async () => {
     try {
@@ -134,6 +186,12 @@ export default function IntakePage() {
           description: str(form.description),
           weightKg: num(form.weightKg),
           declaredValue: num(form.declaredValue),
+          lengthCm: num(form.lengthCm),
+          widthCm: num(form.widthCm),
+          heightCm: num(form.heightCm),
+          pieces: num(form.pieces),
+          condition: form.condition,
+          category: form.category || undefined,
         }),
       });
       toast.success(
@@ -314,6 +372,106 @@ export default function IntakePage() {
                 </div>
               </div>
 
+              {/* Medidas: las tres o ninguna. Con dos de tres no hay volumen
+                  que calcular, y asumir la que falta produce un cobro
+                  inventado. */}
+              <div className="grid grid-cols-3 gap-3">
+                {(["lengthCm", "widthCm", "heightCm"] as const).map((campo, i) => (
+                  <div key={campo} className="grid gap-2">
+                    <Label htmlFor={campo}>
+                      {["Largo", "Ancho", "Alto"][i]} (cm)
+                    </Label>
+                    <Input
+                      id={campo}
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={form[campo]}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, [campo]: e.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Se enseña ANTES de guardar: si el cobrable sale del volumen y
+                  no del peso, el operador tiene que poder verlo mientras el
+                  bulto sigue en la báscula, no descubrirlo en la factura. */}
+              {previo && (
+                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  Volumétrico <strong>{previo.volumetrico} kg</strong> · cobrable{" "}
+                  <strong>{previo.cobrable} kg</strong>
+                  {previo.mandaVolumen && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      — manda el volumen, no el peso
+                    </span>
+                  )}
+                  <span className="block text-xs text-muted-foreground">
+                    Estimado con divisor {DIVISOR_PREVIO}; el definitivo lo
+                    calcula el servidor con el de tu empresa.
+                  </span>
+                </p>
+              )}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="pieces">Bultos</Label>
+                  <Input
+                    id="pieces"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={form.pieces}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, pieces: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="condition">Estado</Label>
+                  <select
+                    id="condition"
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={form.condition}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        condition: e.target.value as PackageCondition,
+                      }))
+                    }
+                  >
+                    {CONDICIONES.map((c) => (
+                      <option key={c.valor} value={c.valor}>
+                        {c.etiqueta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="category">Contenido</Label>
+                  <select
+                    id="category"
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={form.category}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        category: e.target.value as PackageCategory | "",
+                      }))
+                    }
+                  >
+                    <option value="">Sin clasificar</option>
+                    {CATEGORIAS.map((c) => (
+                      <option key={c.valor} value={c.valor}>
+                        {c.etiqueta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <Button type="submit" disabled={busy || !selected}>
                 <PackageCheck className="size-4" />
                 {busy ? "Registrando…" : "Registrar recibido"}
@@ -408,6 +566,7 @@ export default function IntakePage() {
                   <TableHead className="text-right">Peso</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Recibido</TableHead>
+                  <TableHead className="text-right">Fotos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -431,7 +590,16 @@ export default function IntakePage() {
                       {p.locker.customerName}
                     </TableCell>
                     <TableCell className="text-right">
-                      {p.weightKg ?? "—"}
+                      {/* El cobrable es el que se factura; el real se enseña
+                          debajo porque es lo que el cliente cree que pesa. */}
+                      {p.chargeableWeightKg ?? p.weightKg ?? "—"}
+                      {p.chargeableWeightKg &&
+                        p.weightKg &&
+                        p.chargeableWeightKg !== p.weightKg && (
+                          <span className="block text-xs text-muted-foreground">
+                            real {p.weightKg}
+                          </span>
+                        )}
                     </TableCell>
                     <TableCell>
                       <Badge className={cn(packageStatusBadgeClass(p.status))}>
@@ -443,6 +611,16 @@ export default function IntakePage() {
                         ? new Date(p.receivedAt).toLocaleString()
                         : "—"}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setFotosDe(p)}
+                      >
+                        <Camera className="size-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -450,6 +628,8 @@ export default function IntakePage() {
           )}
         </CardContent>
       </Card>
+
+      <FotosDelBulto paquete={fotosDe} onClose={() => setFotosDe(null)} />
     </div>
   );
 }

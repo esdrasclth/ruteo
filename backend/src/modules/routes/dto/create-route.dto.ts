@@ -16,7 +16,9 @@ export class CreateRouteDto {
   @IsDateString()
   scheduledDate: string;
 
-  @ApiPropertyOptional({ description: 'Route code; auto-generated when omitted' })
+  @ApiPropertyOptional({
+    description: 'Route code; auto-generated when omitted',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(40)
