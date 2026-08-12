@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -22,6 +23,7 @@ import { AddManifestItemDto } from './dto/add-item.dto';
 import { CreateManifestDto } from './dto/create-manifest.dto';
 import { QueryManifestsDto } from './dto/query-manifests.dto';
 import { ReconcileManifestDto } from './dto/reconcile.dto';
+import { UpdateManifestDto } from './dto/update-manifest.dto';
 import { ManifestsService } from './manifests.service';
 
 @ApiTags('manifests')
@@ -51,6 +53,18 @@ export class ManifestsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.manifests.findOne(user.tenantId, id);
+  }
+
+  // Enganchar el manifiesto a un vuelo. Se puede tras transmitir —asignar vuelo
+  // no cambia la mercancía declarada— pero no tras cotejar.
+  @Patch(':id')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateManifestDto,
+  ) {
+    return this.manifests.update(user.tenantId, id, dto);
   }
 
   @Post(':id/items')

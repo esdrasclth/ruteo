@@ -10,6 +10,7 @@ import {
   ManifestDetail,
   Paginated,
   Shipment,
+  Trip,
 } from "@/lib/api";
 import {
   EXCEPTION_SEVERITY_LABELS,
@@ -69,6 +70,8 @@ export default function ManifestDetailPage({
   const [shipmentId, setShipmentId] = useState("");
   const [pieces, setPieces] = useState("1");
 
+  const [viajes, setViajes] = useState<Trip[]>([]);
+
   // Conteo del cotejo: id de envío -> bultos y kilos contados.
   const [conteo, setConteo] = useState<
     Record<string, { pieces: string; weight: string }>
@@ -87,6 +90,14 @@ export default function ManifestDetailPage({
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    // Los viajes no bloquean la pantalla: si fallan, el manifiesto se ve igual y
+    // solo queda sin selector de vuelo.
+    void api<Trip[]>("/warehouses/trips")
+      .then(setViajes)
+      .catch(() => setViajes([]));
+  }, []);
 
   async function abrirAgregar() {
     setAgregando(true);
@@ -211,6 +222,57 @@ export default function ManifestDetailPage({
           )}
         </div>
       </div>
+
+      {/* El vuelo se engancha DESPUÉS de armar el manifiesto: un manifiesto se
+          prepara antes de saber en qué vuelo sale. Se puede cambiar incluso tras
+          transmitir —asignar vuelo no altera la mercancía declarada— pero no
+          tras cotejar, cuando el viaje ya ocurrió. */}
+      {m.status !== "RECONCILED" && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-3 py-4 text-sm">
+            <span className="font-medium">Viaje</span>
+            <Select
+              value={m.trip?.id ?? "ninguno"}
+              onValueChange={(v) =>
+                accion(
+                  () =>
+                    api(`/manifests/${id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({
+                        tripId: v === "ninguno" ? null : v,
+                      }),
+                    }),
+                  v === "ninguno" ? "Viaje desenganchado" : "Viaje asignado",
+                )
+              }
+            >
+              <SelectTrigger className="w-80">
+                <SelectValue placeholder="Sin vuelo asignado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ninguno">Sin vuelo</SelectItem>
+                {viajes.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.flightNumber ?? "sin número"} · {v.origin?.code ?? "?"} →{" "}
+                    {v.destination?.code ?? "?"}
+                    {v.departureAt
+                      ? ` · ${new Date(v.departureAt).toLocaleDateString()}`
+                      : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {viajes.length === 0 && (
+              <Link
+                href="/trips"
+                className="text-xs text-primary underline-offset-4 hover:underline"
+              >
+                No hay viajes: crea uno
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {!esBorrador && (
         <Card>

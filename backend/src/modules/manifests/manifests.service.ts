@@ -11,6 +11,7 @@ import { AddManifestItemDto } from './dto/add-item.dto';
 import { CreateManifestDto } from './dto/create-manifest.dto';
 import { QueryManifestsDto } from './dto/query-manifests.dto';
 import { ReconcileManifestDto } from './dto/reconcile.dto';
+import { UpdateManifestDto } from './dto/update-manifest.dto';
 
 /**
  * Manifiestos de carga: la guía madre y sus guías hijas.
@@ -91,6 +92,45 @@ export class ManifestsService {
     );
     if (!manifiesto) throw new NotFoundException('El manifiesto no existe');
     return manifiesto;
+  }
+
+  /**
+   * Engancha (o desengancha) el manifiesto a un vuelo.
+   *
+   * Se permite incluso con el manifiesto ya transmitido, y es deliberado:
+   * asignar vuelo no cambia la mercancía declarada —ni bultos, ni pesos, ni
+   * consignatarios—, y en la práctica el vuelo se confirma o se cambia después
+   * de armar el documento. Lo que sí queda cerrado tras transmitir son las
+   * guías, que es lo que hace de esto un documento.
+   *
+   * Cotejado sí se bloquea: a esas alturas el viaje ya ocurrió, y cambiarlo
+   * reescribiría la historia de una carga que ya se contó.
+   */
+  async update(tenantId: string, id: string, dto: UpdateManifestDto) {
+    const actual = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.manifest.findUnique({ where: { id }, select: { status: true } }),
+    );
+    if (!actual) throw new NotFoundException('El manifiesto no existe');
+    if (actual.status === ManifestStatus.RECONCILED) {
+      throw new BadRequestException(
+        'El manifiesto ya se cotejó: el viaje ocurrió y no se puede cambiar.',
+      );
+    }
+
+    if (dto.tripId) {
+      const viaje = await this.prisma.withTenant(tenantId, (tx) =>
+        tx.trip.findUnique({ where: { id: dto.tripId! }, select: { id: true } }),
+      );
+      if (!viaje) throw new NotFoundException('El viaje no existe');
+    }
+
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.manifest.update({
+        where: { id },
+        data: { tripId: dto.tripId ?? null },
+        include: this.detalle,
+      }),
+    );
   }
 
   /**
