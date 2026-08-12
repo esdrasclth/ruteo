@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Scale,
   Warehouse,
   ClipboardList,
   TriangleAlert,
@@ -128,6 +129,12 @@ const NAV: NavGroup[] = [
         label: "Excepciones",
         icon: TriangleAlert,
         roles: OFICINA_Y_SOPORTE,
+      },
+      {
+        href: "/customs",
+        label: "Reglas de aduana",
+        icon: Scale,
+        roles: JEFES,
       },
     ],
   },

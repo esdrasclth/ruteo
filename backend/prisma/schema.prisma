@@ -199,6 +199,94 @@ enum PackagePhotoType {
   DAMAGE
 }
 
+/// Categoria aduanera del envio.
+///
+/// **Los nombres son los del procedimiento, los limites NO estan aqui.** Cual
+/// aplica y hasta que valor lo dice `CustomsRule`, que se versiona por fechas
+/// porque la normativa cambia. Meter «hasta 1000 dolares» en un enum lo
+/// congelaria el dia que lo cambien, y peor: reescribiria el pasado, porque una
+/// liquidacion de hace un anio dejaria de poder explicarse.
+/// Por que concepto se cobra.
+///
+/// La lista es cerrada porque lo primero que se pregunta a fin de mes es cuanto
+/// se facturo de flete y cuanto de manejo. Con el concepto en texto libre eso no
+/// se puede sumar.
+enum ChargeConcept {
+  FREIGHT
+  HANDLING
+  FUEL
+  INSURANCE
+  STORAGE
+  DELIVERY
+  REPACK
+  /// Arancel. Tributo: se cobra y se entrega al Estado.
+  DUTY
+  /// Impuesto sobre ventas. Tambien tributo.
+  TAX
+  PERMIT
+  OTHER
+}
+
+/// De quien es el dinero.
+///
+/// **Esta es la distincion que la fase 4 viene a arreglar.** Hoy `CustomsRecord`
+/// mezcla arancel, impuesto y cargo por manejo en la misma fila, y con eso no se
+/// puede responder cuanto de lo cobrado es ingreso propio y cuanto es tributo
+/// que solo se esta trasladando. Son cosas distintas contablemente: una va al
+/// estado de resultados, la otra es una deuda con el Estado desde el momento en
+/// que se cobra.
+enum ChargeKind {
+  /// Ingreso de la empresa.
+  REVENUE
+  /// Se cobra al cliente y se entrega a un tercero. No es ingreso.
+  PASS_THROUGH
+}
+
+enum ChargeStatus {
+  PENDING
+  PAID
+  /// Anulado. No se borra: un cargo que existio y se anulo es informacion.
+  VOID
+}
+
+enum CustomsCategory {
+  /// Correspondencia y documentos.
+  A
+  /// Mercancia comercial bajo el tramite simplificado.
+  B
+  /// Fuera del tramite simplificado: pasa por el general.
+  C
+  /// Pequenio envio familiar sin caracter comercial.
+  ENVIO_FAMILIAR
+}
+
+/// Que papel hace un documento en el expediente.
+enum DocumentType {
+  COMMERCIAL_INVOICE
+  AIR_WAYBILL
+  CUSTOMS_DECLARATION
+  PERMIT
+  IDENTIFICATION
+  OTHER
+}
+
+/// De donde salio el valor declarado.
+///
+/// Importa para saber de quien es la responsabilidad: en el tramite
+/// simplificado el courier declara y responde por lo declarado, asi que no es lo
+/// mismo un valor que puso el cliente en su prealerta que uno que leyo un
+/// operador de una factura.
+enum ValueSource {
+  /// Lo dijo el cliente al prealertar.
+  CUSTOMER
+  /// Lo leyo un operador de la factura de compra.
+  INVOICE
+  /// Lo estimo la empresa por falta de documento.
+  ESTIMATED
+  /// Lo fijo la aduana tras revisar.
+  CUSTOMS
+}
+
 enum CustomsStatus {
   PENDING
   IN_REVIEW
@@ -452,6 +540,9 @@ model Tenant {
   manifests         Manifest[]
   manifestItems     ManifestItem[]
   exceptions        Exception[]
+  customsRules      CustomsRule[]
+  documents         Document[]
+  charges           Charge[]
   subscription   Subscription?
   notifications  Notification[]
   auditLogs      AuditLog[]
@@ -588,6 +679,8 @@ model Shipment {
   notifications Notification[]
   manifestItems ManifestItem[]
   exceptions    Exception[]
+  documents     Document[]
+  charges       Charge[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -953,6 +1046,46 @@ model Exception {
   @@map("exceptions")
 }
 
+/// Un cargo concreto de un envio.
+///
+/// **Sustituye a las columnas sueltas de `CustomsRecord`**, que mezclaban en una
+/// misma fila el arancel (del Estado), el impuesto (del Estado) y el manejo (de
+/// la empresa). Con todo junto no habia forma de separar ingreso de tributo
+/// trasladado, y esa es justo la pregunta del cierre de mes.
+///
+/// `CustomsRecord` conserva sus columnas por compatibilidad —las leen las
+/// pantallas y la API de hoy— pero la verdad contable esta aqui.
+model Charge {
+  id         String        @id @default(uuid()) @db.Uuid
+  tenantId   String        @map("tenant_id") @db.Uuid
+  shipmentId String        @map("shipment_id") @db.Uuid
+  concept    ChargeConcept
+  /// Ingreso propio o tributo trasladado. Se guarda y no se deduce del concepto
+  /// porque un mismo concepto puede cambiar de naturaleza segun el acuerdo: hay
+  /// couriers que absorben el manejo y otros que lo trasladan.
+  kind       ChargeKind
+  status     ChargeStatus  @default(PENDING)
+
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("USD")
+
+  /// De donde salio: `customs` si lo genero la liquidacion, `manual` si lo
+  /// anadio alguien. Sirve para no duplicar al recalcular.
+  source    String   @default("manual")
+  notes     String?
+  paidAt    DateTime? @map("paid_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([shipmentId])
+  @@index([tenantId, status])
+  @@map("charges")
+}
+
 /// Un archivo subido al almacenamiento de objetos.
 ///
 /// La prueba de entrega no necesitó esta tabla —tiene dos huecos fijos, firma y
@@ -980,6 +1113,7 @@ model FileObject {
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   packagePhotos PackagePhoto[]
   facturaDe     LockerPackage[] @relation("FacturaDePaquete")
+  documents     Document[]
 
   @@index([tenantId])
   @@map("file_objects")
@@ -1012,6 +1146,31 @@ model CustomsRecord {
   tenantId      String        @map("tenant_id") @db.Uuid
   shipmentId    String        @unique @map("shipment_id") @db.Uuid
   status        CustomsStatus @default(PENDING)
+
+  /// Categoria bajo la que se despacha, y la regla que se le aplico.
+  ///
+  /// `ruleId` se guarda —no solo la categoria— porque es lo que permite explicar
+  /// una liquidacion vieja: la regla pudo cambiar despues, y sin este puntero la
+  /// respuesta a «por que se cobro esto» seria la tarifa de hoy.
+  category      CustomsCategory?
+  ruleId        String?         @map("rule_id") @db.Uuid
+
+  /// --- Valor declarado, desglosado -----------------------------------------
+  /// Valor de compra != valor aduanero. El aduanero suma flete y seguro, y es
+  /// sobre el que se liquida. Guardar solo el total haria imposible rehacer el
+  /// calculo o discutirlo con el cliente.
+  productValue    Decimal? @map("product_value") @db.Decimal(12, 2)
+  freightAmount   Decimal? @map("freight_amount") @db.Decimal(12, 2)
+  insuranceAmount Decimal? @map("insurance_amount") @db.Decimal(12, 2)
+  otherCharges    Decimal? @map("other_charges") @db.Decimal(12, 2)
+  /// El resultante, sobre el que se calculan arancel e impuesto.
+  customsValue    Decimal? @map("customs_value") @db.Decimal(12, 2)
+  valueSource     ValueSource? @map("value_source")
+  /// Quien declaro y quien verifico. En el tramite simplificado el courier
+  /// responde por lo declarado, asi que esto no es trazabilidad opcional.
+  declaredByUserId String? @map("declared_by_user_id") @db.Uuid
+  verifiedByUserId String? @map("verified_by_user_id") @db.Uuid
+
   declaredValue Decimal?      @map("declared_value") @db.Decimal(12, 2)
   dutyAmount    Decimal?      @map("duty_amount") @db.Decimal(12, 2)
   taxAmount     Decimal?      @map("tax_amount") @db.Decimal(12, 2)
@@ -1023,11 +1182,85 @@ model CustomsRecord {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  rule     CustomsRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@map("customs_records")
+}
+
+/// Regla aduanera vigente durante un periodo.
+///
+/// **Versionada por fechas, y eso es el punto entero.** Cuando alguien pregunte
+/// dentro de un anio por que se cobro lo que se cobro, la respuesta tiene que
+/// salir de la regla que estaba vigente ESE dia, no de la de hoy. Por eso una
+/// regla no se edita cuando cambia la normativa: se cierra con `effectiveTo` y
+/// se crea la siguiente.
+///
+/// Los limites no estan en el codigo —ni siquiera como valor por defecto—
+/// porque acabarian siendo la regla que nadie recuerda que existe.
+model CustomsRule {
+  id       String          @id @default(uuid()) @db.Uuid
+  tenantId String          @map("tenant_id") @db.Uuid
+  country  String
+  category CustomsCategory
+
+  /// Tope de valor aduanero para que esta categoria aplique. Nulo = sin tope.
+  maxValue Decimal? @map("max_value") @db.Decimal(12, 2)
+  currency String   @default("USD")
+
+  requiresInvoice Boolean @default(false) @map("requires_invoice")
+  requiresPermit  Boolean @default(false) @map("requires_permit")
+  /// Si exige agente aduanero. Fuera del tramite simplificado suele exigirse.
+  requiresBroker  Boolean @default(false) @map("requires_broker")
+
+  /// Tasas como fraccion: 0.15 es el 15 %.
+  dutyRate Decimal @default(0) @map("duty_rate") @db.Decimal(6, 4)
+  taxRate  Decimal @default(0) @map("tax_rate") @db.Decimal(6, 4)
+
+  effectiveFrom DateTime  @map("effective_from")
+  /// Nulo = sigue vigente. Cerrar una regla es ponerle fecha, no borrarla.
+  effectiveTo   DateTime? @map("effective_to")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  records CustomsRecord[]
+
+  @@index([tenantId])
+  @@index([tenantId, country, category, effectiveFrom])
+  @@map("customs_rules")
+}
+
+/// Un documento del expediente de un envio.
+///
+/// El archivo vive en el almacenamiento y aqui esta el metadato de QUE es y que
+/// papel hace. `verifiedByUserId` separa «alguien subio un PDF» de «alguien lo
+/// miro y dice que sirve», que es la diferencia entre tener un documento y
+/// tener el tramite cubierto.
+model Document {
+  id         String       @id @default(uuid()) @db.Uuid
+  tenantId   String       @map("tenant_id") @db.Uuid
+  shipmentId String       @map("shipment_id") @db.Uuid
+  fileId     String       @map("file_id") @db.Uuid
+  type       DocumentType
+  notes      String?
+
+  uploadedByUserId String?   @map("uploaded_by_user_id") @db.Uuid
+  verifiedByUserId String?   @map("verified_by_user_id") @db.Uuid
+  verifiedAt       DateTime? @map("verified_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  file     FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([shipmentId])
+  @@map("documents")
 }
 
 model Zone {

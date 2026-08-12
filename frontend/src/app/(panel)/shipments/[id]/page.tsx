@@ -56,6 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Expediente } from "./expediente";
 import { Textarea } from "@/components/ui/textarea";
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -657,6 +658,13 @@ export default function ShipmentDetailPage({
           shipmentId={shipment.id}
           declaredValue={shipment.declaredValue}
         />
+      ) : null}
+
+      {/* Va debajo de la tarjeta de aduana porque es de donde salen los
+          documentos que ella exige, pero no es solo aduanero: la guia aerea y la
+          identificacion tambien viven aqui. */}
+      {shipment.type === "INTERNATIONAL" ? (
+        <Expediente shipmentId={shipment.id} />
       ) : null}
 
       {shipment.type === "INTERNATIONAL" ? (

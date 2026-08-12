@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CustomsStatus } from '@prisma/client';
+import { CustomsCategory, CustomsStatus, ValueSource } from '@prisma/client';
 import {
   IsEnum,
   IsNumber,
@@ -59,4 +59,58 @@ export class UpsertCustomsDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  // --- Desglose del valor (fase 3) -------------------------------------------
+  // Valor de compra != valor aduanero: el aduanero suma flete y seguro, y es
+  // sobre el que se liquida. Las cuatro piezas se guardan para poder rehacer el
+  // calculo o discutirlo con el cliente.
+
+  @ApiPropertyOptional({ example: 100.0, description: 'Valor de la mercancia' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  productValue?: number;
+
+  @ApiPropertyOptional({ example: 15.0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  freightAmount?: number;
+
+  @ApiPropertyOptional({ example: 5.0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  insuranceAmount?: number;
+
+  @ApiPropertyOptional({ example: 2.5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherCharges?: number;
+
+  @ApiPropertyOptional({ enum: ValueSource })
+  @IsOptional()
+  @IsEnum(ValueSource)
+  valueSource?: ValueSource;
+
+  /**
+   * Pais cuyas reglas aplican. Si no viene se toma el destino del envio: es lo
+   * correcto en la practica y evita que cada llamada tenga que repetirlo.
+   */
+  @ApiPropertyOptional({ example: 'HN' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  country?: string;
+
+  /**
+   * Categoria sugerida. Solo se usa si NO hay regla vigente que decida: cuando
+   * la hay, manda la regla. Dejar que quien llama fije la categoria por encima
+   * de la norma seria dejar que elija su propia tarifa.
+   */
+  @ApiPropertyOptional({ enum: CustomsCategory })
+  @IsOptional()
+  @IsEnum(CustomsCategory)
+  category?: CustomsCategory;
 }
