@@ -176,6 +176,9 @@ describe('Entrega asíncrona por BullMQ', () => {
         slug: testSlug('queue'),
         email: 'owner@queue.test',
         password: TEST_PASSWORD,
+        // Ver la nota en `api-tenant-isolation`: el alta lo exige desde que
+        // pide plan.
+        phone: '+504 9999-8888',
       })
       .expect(201);
     const token = (registro.body as { accessToken: string }).accessToken;

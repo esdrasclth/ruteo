@@ -77,6 +77,9 @@ describe('Aislamiento multi-tenant a través de la API', () => {
         slug,
         email,
         password: TEST_PASSWORD,
+        // Obligatorio desde que el alta pide plan: sin él, el registro da 400 y
+        // la suite entera se cae en el `beforeAll`.
+        phone: '+504 9999-8888',
       })
       .expect(201);
 
