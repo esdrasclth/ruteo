@@ -56,7 +56,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Cargos } from "./cargos";
 import { Expediente } from "./expediente";
+import { Historial } from "./historial";
 import { Textarea } from "@/components/ui/textarea";
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -667,40 +669,15 @@ export default function ShipmentDetailPage({
         <Expediente shipmentId={shipment.id} />
       ) : null}
 
+      {/* Sin condicionar al tipo: un envío local también tiene flete y entrega
+          que cobrar. Solo los tributos son cosa de los internacionales. */}
+      <Cargos shipmentId={shipment.id} onCobrado={load} />
+
       {shipment.type === "INTERNATIONAL" ? (
         <LegsCard shipment={shipment} onChanged={load} />
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Historial</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ol className="relative ml-3 border-l border-border">
-            {[...shipment.events].reverse().map((ev) => (
-              <li key={ev.id} className="mb-5 ml-5">
-                <span className="absolute -left-[5px] mt-1.5 size-2.5 rounded-full bg-primary" />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={statusBadgeClass(ev.status)}>
-                    {STATUS_LABELS[ev.status]}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(ev.occurredAt).toLocaleString("es-HN")}
-                  </span>
-                </div>
-                {ev.description ? (
-                  <p className="mt-1 text-sm">{ev.description}</p>
-                ) : null}
-                {ev.locationLabel ? (
-                  <p className="text-xs text-muted-foreground">
-                    {ev.locationLabel}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </CardContent>
-      </Card>
+      <Historial shipment={shipment} onCambio={load} />
     </div>
   );
 }

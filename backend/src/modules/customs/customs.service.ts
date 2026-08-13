@@ -3,8 +3,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CustomsStatus, DocumentType, Prisma } from '@prisma/client';
+import {
+  CustomsStatus,
+  DocumentType,
+  Prisma,
+  ShipmentEventType,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { motivosParaNoLiberar, saldoPendiente } from '../charges/saldo';
+import { registrar } from '../shipments/eventos';
 import { cargosDeLiquidacion } from './cargos';
 import { computeCharges } from './customs-calc';
 import {
@@ -157,6 +164,35 @@ export class CustomsService {
         });
       }
 
+      // Lo que se le cobra al cliente y de dónde salió la cifra. Es público: el
+      // impuesto lo paga él, y «¿por qué me cobraron esto?» es la pregunta que
+      // más veces se contesta por teléfono.
+      //
+      // **Las cifras salen de `record`, no del cálculo en memoria.** La columna
+      // es `Decimal(12,2)` y redondea al guardar: escribir aquí el valor sin
+      // redondear deja el historial diciendo 90.625 donde la liquidación cobra
+      // 90.63, y ese medio centavo es justo el que hace que un cliente que
+      // compara las dos pantallas deje de fiarse de las dos.
+      await registrar(tx, {
+        tenantId,
+        shipmentId: dto.shipmentId,
+        tipo: ShipmentEventType.CUSTOMS_ASSESSED,
+        description: `Liquidación de aduana: ${record.totalCharges?.toFixed(2) ?? '0.00'} ${record.currency}`,
+        actorUserId: userId,
+        metadata: {
+          customsValue: record.customsValue?.toString() ?? null,
+          dutyAmount: record.dutyAmount?.toString() ?? null,
+          taxAmount: record.taxAmount?.toString() ?? null,
+          handlingFee: record.handlingFee?.toString() ?? null,
+          total: record.totalCharges?.toString() ?? null,
+          currency: record.currency,
+          // De dónde salieron las cifras. Un cobro calculado con valores por
+          // defecto que nadie configuró tiene que quedar por escrito.
+          fuente,
+          ruleId: regla?.id ?? null,
+        },
+      });
+
       return { ...record, fuente, faltan: await this.faltantes(tx, record) };
     });
   }
@@ -206,10 +242,14 @@ export class CustomsService {
   /**
    * Libera el envío de aduana.
    *
-   * **No libera si faltan documentos que la regla exige.** Es el mismo criterio
-   * que «no liberar con saldo pendiente»: liberar un envío al que le falta la
-   * factura comercial deja el expediente incompleto justo en el trámite donde el
-   * courier responde por lo declarado.
+   * **No libera si faltan documentos que la regla exige ni si queda saldo por
+   * cobrar.** Los dos son el mismo criterio: soltar la mercancía es quedarse sin
+   * la palanca. Con la factura sin subir, el expediente queda incompleto justo
+   * en el trámite donde el courier responde por lo declarado; con el cobro
+   * pendiente, la deuda pasa a perseguirse por teléfono.
+   *
+   * La regla del saldo consulta `Charge` —que desde la fase 4 es donde vive el
+   * dinero— y no un estado que alguien tenga que acordarse de poner.
    */
   async clear(tenantId: string, shipmentId: string, userId?: string) {
     return this.prisma.withTenant(tenantId, async (tx) => {
@@ -220,14 +260,23 @@ export class CustomsService {
         throw new NotFoundException('Customs record not found');
       }
 
-      const faltan = await this.faltantes(tx, record);
-      if (faltan.length > 0) {
-        throw new BadRequestException(
-          `No se puede liberar: falta ${faltan.join(', ')}.`,
-        );
+      const [faltan, cargos] = await Promise.all([
+        this.faltantes(tx, record),
+        tx.charge.findMany({
+          where: { shipmentId },
+          select: { status: true, kind: true, amount: true, currency: true },
+        }),
+      ]);
+      const bloqueo = motivosParaNoLiberar({
+        faltanDocumentos: faltan,
+        saldo: saldoPendiente(cargos),
+        moneda: cargos[0]?.currency ?? record.currency,
+      });
+      if (bloqueo) {
+        throw new BadRequestException(bloqueo);
       }
 
-      return tx.customsRecord.update({
+      const liberado = await tx.customsRecord.update({
         where: { shipmentId },
         data: {
           status: CustomsStatus.CLEARED,
@@ -236,6 +285,23 @@ export class CustomsService {
         },
         include: { rule: true },
       });
+
+      // Liberar de aduana NO cambia el estado del envío —esa transición es
+      // manual y aparte—, así que hasta ahora el trámite más esperado de todo
+      // el trayecto no dejaba ni una línea en el historial.
+      await registrar(tx, {
+        tenantId,
+        shipmentId,
+        tipo: ShipmentEventType.CUSTOMS_CLEARED,
+        description: 'Liberado de aduana',
+        actorUserId: userId,
+        metadata: {
+          total: liberado.totalCharges?.toString() ?? null,
+          currency: liberado.currency,
+        },
+      });
+
+      return liberado;
     });
   }
 }

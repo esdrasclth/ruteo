@@ -32,6 +32,7 @@ import { CreateLegDto } from './dto/create-leg.dto';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { QueryShipmentsDto } from './dto/query-shipments.dto';
 import { UpdateLegDto } from './dto/update-leg.dto';
+import { AddNoteDto } from './dto/add-note.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { ShipmentsService } from './shipments.service';
 
@@ -122,6 +123,19 @@ export class ShipmentsController {
     @Body() dto: UpdateStatusDto,
   ) {
     return this.shipments.updateStatus(user, id, dto);
+  }
+
+  // Entra DRIVER: el que se encuentra con que no había nadie en casa es quien
+  // tiene el dato, y obligarle a llamar a la oficina para que alguien lo escriba
+  // es como se pierde.
+  @Post(':id/notes')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.DRIVER)
+  addNote(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddNoteDto,
+  ) {
+    return this.shipments.addNote(user, id, dto);
   }
 
   @Post(':id/legs')

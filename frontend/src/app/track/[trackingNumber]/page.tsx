@@ -19,6 +19,7 @@ import {
 import {
   CUSTOMS_STATUS_LABELS,
   customsStatusBadgeClass,
+  EVENT_TYPE_LABELS,
   legModeLabel,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
@@ -480,9 +481,19 @@ export default function PublicTrackingPage({
                         }`}
                       />
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={statusBadgeClass(ev.status)}>
-                          {STATUS_LABELS[ev.status]}
-                        </Badge>
+                        {/* No todo hito que ve el cliente es un cambio de
+                            estado: «liberado de aduana» y «pago recibido» no lo
+                            son, y antes de la fase 0.2 no se podían ni
+                            registrar. */}
+                        {ev.status ? (
+                          <Badge className={statusBadgeClass(ev.status)}>
+                            {STATUS_LABELS[ev.status]}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">
+                            {EVENT_TYPE_LABELS[ev.eventType]}
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {fecha(ev.occurredAt)}
                         </span>
@@ -490,6 +501,10 @@ export default function PublicTrackingPage({
                       {ev.description ? (
                         <p className="mt-1.5 text-sm">{ev.description}</p>
                       ) : null}
+                      {/* `ev.importe` no se pinta: la descripción ya trae la
+                          cifra y repetirla debajo se lee como si fueran dos
+                          cobros. Va en la API porque un integrador prefiere un
+                          número con su moneda a tener que sacarlo de un texto. */}
                       {ev.locationLabel ? (
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {ev.locationLabel}

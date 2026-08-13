@@ -2,13 +2,37 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { LegStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildTrackingUrl } from '../carriers/carrier-tracking';
+import { FILTRO_PUBLICO } from '../shipments/eventos';
+
+/**
+ * Lo único que se publica de la `metadata` de un evento: cuánto y en qué moneda.
+ *
+ * En lista blanca y no quitando lo sensible: una lista negra hay que acordarse
+ * de actualizarla cada vez que un evento nuevo guarda un dato más, y el día que
+ * no se haga, ese dato sale al mundo sin que nadie lo note.
+ */
+function importePublico(
+  metadata: Prisma.JsonValue | null,
+): { total: string; currency: string } | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+  const total = metadata.total ?? metadata.amount;
+  const currency = metadata.currency;
+  if (typeof total !== 'string' || typeof currency !== 'string') return null;
+  return { total, currency };
+}
 
 const trackingInclude = {
   legs: {
     orderBy: { sequence: 'asc' },
     include: { carrierRef: true },
   },
-  events: { orderBy: { occurredAt: 'asc' } },
+  // **El filtro va en la consulta, no en el `map` de abajo.** Traerse todos los
+  // eventos y descartar los internos al construir la respuesta funciona igual de
+  // bien hasta el día en que alguien añade un campo al proyectado; entonces el
+  // trabajo interno de la empresa sale por un endpoint que no pide sesión.
+  events: { where: FILTRO_PUBLICO, orderBy: { occurredAt: 'asc' } },
   customs: true,
 } satisfies Prisma.ShipmentInclude;
 
@@ -110,13 +134,20 @@ export class TrackingService {
             clearedAt: shipment.customs.clearedAt,
           }
         : null,
+      // `status` puede venir nulo: desde la fase 0.2 hay hitos que el cliente ve
+      // y que no son cambios de estado —«liberado de aduana», «pago recibido»—.
+      // Quien pinte esto tiene que apoyarse en `eventType`, no en el estado.
       timeline: shipment.events.map((event) => ({
+        eventType: event.eventType,
         status: event.status,
         description: event.description,
         locationLabel: event.locationLabel,
         lat: event.lat,
         lng: event.lng,
         occurredAt: event.occurredAt,
+        // La metadata NO se expone tal cual: lleva ids internos y cifras de
+        // trabajo. Solo salen las tres que el cliente entiende y ya paga.
+        importe: importePublico(event.metadata),
       })),
     };
   }

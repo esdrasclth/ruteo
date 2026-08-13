@@ -63,6 +63,42 @@ enum ShipmentStatus {
   ON_HOLD_CUSTOMS
 }
 
+/// Que clase de hecho registra un `ShipmentEvent`.
+///
+/// **Solo hay valores con productor escrito.** Mismo criterio que la fase 0.1
+/// tuvo con las categorias de archivo: un tipo que nadie emite es una promesa
+/// que el sistema no cumple, y el dia que alguien lo necesite no sabra si esta
+/// vacio porque no pasa nunca o porque nadie lo cableo.
+enum ShipmentEventType {
+  /// El cambio de estado de siempre. Es el unico que lleva `status`.
+  STATUS_CHANGED
+  /// Se liquido la aduana: valor aduanero, arancel e impuesto.
+  CUSTOMS_ASSESSED
+  /// Se libero de aduana. No cambia el estado del envio —la transicion es
+  /// aparte— asi que sin este evento la liberacion no dejaba ningun rastro.
+  CUSTOMS_CLEARED
+  DOCUMENT_ADDED
+  /// Alguien lo miro y dice que sirve, que no es lo mismo que haberlo subido.
+  DOCUMENT_VERIFIED
+  CHARGE_ADDED
+  CHARGE_COLLECTED
+  EXCEPTION_OPENED
+  EXCEPTION_RESOLVED
+  /// Nota a mano del operador. Es la valvula de escape: lo que pasa de verdad y
+  /// no encaja en ningun tipo acaba escrito en algun sitio, y mejor aqui que en
+  /// un WhatsApp.
+  NOTE
+}
+
+/// Quien puede ver un evento.
+///
+/// Con esto la misma tabla alimenta las dos pantallas: el cliente ve sus hitos
+/// mas lo marcado como publico, y el operador lo ve todo.
+enum EventVisibility {
+  INTERNAL
+  PUBLIC
+}
+
 enum LegMode {
   AIR
   SEA
@@ -331,6 +367,11 @@ enum StopStatus {
 enum PaymentType {
   COD
   SUBSCRIPTION
+  /// Cobro de los cargos de un envio (flete, manejo, arancel, impuesto...).
+  ///
+  /// Un solo pago salda VARIOS cargos, que es como ocurre en el mostrador: el
+  /// cliente paga el total, no una linea por concepto.
+  CHARGES
 }
 
 enum PaymentMethod {
@@ -720,24 +761,48 @@ model ShipmentLeg {
   @@map("shipment_legs")
 }
 
+/// Lo que le ha pasado a un envio.
+///
+/// **El estado dice DONDE esta; el evento dice COMO llego ahi.** Son dos cosas
+/// distintas y la fase 0.2 viene a separarlas: hasta ahora `status` era
+/// obligatorio, asi que lo unico registrable era un cambio de estado y cualquier
+/// otro hecho —«se verifico la factura», «se cobraron 135.63»— no tenia donde
+/// caer. La alternativa era una maquina de treinta estados, y un estado no puede
+/// representar «pesado» y «en aduana» a la vez, que es lo normal en la vida real.
 model ShipmentEvent {
-  id              String         @id @default(uuid()) @db.Uuid
-  tenantId        String         @map("tenant_id") @db.Uuid
-  shipmentId      String         @map("shipment_id") @db.Uuid
-  legId           String?        @map("leg_id") @db.Uuid
-  status          ShipmentStatus
+  id         String            @id @default(uuid()) @db.Uuid
+  tenantId   String            @map("tenant_id") @db.Uuid
+  shipmentId String            @map("shipment_id") @db.Uuid
+  legId      String?           @map("leg_id") @db.Uuid
+  /// Que paso. Obligatorio: es lo que da sentido a la fila.
+  eventType  ShipmentEventType @map("event_type")
+  /// Solo lo llevan los eventos que SI cambian el estado. El resto lo dejan nulo.
+  status     ShipmentStatus?
+  /// Quien puede verlo. INTERNAL por defecto porque lo contrario —que un hecho
+  /// nuevo se publique al cliente salvo que alguien se acuerde de ocultarlo— se
+  /// equivoca en la direccion cara.
+  visibility EventVisibility   @default(INTERNAL)
+  /// Cifras y referencias del hecho: importes, de/a, tipo de documento, ids.
+  /// Json y no columnas porque cada tipo de evento acompaña datos distintos y
+  /// una columna por tipo dejaria la tabla llena de nulos.
+  metadata   Json?
+
   description     String?
-  locationLabel   String?        @map("location_label")
+  locationLabel   String?  @map("location_label")
   lat             Float?
   lng             Float?
-  createdByUserId String?        @map("created_by_user_id") @db.Uuid
-  occurredAt      DateTime       @default(now()) @map("occurred_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([shipmentId, occurredAt])
+  /// El rastreo publico pide siempre los eventos de un envio filtrando por
+  /// visibilidad; es la consulta que ve mas trafico de todo el sistema porque no
+  /// necesita sesion.
+  @@index([shipmentId, visibility, occurredAt])
   @@map("shipment_events")
 }
 
@@ -1074,15 +1139,28 @@ model Charge {
   source    String   @default("manual")
   notes     String?
   paidAt    DateTime? @map("paid_at")
+  /// El pago que salda este cargo.
+  ///
+  /// Sin esto un cargo cobrado y un pago registrado eran dos hechos sueltos que
+  /// nadie conciliaba: la caja cuadraba o no cuadraba y no habia forma de saber
+  /// por que. La direccion es N cargos -> 1 pago porque el cliente paga el total
+  /// de una vez.
+  ///
+  /// `SetNull` y no `Cascade`: si alguien borra el pago, el cargo sigue
+  /// existiendo —se cobro de verdad— y lo que se pierde es el respaldo, no la
+  /// deuda. Borrarlo dejaria un agujero en lo facturado.
+  paymentId String?  @map("payment_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([shipmentId])
   @@index([tenantId, status])
+  @@index([paymentId])
   @@map("charges")
 }
 
@@ -1431,6 +1509,7 @@ model Payment {
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
   driver   Driver?   @relation(fields: [collectedByDriverId], references: [id], onDelete: SetNull)
+  charges  Charge[]
 
   @@index([tenantId])
   @@index([tenantId, status])

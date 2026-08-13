@@ -5,6 +5,7 @@ import {
   Plan,
   PrismaClient,
   Role,
+  ShipmentEventType,
   ShipmentStatus,
   ShipmentType,
 } from '@prisma/client';
@@ -227,6 +228,7 @@ export async function seedTenant(
       data: {
         tenantId,
         shipmentId: shipment.id,
+        eventType: ShipmentEventType.STATUS_CHANGED,
         status: ShipmentStatus.CREATED,
         description: `Evento de ${label}`,
       },

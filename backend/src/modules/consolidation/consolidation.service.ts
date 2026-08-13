@@ -6,11 +6,13 @@ import {
 import {
   PackageStatus,
   Prisma,
+  ShipmentEventType,
   ShipmentStatus,
   ShipmentType,
 } from '@prisma/client';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
+import { registrar } from '../shipments/eventos';
 import { generateTrackingNumber } from '../shipments/tracking-number';
 
 const shipmentDetail = {
@@ -104,15 +106,17 @@ export class ConsolidationService {
             },
           });
 
-          await tx.shipmentEvent.create({
-            data: {
-              tenantId,
-              shipmentId: shipment.id,
-              status: ShipmentStatus.CONSOLIDATED,
-              description: `Consolidated ${packages.length} package(s)`,
-              locationLabel: `${locker.city}, ${locker.state}`,
-              createdByUserId: userId,
-            },
+          await registrar(tx, {
+            tenantId,
+            shipmentId: shipment.id,
+            tipo: ShipmentEventType.STATUS_CHANGED,
+            status: ShipmentStatus.CONSOLIDATED,
+            description: `Se consolidaron ${packages.length} bulto(s)`,
+            locationLabel: `${locker.city}, ${locker.state}`,
+            actorUserId: userId,
+            // Qué bultos entraron: es la trazabilidad bulto → guía, y sin ella
+            // hay que reconstruirla mirando qué paquetes apuntan al envío.
+            metadata: { packageIds: dto.packageIds, bultos: packages.length },
           });
 
           return tx.shipment.findUniqueOrThrow({

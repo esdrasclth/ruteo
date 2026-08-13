@@ -243,9 +243,34 @@ export interface Shipment {
   updatedAt: string;
 }
 
+export type ShipmentEventType =
+  | "STATUS_CHANGED"
+  | "CUSTOMS_ASSESSED"
+  | "CUSTOMS_CLEARED"
+  | "DOCUMENT_ADDED"
+  | "DOCUMENT_VERIFIED"
+  | "CHARGE_ADDED"
+  | "CHARGE_COLLECTED"
+  | "EXCEPTION_OPENED"
+  | "EXCEPTION_RESOLVED"
+  | "NOTE";
+
+/** Quién puede ver el evento. `PUBLIC` sale también en el rastreo del cliente. */
+export type EventVisibility = "INTERNAL" | "PUBLIC";
+
 export interface ShipmentEvent {
   id: string;
-  status: ShipmentStatus;
+  eventType: ShipmentEventType;
+  /**
+   * Solo lo llevan los `STATUS_CHANGED`.
+   *
+   * Era obligatorio hasta la fase 0.2, y por eso lo único registrable era un
+   * cambio de estado. Quien pinte un evento tiene que mirar `eventType`.
+   */
+  status: ShipmentStatus | null;
+  visibility: EventVisibility;
+  /** Cifras y referencias del hecho. Su forma depende del tipo. */
+  metadata: Record<string, unknown> | null;
   description: string | null;
   locationLabel: string | null;
   lat: number | null;
@@ -599,7 +624,7 @@ export interface CustomsRecord {
   clearedAt: string | null;
 }
 
-export type PaymentType = "COD" | "SUBSCRIPTION";
+export type PaymentType = "COD" | "SUBSCRIPTION" | "CHARGES";
 export type PaymentMethod = "CASH" | "CARD" | "TRANSFER";
 export type PaymentStatus = "PENDING" | "COLLECTED" | "REMITTED" | "CANCELLED";
 
@@ -623,6 +648,73 @@ export interface PaymentSummaryRow {
   status: PaymentStatus;
   count: number;
   amount: string;
+}
+
+export type ChargeConcept =
+  | "FREIGHT"
+  | "HANDLING"
+  | "FUEL"
+  | "INSURANCE"
+  | "STORAGE"
+  | "DELIVERY"
+  | "REPACK"
+  | "DUTY"
+  | "TAX"
+  | "PERMIT"
+  | "OTHER";
+
+/** De quién es el dinero: ingreso propio o tributo que solo se traslada. */
+export type ChargeKind = "REVENUE" | "PASS_THROUGH";
+export type ChargeStatus = "PENDING" | "PAID" | "VOID";
+
+export interface Charge {
+  id: string;
+  shipmentId: string;
+  concept: ChargeConcept;
+  kind: ChargeKind;
+  status: ChargeStatus;
+  amount: string;
+  currency: string;
+  /** `customs` si salió de la liquidación, `manual` si lo añadió alguien. */
+  source: string;
+  notes: string | null;
+  paidAt: string | null;
+  paymentId: string | null;
+  createdAt: string;
+  shipment: {
+    id: string;
+    trackingNumber: string;
+    recipientName: string;
+  } | null;
+  payment: { id: string; method: PaymentMethod | null; reference: string | null } | null;
+}
+
+/** Cuentas de un conjunto de cargos. Los anulados no entran en ninguna cifra. */
+export interface ChargeDesglose {
+  /** Ingreso propio. */
+  ingreso: string;
+  /** Tributo trasladado al Estado. */
+  trasladado: string;
+  /** Lo emitido: cobrado + pendiente. No es lo ingresado. */
+  total: string;
+  cobrado: string;
+  pendiente: string;
+}
+
+export interface ChargesDeEnvio extends ChargeDesglose {
+  items: Charge[];
+  moneda: string | null;
+}
+
+export interface ChargesResumen extends ChargeDesglose {
+  desde: string;
+  hasta: string;
+  porConcepto: { concept: ChargeConcept; amount: string; count: number }[];
+}
+
+export interface CobroDeCargos {
+  payment: Payment;
+  charges: Charge[];
 }
 
 export type Plan = "FREE" | "STARTER" | "PRO" | "ENTERPRISE";
@@ -805,13 +897,22 @@ export interface PublicTracking {
     currency: string;
     clearedAt: string | null;
   } | null;
+  /**
+   * Solo los eventos públicos, filtrados en el servidor.
+   *
+   * `status` puede venir nulo: hay hitos que el cliente ve y que no son cambios
+   * de estado, como la liberación de aduana o un pago recibido.
+   */
   timeline: {
-    status: ShipmentStatus;
+    eventType: ShipmentEventType;
+    status: ShipmentStatus | null;
     description: string | null;
     locationLabel: string | null;
     lat: number | null;
     lng: number | null;
     occurredAt: string;
+    /** Lo único que se publica de la metadata del evento. */
+    importe: { total: string; currency: string } | null;
   }[];
 }
 

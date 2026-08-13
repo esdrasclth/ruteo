@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ExceptionStatus, Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ExceptionStatus, Prisma, ShipmentEventType } from '@prisma/client';
 import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { registrar } from '../shipments/eventos';
 import {
   CreateExceptionDto,
   UpdateExceptionDto,
@@ -26,12 +31,34 @@ export class ExceptionsService {
   } satisfies Prisma.ExceptionInclude;
 
   create(tenantId: string, dto: CreateExceptionDto, userId?: string) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.exception.create({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const excepcion = await tx.exception.create({
         data: { tenantId, ...dto, createdByUserId: userId },
         include: this.detalle,
-      }),
-    );
+      });
+
+      // Solo si cuelga de un envío: una excepción puede nacer sin dueño
+      // conocido —«hay una caja sin etiqueta»— y ahí no hay historial donde
+      // escribirla todavía.
+      if (excepcion.shipmentId) {
+        await registrar(tx, {
+          tenantId,
+          shipmentId: excepcion.shipmentId,
+          tipo: ShipmentEventType.EXCEPTION_OPENED,
+          description: `Excepción abierta: ${excepcion.description}`,
+          actorUserId: userId,
+          metadata: {
+            exceptionId: excepcion.id,
+            type: excepcion.type,
+            severity: excepcion.severity,
+            expectedValue: excepcion.expectedValue,
+            actualValue: excepcion.actualValue,
+          },
+        });
+      }
+
+      return excepcion;
+    });
   }
 
   // Paginado desde el principio: una operación con problemas genera excepciones
@@ -54,7 +81,11 @@ export class ExceptionsService {
           // Las abiertas primero y las graves antes: es una bandeja de trabajo,
           // no un histórico. Ordenar solo por fecha dejaría un faltante grave de
           // ayer debajo de una diferencia de peso de hoy.
-          orderBy: [{ status: 'asc' }, { severity: 'desc' }, { createdAt: 'desc' }],
+          orderBy: [
+            { status: 'asc' },
+            { severity: 'desc' },
+            { createdAt: 'desc' },
+          ],
           skip: saltar(query),
           take: query.pageSize,
           include: this.detalle,
@@ -107,8 +138,8 @@ export class ExceptionsService {
       );
     }
 
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.exception.update({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const actualizada = await tx.exception.update({
         where: { id },
         data: {
           ...dto,
@@ -117,7 +148,28 @@ export class ExceptionsService {
           resolvedAt: cierra ? (actual.resolvedAt ?? new Date()) : null,
         },
         include: this.detalle,
-      }),
-    );
+      });
+
+      // Solo al cerrar. Registrar cada cambio de severidad o de asignado
+      // llenaría el historial del envío de ruido sobre quién movió una ficha.
+      if (cierra && actualizada.shipmentId) {
+        await registrar(tx, {
+          tenantId,
+          shipmentId: actualizada.shipmentId,
+          tipo: ShipmentEventType.EXCEPTION_RESOLVED,
+          description:
+            `Excepción cerrada: ${actualizada.resolution ?? ''}`.trim(),
+          metadata: {
+            exceptionId: actualizada.id,
+            type: actualizada.type,
+            // Se arregló o se pagó: mezclarlos hace imposible medir cuánto
+            // cuestan las excepciones.
+            status: actualizada.status,
+          },
+        });
+      }
+
+      return actualizada;
+    });
   }
 }

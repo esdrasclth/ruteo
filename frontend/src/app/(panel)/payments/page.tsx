@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   api,
   ApiError,
+  ChargesResumen,
   Driver,
   Paginated,
   Payment,
@@ -57,7 +58,7 @@ import {
 } from "@/components/ui/table";
 
 const STATUS_FILTERS = ["PENDING", "COLLECTED", "REMITTED", "CANCELLED"];
-const TYPE_FILTERS = ["COD", "SUBSCRIPTION"];
+const TYPE_FILTERS = ["COD", "SUBSCRIPTION", "CHARGES"];
 const PAGE_SIZE = 20;
 
 // `useSearchParams` exige frontera Suspense para no romper el build estatico.
@@ -75,6 +76,7 @@ function PaymentsContent() {
   const shipmentId = searchParams.get("shipmentId");
   const [data, setData] = useState<Paginated<Payment> | null>(null);
   const [summary, setSummary] = useState<PaymentSummaryRow[] | null>(null);
+  const [cargos, setCargos] = useState<ChargesResumen | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [status, setStatus] = useState("ALL");
   const [type, setType] = useState("ALL");
@@ -127,6 +129,15 @@ function PaymentsContent() {
       .catch(() => setDrivers([]));
   }, []);
 
+  // Aparte del `load` de la lista: no depende de los filtros, y el resumen es
+  // solo para OWNER/ADMIN. Si el rol no llega, la tarjeta no se pinta y ya —un
+  // aviso de error por algo que la pantalla no necesita sería ruido.
+  useEffect(() => {
+    api<ChargesResumen>("/charges/resumen")
+      .then(setCargos)
+      .catch(() => setCargos(null));
+  }, []);
+
   function openCollect(p: Payment) {
     setCollecting(p);
     setMethod("CASH");
@@ -176,6 +187,8 @@ function PaymentsContent() {
 
   const summaryFor = (s: string) =>
     summary?.find((r) => r.status === s) ?? { count: 0, amount: "0" };
+
+  const dinero = (v: string) => Number(v).toFixed(2);
 
   return (
     <div className="flex flex-col gap-4">
@@ -229,6 +242,53 @@ function PaymentsContent() {
           );
         })}
       </div>
+
+      {/* La pregunta del cierre de mes, que hasta la fase 4 no se podía
+          responder: de todo lo que se factura, cuánto es ingreso de la empresa
+          y cuánto es dinero del Estado que solo pasa por la caja.
+
+          No se muestra con el filtro de envío puesto: sería un total de toda la
+          empresa colocado bajo el encabezado de un envío concreto. */}
+      {!shipmentId && cargos ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Cargos de los últimos 30 días
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Ingreso propio</p>
+              <p className="text-2xl font-semibold">
+                {dinero(cargos.ingreso)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">
+                Tributo trasladado
+              </p>
+              <p className="text-2xl font-semibold">
+                {dinero(cargos.trasladado)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                se cobra y se entrega al Estado
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Cobrado</p>
+              <p className="text-2xl font-semibold">
+                {dinero(cargos.cobrado)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Por cobrar</p>
+              <p className="text-2xl font-semibold">
+                {dinero(cargos.pendiente)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <Select value={status} onValueChange={setStatus}>

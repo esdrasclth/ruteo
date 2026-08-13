@@ -29,6 +29,7 @@ import { RatesModule } from './modules/rates/rates.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { RoutesModule } from './modules/routes/routes.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { ChargesModule } from './modules/charges/charges.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { BillingModule } from './modules/billing/billing.module';
@@ -69,6 +70,7 @@ import { SearchModule } from './modules/search/search.module';
     DriversModule,
     RoutesModule,
     PaymentsModule,
+    ChargesModule,
     ApiKeysModule,
     WebhooksModule,
     BillingModule,

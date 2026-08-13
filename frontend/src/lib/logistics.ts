@@ -1,5 +1,8 @@
 import type {
   CarrierType,
+  ChargeConcept,
+  ChargeKind,
+  ChargeStatus,
   CustomsStatus,
   DriverStatus,
   LockerStatus,
@@ -11,6 +14,7 @@ import type {
   PaymentType,
   Role,
   RouteStatus,
+  ShipmentEventType,
   StopStatus,
   StopType,
   SubscriptionStatus,
@@ -174,6 +178,7 @@ export const LOCKER_STATUS_LABELS: Record<LockerStatus, string> = {
 export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   COD: "COD",
   SUBSCRIPTION: "Suscripción",
+  CHARGES: "Cargos del envío",
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -310,5 +315,81 @@ export function customsStatusBadgeClass(status: CustomsStatus): string {
       return "bg-accent text-accent-foreground";
     case "PENDING":
       return "bg-muted text-muted-foreground";
+  }
+}
+
+export const EVENT_TYPE_LABELS: Record<ShipmentEventType, string> = {
+  STATUS_CHANGED: "Cambio de estado",
+  CUSTOMS_ASSESSED: "Liquidación de aduana",
+  CUSTOMS_CLEARED: "Liberado de aduana",
+  DOCUMENT_ADDED: "Documento adjuntado",
+  DOCUMENT_VERIFIED: "Documento verificado",
+  CHARGE_ADDED: "Cargo añadido",
+  CHARGE_COLLECTED: "Pago recibido",
+  EXCEPTION_OPENED: "Excepción abierta",
+  EXCEPTION_RESOLVED: "Excepción cerrada",
+  NOTE: "Nota",
+};
+
+/**
+ * El punto de color de la línea de tiempo.
+ *
+ * Los cambios de estado llevan el color de la marca porque son la columna
+ * vertebral del recorrido; el resto se distingue sin competir con ellos, y lo
+ * que sale mal se ve a la primera.
+ */
+export function eventTypeDotClass(type: ShipmentEventType): string {
+  switch (type) {
+    case "STATUS_CHANGED":
+      return "bg-primary";
+    case "EXCEPTION_OPENED":
+      return "bg-destructive";
+    case "EXCEPTION_RESOLVED":
+    case "CUSTOMS_CLEARED":
+    case "CHARGE_COLLECTED":
+      return "bg-emerald-500";
+    default:
+      return "bg-muted-foreground/40";
+  }
+}
+
+export const CHARGE_CONCEPT_LABELS: Record<ChargeConcept, string> = {
+  FREIGHT: "Flete",
+  HANDLING: "Manejo",
+  FUEL: "Combustible",
+  INSURANCE: "Seguro",
+  STORAGE: "Almacenaje",
+  DELIVERY: "Entrega",
+  REPACK: "Reempaque",
+  DUTY: "Arancel",
+  TAX: "ISV",
+  PERMIT: "Permiso",
+  OTHER: "Otro",
+};
+
+/**
+ * La distinción que da sentido a toda la fase 4: lo que la empresa gana frente
+ * a lo que solo cobra para entregárselo al Estado.
+ */
+export const CHARGE_KIND_LABELS: Record<ChargeKind, string> = {
+  REVENUE: "Ingreso propio",
+  PASS_THROUGH: "Tributo trasladado",
+};
+
+export const CHARGE_STATUS_LABELS: Record<ChargeStatus, string> = {
+  PENDING: "Pendiente",
+  PAID: "Cobrado",
+  VOID: "Anulado",
+};
+
+export function chargeStatusBadgeClass(status: ChargeStatus): string {
+  switch (status) {
+    case "PAID":
+      return "bg-primary text-primary-foreground";
+    case "PENDING":
+      return "bg-muted text-muted-foreground";
+    // Tachado no: un anulado tiene que leerse como lo que es, no desaparecer.
+    case "VOID":
+      return "bg-destructive/10 text-destructive border border-destructive/30";
   }
 }

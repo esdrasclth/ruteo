@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  EventVisibility,
   LegStatus,
   NotificationChannel,
   Prisma,
+  ShipmentEventType,
   ShipmentStatus,
   ShipmentType,
 } from '@prisma/client';
@@ -24,6 +26,8 @@ import { BillingService } from '../billing/billing.service';
 import { AuditService } from '../audit/audit.service';
 import { SearchService } from '../search/search.service';
 import { parseShipmentCsv } from './csv-import';
+import { AddNoteDto } from './dto/add-note.dto';
+import { registrar } from './eventos';
 import { CreateLegDto } from './dto/create-leg.dto';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { QueryShipmentsDto } from './dto/query-shipments.dto';
@@ -124,14 +128,13 @@ export class ShipmentsService {
               currency: dto.currency ?? 'USD',
             },
           });
-          await tx.shipmentEvent.create({
-            data: {
-              tenantId,
-              shipmentId: shipment.id,
-              status: shipment.status,
-              description: 'Shipment created',
-              createdByUserId: userId,
-            },
+          await registrar(tx, {
+            tenantId,
+            shipmentId: shipment.id,
+            tipo: ShipmentEventType.STATUS_CHANGED,
+            status: shipment.status,
+            description: 'Envío creado',
+            actorUserId: userId,
           });
           await this.payments.createCodInTx(tx, tenantId, shipment);
           return tx.shipment.findUniqueOrThrow({
@@ -300,6 +303,39 @@ export class ShipmentsService {
     };
   }
 
+  /**
+   * Escribe una nota en el historial del envío.
+   *
+   * No toca el estado ni nada más: es el único evento que existe solo para que
+   * quede constancia de algo que no cabe en ningún tipo.
+   */
+  async addNote(user: AuthUser, id: string, dto: AddNoteDto) {
+    const { tenantId, userId } = user;
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const shipment = await tx.shipment.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!shipment) {
+        throw new NotFoundException('Shipment not found');
+      }
+      await registrar(tx, {
+        tenantId,
+        shipmentId: id,
+        tipo: ShipmentEventType.NOTE,
+        description: dto.description,
+        actorUserId: userId,
+        visibility: dto.publica
+          ? EventVisibility.PUBLIC
+          : EventVisibility.INTERNAL,
+      });
+      return tx.shipment.findUniqueOrThrow({
+        where: { id },
+        include: shipmentDetail,
+      });
+    });
+  }
+
   async updateStatus(user: AuthUser, id: string, dto: UpdateStatusDto) {
     const { tenantId, userId } = user;
     let fromStatus: ShipmentStatus | undefined;
@@ -333,18 +369,20 @@ export class ShipmentsService {
         where: { id },
         data: { status: dto.status },
       });
-      await tx.shipmentEvent.create({
-        data: {
-          tenantId,
-          shipmentId: id,
-          legId: dto.legId,
-          status: dto.status,
-          description: dto.description,
-          locationLabel: dto.locationLabel,
-          lat: dto.lat,
-          lng: dto.lng,
-          createdByUserId: userId,
-        },
+      await registrar(tx, {
+        tenantId,
+        shipmentId: id,
+        tipo: ShipmentEventType.STATUS_CHANGED,
+        status: dto.status,
+        legId: dto.legId,
+        description: dto.description,
+        locationLabel: dto.locationLabel,
+        lat: dto.lat,
+        lng: dto.lng,
+        actorUserId: userId,
+        // De dónde venía. Sin esto, reconstruir el recorrido obliga a leer la
+        // fila anterior y confiar en que el orden por fecha no engañe.
+        metadata: { from: fromStatus ?? null, to: dto.status },
       });
       if (dto.status === ShipmentStatus.DELIVERED) {
         await this.payments.collectForShipmentInTx(tx, id);

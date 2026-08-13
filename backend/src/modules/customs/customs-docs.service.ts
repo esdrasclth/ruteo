@@ -3,13 +3,31 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { DocumentType, ShipmentEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
+import { registrar } from '../shipments/eventos';
 import {
   AddDocumentDto,
   CerrarReglaDto,
   CreateCustomsRuleDto,
 } from './dto/customs-rule.dto';
+
+/**
+ * El nombre del papel en el historial.
+ *
+ * En español y aquí, no en el panel: un evento se guarda una vez y se lee
+ * durante años, también desde la API y desde un informe, y `COMMERCIAL_INVOICE`
+ * en la línea de tiempo obliga a cada consumidor a traducirlo por su cuenta.
+ */
+const ETIQUETA_DOCUMENTO: Record<DocumentType, string> = {
+  [DocumentType.COMMERCIAL_INVOICE]: 'factura comercial',
+  [DocumentType.AIR_WAYBILL]: 'guía aérea',
+  [DocumentType.CUSTOMS_DECLARATION]: 'declaración aduanera',
+  [DocumentType.PERMIT]: 'permiso',
+  [DocumentType.IDENTIFICATION]: 'identificación',
+  [DocumentType.OTHER]: 'otro',
+};
 
 /**
  * Reglas aduaneras y expediente documental.
@@ -118,7 +136,7 @@ export class CustomsDocsService {
       });
       if (!archivo) throw new NotFoundException('El archivo no existe');
 
-      return tx.document.create({
+      const documento = await tx.document.create({
         data: {
           tenantId,
           shipmentId,
@@ -128,6 +146,21 @@ export class CustomsDocsService {
           uploadedByUserId: userId,
         },
       });
+
+      // Interno: al cliente le importa si su envío avanza, no qué papel se
+      // archivó. A quien lleva el trámite le importa mucho, y hasta ahora la
+      // única forma de saber cuándo llegó la factura era mirar su fecha de
+      // creación en otra pantalla.
+      await registrar(tx, {
+        tenantId,
+        shipmentId,
+        tipo: ShipmentEventType.DOCUMENT_ADDED,
+        description: `Documento adjuntado: ${ETIQUETA_DOCUMENTO[dto.type]}`,
+        actorUserId: userId,
+        metadata: { documentId: documento.id, type: dto.type },
+      });
+
+      return documento;
     });
   }
 
@@ -172,16 +205,31 @@ export class CustomsDocsService {
    * la diferencia entre tener un documento y tener el trámite cubierto.
    */
   async verifyDocument(tenantId: string, id: string, userId?: string) {
-    const doc = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.document.findUnique({ where: { id }, select: { id: true } }),
-    );
-    if (!doc) throw new NotFoundException('El documento no existe');
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const doc = await tx.document.findUnique({
+        where: { id },
+        select: { id: true, shipmentId: true, type: true },
+      });
+      if (!doc) throw new NotFoundException('El documento no existe');
 
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.document.update({
+      const verificado = await tx.document.update({
         where: { id },
         data: { verifiedByUserId: userId, verifiedAt: new Date() },
-      }),
-    );
+      });
+
+      // Quién dio el visto bueno y cuándo. Es lo que separa «hay un PDF» de
+      // «el trámite está cubierto», y en una discusión aduanera esa diferencia
+      // la tiene que sostener alguien con nombre.
+      await registrar(tx, {
+        tenantId,
+        shipmentId: doc.shipmentId,
+        tipo: ShipmentEventType.DOCUMENT_VERIFIED,
+        description: `Documento verificado: ${ETIQUETA_DOCUMENTO[doc.type]}`,
+        actorUserId: userId,
+        metadata: { documentId: doc.id, type: doc.type },
+      });
+
+      return verificado;
+    });
   }
 }
