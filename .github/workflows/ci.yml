@@ -178,6 +178,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # `docker-compose.prod.yml` declara `env_file: ./backend/.env`, y ese
+      # archivo está en `.gitignore`: en un clon limpio NO existe y Compose
+      # aborta antes de validar nada. Es lo que tuvo este job en rojo desde el
+      # 2026-08-12, con todo lo demás en verde.
+      #
+      # Se crea vacío en vez de marcar el `env_file` como `required: false`, y
+      # la diferencia importa: en el despliegue manual a VPS ese archivo TIENE
+      # que existir —lo escribe quien despliega— así que relajarlo en el compose
+      # convertiría un despliegue mal configurado en uno que arranca a medias.
+      # Lo que la CI valida es la sintaxis y la interpolación; las variables que
+      # de verdad hacen falta van abajo, en `env`.
+      - name: Preparar el env_file que el clon no trae
+        run: touch backend/.env
+
       # `docker compose config` resuelve las variables y valida el archivo. Coge
       # los errores de interpolación y de sintaxis, que en un compose solo se
       # descubren al desplegar.
@@ -191,3 +206,32 @@ jobs:
           PUBLIC_API_URL: https://api.ejemplo.invalid/api
           PUBLIC_PANEL_URL: https://panel.ejemplo.invalid
           PUBLIC_SITE_URL: https://ejemplo.invalid
+
+      # El que de verdad despliega. Hasta ahora la CI validaba SOLO el de VPS,
+      # así que una errata en éste no se descubría hasta que Dokploy fallaba a
+      # mitad de un despliegue en producción, que es el peor sitio para
+      # enterarse. Sus variables llevan `:?`, así que si alguien añade una nueva
+      # y olvida documentarla, este paso se cae aquí y no allí.
+      - name: Validar docker-compose.dokploy.yml
+        run: docker compose -f docker-compose.dokploy.yml config --quiet
+        env:
+          POSTGRES_USER: ruteo
+          POSTGRES_DB: ruteo
+          POSTGRES_PASSWORD: relleno
+          REDIS_PASSWORD: relleno
+          DATABASE_URL_DOCKER: postgresql://ruteo:relleno@db:5432/ruteo
+          DATABASE_URL_APP_DOCKER: postgresql://ruteo_app:relleno@db:5432/ruteo
+          JWT_ACCESS_SECRET: relleno
+          JWT_REFRESH_SECRET: relleno
+          PLATFORM_JWT_SECRET: relleno
+          PUBLIC_API_URL: https://api.ejemplo.invalid/api
+          PUBLIC_BACKEND_URL: https://api.ejemplo.invalid
+          PUBLIC_PANEL_URL: https://panel.ejemplo.invalid
+          PUBLIC_PANEL_BASE_HOST: ejemplo.invalid
+          PUBLIC_PANEL_TENANT_URL: https://{slug}.ejemplo.invalid
+          PUBLIC_SITE_URL: https://ejemplo.invalid
+          S3_ENDPOINT: https://s3.ejemplo.invalid
+          S3_ACCESS_KEY: relleno
+          S3_SECRET_KEY: relleno
+          ZITADEL_ISSUER: https://zitadel.ejemplo.invalid
+          ZITADEL_SERVICE_TOKEN: relleno
