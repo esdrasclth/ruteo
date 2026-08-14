@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { LoginThrottleService } from '../auth/login-throttle.service';
 import { ZitadelService } from '../auth/zitadel/zitadel.service';
 import { PublicRateLimitGuard } from '../../common/guards/public-rate-limit.guard';
+import { StorageModule } from '../../storage/storage.module';
 import { PlatformAuthGuard } from './platform-auth.guard';
 import { PlatformAuthService } from './platform-auth.service';
 import { PlatformController } from './platform.controller';
@@ -18,7 +19,7 @@ import { PlatformService } from './platform.service';
  * única superficie del sistema que ve datos de todas las empresas.
  */
 @Module({
-  imports: [JwtModule.register({}), AuthModule],
+  imports: [JwtModule.register({}), AuthModule, StorageModule],
   controllers: [PlatformController],
   providers: [
     PlatformPrismaService,

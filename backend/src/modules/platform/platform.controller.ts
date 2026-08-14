@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -20,6 +21,7 @@ import { PlatformAuthService } from './platform-auth.service';
 import { PlatformAuthGuard } from './platform-auth.guard';
 import { PlatformService } from './platform.service';
 import {
+  BorrarTenantDto,
   CambiarEstadoAdminDto,
   CambiarEstadoTenantDto,
   CambiarModuloDto,
@@ -132,6 +134,29 @@ export class PlatformController {
     return this.platform.cambiarEstado(
       id,
       dto.status,
+      dto.reason,
+      this.actor(req),
+    );
+  }
+
+  /**
+   * Borra una empresa y todo lo suyo. Irreversible.
+   *
+   * El identificador y el motivo van en el CUERPO y no en la URL: una ruta que
+   * borra empresas con solo llamarla acaba disparada por un historial del
+   * navegador, un reintento automático o un `curl` copiado a medias.
+   */
+  @Delete('tenants/:id')
+  @ApiBearerAuth()
+  @UseGuards(PlatformAuthGuard)
+  borrarTenant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BorrarTenantDto,
+    @Req() req: PeticionPlataforma,
+  ) {
+    return this.platform.borrarTenant(
+      id,
+      dto.slug,
       dto.reason,
       this.actor(req),
     );

@@ -7,6 +7,8 @@ import {
 import { Plan, TenantModule, TenantStatus, UserStatus } from '@prisma/client';
 import { claveEstadoTenant } from '../../common/guards/tenant-access.guard';
 import { RedisService } from '../../redis/redis.service';
+import { StorageService } from '../../storage/storage.service';
+import { ZitadelService } from '../auth/zitadel/zitadel.service';
 import { PLANS } from '../billing/plans';
 import {
   ESENCIALES,
@@ -44,6 +46,8 @@ export class PlatformService {
   constructor(
     private readonly db: PlatformPrismaService,
     private readonly redis: RedisService,
+    private readonly storage: StorageService,
+    private readonly zitadel: ZitadelService,
   ) {}
 
   /**
@@ -559,6 +563,156 @@ export class PlatformService {
         createdAt: true,
       },
     });
+  }
+
+  /**
+   * Borra una empresa y absolutamente todo lo suyo. No se puede deshacer.
+   *
+   * **El orden de las operaciones es la parte delicada**, porque tres sistemas
+   * distintos guardan datos de la misma empresa y solo uno tiene transacciones:
+   *
+   *  1. Se recuentan las filas ANTES de borrar. Después no hay a quién
+   *     preguntarle cuánto se destruyó, y «se borró la empresa» sin cifras no
+   *     sirve para responderle a nadie que reclame más adelante.
+   *  2. Se leen los `externalId` de ZITADEL antes también: viven en la tabla de
+   *     usuarios, que el cascade se lleva por delante. Después de borrar ya no
+   *     se sabe qué cuentas dejar huérfanas.
+   *  3. **El apunte del registro y el borrado van en la MISMA transacción.** Si
+   *     el apunte falla, no se borra nada; si el borrado falla, no queda un
+   *     apunte de algo que no pasó. Un borrado irreversible sin constancia es
+   *     exactamente lo que nadie puede permitirse explicar después.
+   *  4. Archivos y cuentas de ZITADEL se limpian DESPUÉS y sin poder tumbar la
+   *     operación. No es descuido: a esas alturas la empresa ya no existe en la
+   *     base y no hay marcha atrás, así que fallar aquí no puede revertir nada.
+   *     Lo que queda son archivos huérfanos —cuestan dinero, no corrompen— y se
+   *     devuelven contados para que alguien pueda rematarlo a mano.
+   *
+   * El borrado en la base no enumera tablas: las relaciones a `Tenant` llevan
+   * `onDelete: Cascade`, así que una sola sentencia arrastra todo. Enumerarlas
+   * habría creado una lista que hay que acordarse de ampliar con cada tabla
+   * nueva, y la que se olvide deja filas huérfanas sin que nadie lo note.
+   */
+  async borrarTenant(
+    id: string,
+    slugConfirmado: string,
+    motivo: string,
+    actor: Actor,
+  ) {
+    const tenant = await this.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Empresa no encontrada');
+
+    // La confirmación se compara contra el slug de ESTA empresa. Sin esto, el
+    // borrado se lanza desde una lista de nombres parecidos y basta una fila de
+    // diferencia para destruir la empresa equivocada.
+    if (slugConfirmado.trim() !== tenant.slug) {
+      throw new BadRequestException(
+        `El identificador no coincide. Escribe «${tenant.slug}» para confirmar.`,
+      );
+    }
+
+    const [usuarios, envios, paquetes, pagos] = await Promise.all([
+      this.db.user.findMany({
+        where: { tenantId: id },
+        select: { id: true, email: true, externalId: true },
+      }),
+      this.db.shipment.count({ where: { tenantId: id } }),
+      this.db.lockerPackage.count({ where: { tenantId: id } }),
+      this.db.payment.count({ where: { tenantId: id } }),
+    ]);
+
+    const destruido = {
+      usuarios: usuarios.length,
+      envios,
+      paquetes,
+      pagos,
+    };
+
+    await this.db.$transaction([
+      this.db.platformAuditLog.create({
+        data: {
+          adminId: actor.id,
+          adminEmail: actor.email,
+          action: 'tenant.deleted',
+          targetType: 'tenant',
+          targetId: id,
+          targetLabel: tenant.slug,
+          // El «antes» guarda la ficha entera. Es lo único que quedará de esta
+          // empresa: sin ella, el registro diría que se borró algo sin decir
+          // qué era, con qué plan ni desde cuándo existía.
+          before: {
+            nombre: tenant.name,
+            slug: tenant.slug,
+            plan: tenant.plan,
+            status: tenant.status,
+            creada: tenant.createdAt,
+            destruido,
+          } as never,
+          reason: motivo.trim(),
+          ip: actor.ip,
+        },
+      }),
+      this.db.tenant.delete({ where: { id } }),
+    ]);
+
+    this.log.warn(
+      `[plataforma] ${actor.email} BORRÓ la empresa ${tenant.slug} — ` +
+        `${destruido.envios} envíos, ${destruido.paquetes} bultos, ` +
+        `${destruido.pagos} pagos, ${destruido.usuarios} usuarios — ${motivo.trim()}`,
+    );
+
+    const restos = await this.limpiarFuera(id, usuarios);
+    await this.olvidarEstado(id);
+
+    return { borrada: tenant.slug, destruido, ...restos };
+  }
+
+  /**
+   * Lo que vive fuera de Postgres: archivos y cuentas de ZITADEL.
+   *
+   * Nada de esto puede lanzar. La empresa ya está borrada cuando se llega aquí,
+   * así que un error no revierte nada y propagarlo solo convertiría un borrado
+   * correcto en un 500 que hace pensar que hay que reintentar —y al reintentar,
+   * la empresa ya no existe—. Se devuelve lo que salió mal para que se vea en
+   * la respuesta y quede en el log.
+   */
+  private async limpiarFuera(
+    tenantId: string,
+    usuarios: { id: string; email: string; externalId: string | null }[],
+  ) {
+    let archivos = 0;
+    const problemas: string[] = [];
+
+    try {
+      archivos = await this.storage.borrarTodoDelTenant(tenantId);
+    } catch (e) {
+      const detalle = e instanceof Error ? e.message : String(e);
+      problemas.push(`archivos: ${detalle}`);
+      this.log.error(
+        `[plataforma] quedaron archivos sin borrar de ${tenantId}: ${detalle}`,
+      );
+    }
+
+    // Las credenciales viven en ZITADEL, no aquí: el cascade borra la fila de
+    // `users` pero no la cuenta. Sin esto, quien fue usuario de una empresa
+    // borrada sigue pudiendo autenticarse contra ZITADEL — no entraría a
+    // ningún sitio, porque no queda tenant, pero la cuenta sobrevive al cliente
+    // que pidió la baja, y eso es lo que se promete al borrar.
+    let cuentas = 0;
+    for (const usuario of usuarios) {
+      if (!usuario.externalId) continue;
+      try {
+        await this.zitadel.borrarUsuario(usuario.externalId);
+        cuentas++;
+      } catch (e) {
+        const detalle = e instanceof Error ? e.message : String(e);
+        problemas.push(`cuenta ${usuario.email}: ${detalle}`);
+        this.log.error(
+          `[plataforma] no se pudo borrar la cuenta ${usuario.email}: ${detalle}`,
+        );
+      }
+    }
+
+    return { archivos, cuentas, problemas };
   }
 
   async cambiarEstadoAdmin(id: string, status: UserStatus, actor: Actor) {

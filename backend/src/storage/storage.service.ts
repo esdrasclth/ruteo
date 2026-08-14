@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -16,7 +17,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Categoria, claveDe, esDelTenant, prefijoDe } from './claves';
+import {
+  Categoria,
+  claveDe,
+  esDelTenant,
+  prefijoDe,
+  prefijoDeTenant,
+} from './claves';
 
 /**
  * Almacenamiento de archivos sobre S3 (aquí, MinIO).
@@ -263,6 +270,62 @@ export class StorageService implements OnModuleInit {
     await client.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: clave }),
     );
+  }
+
+  /**
+   * Borra TODO lo de una empresa. Solo lo usa el borrado de empresa del panel
+   * de plataforma.
+   *
+   * El almacenamiento de objetos no tiene claves foráneas: el `ON DELETE
+   * CASCADE` de Postgres se lleva las filas que apuntan a los archivos, pero no
+   * los archivos. Sin esto, borrar una empresa deja para siempre sus fotos de
+   * entrega y sus facturas en el bucket —ocupando espacio pagado, sin nada que
+   * las referencie y sin nadie que sepa de quién eran—. Es justo el vertedero
+   * que la convención de claves existe para evitar (ver `claves.ts`).
+   *
+   * Se pagina a mano porque `ListObjectsV2` devuelve 1000 objetos como mucho:
+   * una empresa con dos años de fotos tiene bastantes más, y quedarse con la
+   * primera página habría dado un borrado que parece completo y no lo es.
+   *
+   * Devuelve cuántos borró, para poder dejarlo escrito en el registro de
+   * plataforma: «se borró la empresa X y con ella 4.312 archivos» es
+   * comprobable; «se borró la empresa X» no.
+   */
+  async borrarTodoDelTenant(tenantId: string): Promise<number> {
+    const client = this.exigirCliente();
+    const prefijo = prefijoDeTenant(tenantId);
+    let token: string | undefined;
+    let borrados = 0;
+
+    do {
+      const pagina = await client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefijo,
+          ContinuationToken: token,
+        }),
+      );
+      const claves = (pagina.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+
+      if (claves.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: claves.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        borrados += claves.length;
+      }
+
+      // El token de la página siguiente sale de ESTA respuesta. Se relee en
+      // cada vuelta y no se guarda de antes: borrar objetos entre páginas
+      // cambia lo que queda, y reutilizar un token viejo saltaría objetos.
+      token = pagina.IsTruncated ? pagina.NextContinuationToken : undefined;
+    } while (token);
+
+    return borrados;
   }
 
   /** Lo que cuelga de una cosa: las fotos de un bulto, los papeles de un envío. */

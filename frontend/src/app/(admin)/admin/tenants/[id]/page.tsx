@@ -2,7 +2,8 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Lock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import { platformApi, Plan, TenantDetalle } from "@/lib/platform-api";
@@ -27,10 +28,13 @@ export default function AdminTenantDetallePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const [t, setT] = useState<TenantDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [motivoBorrado, setMotivoBorrado] = useState("");
+  const [confirmacion, setConfirmacion] = useState("");
 
   const cargar = useCallback(() => {
     platformApi<TenantDetalle>(`/tenants/${id}`)
@@ -51,6 +55,47 @@ export default function AdminTenantDetallePage({
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "No se pudo guardar");
     } finally {
+      setGuardando(false);
+    }
+  }
+
+  /**
+   * Borra la empresa y vuelve a la lista.
+   *
+   * No usa `accion()` como el resto: aquélla mete la respuesta en el estado de
+   * la ficha, y aquí la ficha ya no existe. Dejarla puesta habría pintado una
+   * pantalla de una empresa borrada, con botones que fallan uno a uno.
+   */
+  async function borrar() {
+    setGuardando(true);
+    try {
+      const r = await platformApi<{
+        borrada: string;
+        destruido: { envios: number; usuarios: number };
+        archivos: number;
+        problemas: string[];
+      }>(`/tenants/${id}`, {
+        method: "DELETE",
+        body: JSON.stringify({
+          slug: confirmacion.trim(),
+          reason: motivoBorrado.trim(),
+        }),
+      });
+      toast.success(
+        `Empresa «${r.borrada}» borrada: ${r.destruido.envios} envíos y ${r.archivos} archivos.`,
+      );
+      // Lo que no se pudo limpiar se dice en voz alta y sin caducar solo: son
+      // archivos o cuentas que quedaron por ahí y que alguien tiene que rematar
+      // a mano, y un aviso que se desvanece en tres segundos no sirve.
+      if (r.problemas.length > 0) {
+        toast.warning(
+          `Quedaron restos sin borrar: ${r.problemas.join(" · ")}`,
+          { duration: Infinity },
+        );
+      }
+      router.push("/admin/tenants");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "No se pudo borrar");
       setGuardando(false);
     }
   }
@@ -322,6 +367,79 @@ export default function AdminTenantDetallePage({
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Zona de peligro, al FINAL de la pantalla y no junto a suspender: lo
+          reversible y lo irreversible no deben compartir vecindad, o el clic de
+          más acaba en el botón que no se puede deshacer. */}
+      <Card className="border-destructive/40">
+        <CardContent className="space-y-4 pt-6">
+          <div>
+            <p className="text-sm font-medium text-destructive">
+              Borrar esta empresa
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Se borra la empresa y con ella todo lo suyo: envíos, bultos,
+              pagos, rutas, documentos, la evidencia guardada en el
+              almacenamiento y las cuentas de acceso de sus usuarios.{" "}
+              <strong className="text-foreground">
+                No se puede deshacer y no hay copia.
+              </strong>{" "}
+              Si sólo quieres que deje de operar, suspéndela.
+            </p>
+          </div>
+
+          {/* Lo que se va a destruir, en cifras y antes de pulsar. «Borrar
+              empresa» suena abstracto; «1.284 envíos» no. */}
+          <p className="text-xs text-muted-foreground">
+            Se destruirán {t.uso.shipments} envíos, {t.uso.customers} clientes,{" "}
+            {t.uso.routes} rutas y {t.usuarios.length} usuario
+            {t.usuarios.length === 1 ? "" : "s"}.
+          </p>
+
+          <div className="grid gap-2">
+            <Label htmlFor="borrar-motivo">Motivo</Label>
+            <Input
+              id="borrar-motivo"
+              placeholder="Baja solicitada por el cliente"
+              value={motivoBorrado}
+              onChange={(e) => setMotivoBorrado(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Queda escrito en el historial de plataforma, que sobrevive a la
+              empresa. Es lo único que explicará después por qué desapareció.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="borrar-slug">
+              Escribe <code className="font-mono">{t.slug}</code> para confirmar
+            </Label>
+            <Input
+              id="borrar-slug"
+              autoComplete="off"
+              placeholder={t.slug}
+              value={confirmacion}
+              onChange={(e) => setConfirmacion(e.target.value)}
+            />
+          </div>
+
+          <Button
+            variant="destructive"
+            // Se exige el identificador exacto y un motivo con sustancia. El
+            // backend lo vuelve a comprobar; esto sólo evita llegar hasta allí
+            // para que te digan lo que ya se sabe aquí.
+            disabled={
+              guardando ||
+              confirmacion.trim() !== t.slug ||
+              motivoBorrado.trim().length < 10
+            }
+            onClick={borrar}
+          >
+            <Trash2 className="size-4" aria-hidden />
+            Borrar «{t.slug}» para siempre
+          </Button>
         </CardContent>
       </Card>
     </div>
