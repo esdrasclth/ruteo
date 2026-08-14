@@ -14,6 +14,8 @@ import { toast } from "sonner";
 import {
   api,
   ApiError,
+  DeliveryFailureReason,
+  MOTIVOS_DE_FALLO,
   Paginated,
   RoadRoute,
   RouteDetail,
@@ -82,7 +84,10 @@ export default function RouteDetailPage({
   const [completeStop, setCompleteStop] = useState<RouteStop | null>(null);
   const [receivedBy, setReceivedBy] = useState("");
   const [failStop, setFailStop] = useState<RouteStop | null>(null);
-  const [failureReason, setFailureReason] = useState("");
+  const [failureReason, setFailureReason] = useState<DeliveryFailureReason | "">(
+    "",
+  );
+  const [failNotes, setFailNotes] = useState("");
   // Claves del almacenamiento, no URLs: la foto ya está subida cuando esto se
   // llena, y lo único que viaja al backend al cerrar la parada es la clave.
   const [fotoEntrega, setFotoEntrega] = useState<string | null>(null);
@@ -234,19 +239,27 @@ export default function RouteDetailPage({
 
   async function onFail(e: FormEvent) {
     e.preventDefault();
-    if (!failStop || !failureReason.trim()) return;
+    if (!failStop || !failureReason) return;
+    // El backend lo vuelve a comprobar; esto sólo evita el viaje de ida y vuelta
+    // para enterarse de algo que ya se sabe aquí.
+    if (failureReason === "OTHER" && !failNotes.trim()) {
+      toast.error("Explica qué pasó cuando el motivo es «Otro motivo».");
+      return;
+    }
     setBusy(true);
     try {
       await api(`/routes/${id}/stops/${failStop.id}/fail`, {
         method: "POST",
         body: JSON.stringify({
-          failureReason: failureReason.trim(),
+          failureReason,
+          ...(failNotes.trim() ? { notes: failNotes.trim() } : {}),
           ...(fotoFallo ? { photoKey: fotoFallo } : {}),
         }),
       });
       toast.success("Parada marcada como fallida");
       setFailStop(null);
       setFailureReason("");
+      setFailNotes("");
       setFotoFallo(null);
       await load();
     } catch (err) {
@@ -438,6 +451,23 @@ export default function RouteDetailPage({
                     <TableCell className="max-w-40 text-muted-foreground">
                       {stop.pod ? (
                         <div className="flex flex-col gap-1">
+                          {/* El número es POR ENVÍO: «intento 3» en la parada de
+                              hoy dice que a este paquete ya se fue dos veces
+                              antes, que es lo que la parada sola no sabe. Sólo
+                              se enseña a partir del segundo, porque marcar
+                              «intento 1» en todas las entregas normales sería
+                              ruido. */}
+                          {stop.attempts.some((a) => a.attemptNumber > 1) && (
+                            <Badge
+                              variant="outline"
+                              className="w-fit border-amber-300 text-amber-700 dark:text-amber-400"
+                            >
+                              Intento{" "}
+                              {Math.max(
+                                ...stop.attempts.map((a) => a.attemptNumber),
+                              )}
+                            </Badge>
+                          )}
                           <span className="truncate">
                             {stop.pod.receivedBy ??
                               stop.pod.failureReason ??
@@ -600,15 +630,47 @@ export default function RouteDetailPage({
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={onFail} className="grid gap-4">
+            {/* Lista cerrada y no texto libre: «no estaba», «ausente» y
+                «nadie en casa» son la misma causa escrita de tres formas, y así
+                no se puede contar cuántas entregas fallan por cada motivo. */}
             <div className="grid gap-2">
               <Label htmlFor="failureReason">Motivo *</Label>
-              <Input
-                id="failureReason"
-                required
-                placeholder="Destinatario ausente"
+              <Select
                 value={failureReason}
-                onChange={(e) => setFailureReason(e.target.value)}
+                onValueChange={(v) =>
+                  setFailureReason(v as DeliveryFailureReason)
+                }
+              >
+                <SelectTrigger id="failureReason">
+                  <SelectValue placeholder="Elige el motivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(
+                    Object.keys(MOTIVOS_DE_FALLO) as DeliveryFailureReason[]
+                  ).map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {MOTIVOS_DE_FALLO[m]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="failNotes">
+                Detalle {failureReason === "OTHER" ? "*" : "(opcional)"}
+              </Label>
+              <Input
+                id="failNotes"
+                required={failureReason === "OTHER"}
+                placeholder="Dejó dicho que pasemos por la tarde"
+                value={failNotes}
+                onChange={(e) => setFailNotes(e.target.value)}
               />
+              {failureReason === "OTHER" && (
+                <p className="text-xs text-muted-foreground">
+                  «Otro motivo» sin explicación no se puede revisar después.
+                </p>
+              )}
             </div>
             {/* La evidencia del fallo es la que más falta hace: una entrega
                 buena rara vez se discute, la que no se pudo hacer sí. */}

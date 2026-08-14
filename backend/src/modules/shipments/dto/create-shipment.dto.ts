@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ShipmentType } from '@prisma/client';
+import { DeliveryMode, ShipmentType } from '@prisma/client';
 import {
   IsEnum,
   IsLatitude,
@@ -22,6 +22,35 @@ export class CreateShipmentDto {
   @IsOptional()
   @IsUUID()
   customerId?: string;
+
+  /**
+   * Cómo se entrega. Se elige aquí, al crear el envío, y no al descargarlo: es
+   * lo que decide en qué montón va el bulto cuando llega a la bodega de
+   * destino, así que saberlo con la caja ya en la mano obliga a volver a
+   * tocarla.
+   */
+  @ApiPropertyOptional({ enum: DeliveryMode, default: DeliveryMode.HOME })
+  @IsOptional()
+  @IsEnum(DeliveryMode)
+  deliveryMode?: DeliveryMode;
+
+  /** La sucursal donde lo retira el cliente. Obligatoria si el modo es BRANCH. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  deliveryWarehouseId?: string;
+
+  /**
+   * Dirección reutilizable del cliente de la que sale el destino.
+   *
+   * Lo que se guarda en el envío sigue siendo una COPIA de sus campos: corregir
+   * la colonia del cliente el año que viene no puede reescribir a dónde se
+   * entregó este envío.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  destinationAddressId?: string;
 
   @ApiProperty({ example: 'Maria Lopez' })
   @IsString()

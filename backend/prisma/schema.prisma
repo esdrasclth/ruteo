@@ -161,6 +161,21 @@ enum PackageCategory {
 }
 
 /// Qué papel juega una bodega en la operación.
+/// Como llega el paquete a manos del destinatario.
+///
+/// Se elige ANTES de que el paquete llegue, no al descargarlo: es lo que decide
+/// en que monton va el bulto en la bodega de destino. Descubrirlo con la caja
+/// ya en la mano obliga a volver a tocarla, que es justo lo que la
+/// clasificacion existe para evitar.
+enum DeliveryMode {
+  /// A domicilio, con repartidor y ruta.
+  HOME
+  /// El cliente lo retira en una sucursal propia.
+  BRANCH
+  /// Punto de entrega de un tercero (pulperia, farmacia, casillero publico).
+  PICKUP_POINT
+}
+
 enum WarehouseType {
   /// Donde se recibe del comercio: Miami, típicamente.
   ORIGIN
@@ -364,6 +379,44 @@ enum StopStatus {
   FAILED
 }
 
+/// Como acabo un intento de entrega. Solo dos valores porque solo hay dos
+/// desenlaces: se entrego o no se entrego. El matiz de POR QUE no se entrego
+/// vive en `DeliveryFailureReason`, no aqui.
+enum DeliveryOutcome {
+  SUCCESS
+  FAILED
+}
+
+/// Por que no se pudo entregar.
+///
+/// Hasta la fase 5 esto era texto libre (`ProofOfDelivery.failureReason`), y el
+/// texto libre no se puede contar: «no estaba», «ausente», «nadie en casa» y
+/// «Ausente!!» son la misma causa escrita de cuatro formas, asi que la pregunta
+/// de fin de mes —cuantas entregas fallan por direccion mala y cuantas porque
+/// el cliente no esta— no tenia respuesta.
+///
+/// Los seis primeros son los del plan (§5.1). `OTHER` existe a proposito: sin
+/// una salida, el repartidor que se encuentra algo que no esta en la lista
+/// elige el valor mas parecido y contamina justo la cifra que esto viene a
+/// arreglar. Un `OTHER` con su nota se puede revisar y, si se repite, asciende
+/// a valor propio.
+enum DeliveryFailureReason {
+  /// No habia quien recibiera.
+  NO_RECIPIENT
+  /// La direccion no corresponde o no existe.
+  WRONG_ADDRESS
+  /// El telefono del destinatario no contesta o esta apagado.
+  PHONE_UNREACHABLE
+  /// El destinatario rechaza el paquete.
+  CUSTOMER_REFUSED
+  /// Local cerrado en el horario de reparto.
+  BUSINESS_CLOSED
+  /// El cliente pide entregarlo otro dia.
+  RESCHEDULED
+  /// Cualquier otra cosa. Exige nota, ver `DeliveryAttempt.notes`.
+  OTHER
+}
+
 enum PaymentType {
   COD
   SUBSCRIPTION
@@ -559,6 +612,7 @@ model Tenant {
 
   users          User[]
   customers      Customer[]
+  customerAddresses CustomerAddress[]
   shipments      Shipment[]
   carriers       Carrier[]
   lockers        Locker[]
@@ -570,6 +624,7 @@ model Tenant {
   routes         Route[]
   routeStops     RouteStop[]
   pods           ProofOfDelivery[]
+  deliveryAttempts DeliveryAttempt[]
   payments       Payment[]
   apiKeys        ApiKey[]
   webhooks       WebhookEndpoint[]
@@ -675,9 +730,72 @@ model Customer {
   user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   lockers   Locker[]
   shipments Shipment[]
+  addresses CustomerAddress[]
 
   @@index([tenantId])
   @@map("customers")
+}
+
+/// Una direccion del cliente, escrita una vez y reutilizada.
+///
+/// Hasta ahora cada envio repetia la direccion en `destinationLabel` como texto
+/// plano, asi que una colonia mal escrita habia que corregirla envio por envio
+/// —o no se corregia, que es lo que pasa— y no habia forma de saber que dos
+/// envios iban al mismo sitio.
+///
+/// **Los campos son los de Honduras y no un `address_line` generico.**
+/// Departamento, municipio y colonia es como se dicen aqui las direcciones, y
+/// son lo que un repartidor usa para ordenar su ruta. Metidos en una sola linea
+/// de texto no se puede agrupar por zona ni contar cuanto se entrega en cada
+/// municipio, que es la mitad de para que sirve tener la direccion aparte.
+model CustomerAddress {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+
+  /// Como la llama el cliente: «Casa», «Oficina», «Bodega del negocio».
+  label String
+
+  /// Quien recibe en ESTA direccion, cuando no es el cliente. La oficina la
+  /// recibe recepcion y la casa la suegra; sin esto, el repartidor pregunta por
+  /// el titular y le dicen que ahi no vive.
+  recipientName  String? @map("recipient_name")
+  recipientPhone String? @map("recipient_phone")
+
+  department   String
+  municipality String
+  neighborhood String?
+  street       String?
+
+  /// «Porton negro frente a la pulperia La Bendicion». En media Honduras esto
+  /// es lo unico que lleva al repartidor a la puerta, asi que es un campo
+  /// propio y no una nota que se pierde.
+  reference String?
+
+  lat Float?
+  lng Float?
+
+  /// La que se propone al crear un envio. Una por cliente como mucho: lo impone
+  /// un indice unico parcial que Prisma no sabe expresar, escrito a mano en la
+  /// migracion.
+  isDefault Boolean @default(false) @map("is_default")
+
+  /// Archivar en vez de borrar. Una direccion la referencian envios ya
+  /// entregados: borrarla dejaria el historial apuntando a nada, y con
+  /// `SET NULL` se perderia la unica pista de que 40 envios fueron al mismo
+  /// sitio. Archivada deja de ofrecerse y sigue explicando el pasado.
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  shipments Shipment[]
+
+  @@index([tenantId])
+  @@index([customerId, active])
+  @@map("customer_addresses")
 }
 
 model Shipment {
@@ -688,8 +806,29 @@ model Shipment {
   type           ShipmentType   @default(LOCAL)
   status         ShipmentStatus @default(CREATED)
 
+  /// Como se entrega. Se elige al crear el envio y NO al descargar: es lo que
+  /// decide en que monton va el bulto cuando llega, asi que saberlo despues de
+  /// tenerlo en la mano es saberlo tarde.
+  deliveryMode DeliveryMode @default(HOME) @map("delivery_mode")
+
+  /// La sucursal donde lo retira el cliente. Obligatoria cuando el modo es
+  /// BRANCH —lo exige el servicio—, nula en los demas: un envio a domicilio con
+  /// sucursal asignada seria una contradiccion que despues nadie sabe leer.
+  deliveryWarehouseId String? @map("delivery_warehouse_id") @db.Uuid
+
   recipientName  String  @map("recipient_name")
   recipientPhone String? @map("recipient_phone")
+
+  /// La direccion reutilizable de la que salio este envio, si salio de una.
+  ///
+  /// Es una REFERENCIA, no la direccion: los campos planos de abajo siguen
+  /// siendo la copia congelada del dia del envio. Corregir la colonia de un
+  /// cliente en 2027 no puede reescribir a donde se entrego en 2026 —eso
+  /// convertiria el historial en una version del presente— y a la vez hace
+  /// falta poder decir «estos 40 envios fueron a esta direccion» para
+  /// corregirla una vez. Mismo criterio que el peso cobrable congelado al
+  /// recibir (fase 1) y las reglas de aduana versionadas (fase 3).
+  destinationAddressId String? @map("destination_address_id") @db.Uuid
 
   originLabel        String? @map("origin_label")
   originCountry      String? @map("origin_country")
@@ -710,12 +849,15 @@ model Shipment {
 
   tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer   Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  destinationAddress CustomerAddress? @relation(fields: [destinationAddressId], references: [id], onDelete: SetNull)
+  deliveryWarehouse  Warehouse?       @relation("EnvioSucursalDeEntrega", fields: [deliveryWarehouseId], references: [id], onDelete: SetNull)
   legs       ShipmentLeg[]
   events     ShipmentEvent[]
   packages   LockerPackage[]
   customs    CustomsRecord?
   routeStops RouteStop[]
   pods       ProofOfDelivery[]
+  deliveryAttempts DeliveryAttempt[]
   payments   Payment[]
   notifications Notification[]
   manifestItems ManifestItem[]
@@ -726,6 +868,10 @@ model Shipment {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([customerId])
+  @@index([destinationAddressId])
+  @@index([deliveryWarehouseId])
+  /// La pregunta de la clasificación: qué hay pendiente de retirar y qué va a ruta.
+  @@index([tenantId, deliveryMode])
   @@map("shipments")
 }
 
@@ -950,6 +1096,7 @@ model Warehouse {
   packages LockerPackage[]
   tripsFrom Trip[]         @relation("BodegaOrigen")
   tripsTo   Trip[]         @relation("BodegaDestino")
+  shipmentsForPickup Shipment[] @relation("EnvioSucursalDeEntrega")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1452,6 +1599,7 @@ model RouteStop {
   route    Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
   shipment Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   pod      ProofOfDelivery?
+  attempts DeliveryAttempt[]
 
   @@unique([routeId, sequence])
   @@index([tenantId])
@@ -1488,6 +1636,89 @@ model ProofOfDelivery {
   @@index([tenantId])
   @@index([shipmentId])
   @@map("proof_of_deliveries")
+}
+
+/// Un intento de entrega. Uno por visita, salga bien o salga mal.
+///
+/// **Por que existe.** `ProofOfDelivery` tiene `route_stop_id` UNICO, asi que la
+/// parada solo podia guardar UN intento: el segundo hacia `upsert` y pisaba al
+/// primero. Se perdia justo lo que hay que poder demostrar —que se fue tres
+/// veces y tres veces no habia nadie— y el KPI que mide de verdad la operacion,
+/// entregas al primer intento, era incalculable porque el primer intento ya no
+/// estaba.
+///
+/// **Que NO se hizo, y por que.** No se borro `ProofOfDelivery` ni se le quito
+/// su unico. Sigue escribiendose igual que antes, como proyeccion del ultimo
+/// intento de la parada, porque lo leen el detalle de ruta, el de envio y el
+/// panel; romperlos no era parte de esta fase. Mismo criterio que la fase 4 con
+/// las columnas de `customs_records`: la tabla nueva manda, la vieja se queda
+/// mientras tenga lectores, y se retira cuando no le quede ninguno. Si este
+/// traspaso saliera mal, borrar las filas de `delivery_attempts` devuelve el
+/// sistema a donde estaba.
+model DeliveryAttempt {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  shipmentId String @map("shipment_id") @db.Uuid
+
+  /// Nulo si la parada se borro: el intento ocurrio y su historia no se va con
+  /// la planificacion. Mismo criterio que `ProofOfDelivery.routeStopId`.
+  routeStopId String? @map("route_stop_id") @db.Uuid
+
+  /// 1, 2, 3... por ENVIO, no por parada.
+  ///
+  /// Por parada siempre valdria 1 y el KPI naceria vacio: una parada se cierra
+  /// una sola vez (`assertNotFinal`), asi que el reintento real no es volver a
+  /// la misma parada, es una parada NUEVA en la ruta del dia siguiente para el
+  /// mismo envio. Lo que la operacion cuenta —y lo que el cliente pregunta— es
+  /// cuantas veces se fue a entregar ESE paquete, no cuantas veces se toco una
+  /// fila de planificacion.
+  ///
+  /// Se calcula al insertar y no se recalcula al leer: contar filas al vuelo
+  /// daria numeros distintos si alguna se anula, y el «tercer intento» que le
+  /// dijimos al cliente dejaria de serlo.
+  attemptNumber Int @map("attempt_number")
+
+  outcome DeliveryOutcome
+
+  /// Solo lo llevan los fallidos. Un intento con exito y motivo de fallo seria
+  /// una contradiccion, y la migracion lo prohibe con un CHECK.
+  failureReason DeliveryFailureReason? @map("failure_reason")
+
+  /// El detalle a mano. Obligatorio cuando el motivo es OTHER —lo impone el
+  /// servicio—, opcional en el resto: «dejo dicho que pasemos por la tarde».
+  notes String?
+
+  receivedBy String? @map("received_by")
+
+  /// Claves del almacenamiento, NUNCA URLs. Ver `ProofOfDelivery`.
+  signatureKey String? @map("signature_key")
+  photoKey     String? @map("photo_key")
+
+  lat Float?
+  lng Float?
+
+  /// Sin FK a `users`, igual que `ShipmentEvent.createdByUserId`: el intento es
+  /// un hecho historico y borrar al repartidor no debe borrar ni mutilar la
+  /// prueba de lo que hizo.
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
+
+  attemptedAt DateTime @default(now()) @map("attempted_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment  Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  routeStop RouteStop? @relation(fields: [routeStopId], references: [id], onDelete: SetNull)
+
+  /// Dos intentos no pueden compartir numero en el mismo envio. Es lo que hace
+  /// segura la asignacion del numero: dos repartidores cerrando a la vez chocan
+  /// contra el indice en vez de crear dos «intento 2».
+  @@unique([shipmentId, attemptNumber])
+  @@index([tenantId])
+  @@index([routeStopId])
+  @@index([shipmentId, attemptedAt])
+  /// El KPI de primer intento filtra por desenlace dentro de la empresa.
+  @@index([tenantId, outcome])
+  @@map("delivery_attempts")
 }
 
 model Payment {

@@ -1,9 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { api, ApiError, Shipment, ShipmentType } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  Customer,
+  CustomerAddress,
+  DeliveryMode,
+  DELIVERY_MODE_LABELS,
+  Shipment,
+  ShipmentType,
+  Warehouse,
+} from "@/lib/api";
 import { TYPE_LABELS } from "@/lib/shipment-status";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +37,13 @@ export default function NewShipmentPage() {
   const router = useRouter();
   const [type, setType] = useState<ShipmentType>("LOCAL");
   const [loading, setLoading] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("HOME");
+  const [deliveryWarehouseId, setDeliveryWarehouseId] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [addressId, setAddressId] = useState("");
+  const [clientes, setClientes] = useState<Customer[]>([]);
+  const [sucursales, setSucursales] = useState<Warehouse[]>([]);
+  const [direcciones, setDirecciones] = useState<CustomerAddress[]>([]);
   const [form, setForm] = useState({
     recipientName: "",
     recipientPhone: "",
@@ -45,6 +62,56 @@ export default function NewShipmentPage() {
       setForm((f) => ({ ...f, [field]: e.target.value }));
   }
 
+  // Clientes y sucursales se cargan una vez. Las sucursales se filtran por
+  // `allowsPickup`: ofrecer una bodega de tránsito como punto de retiro manda al
+  // cliente a un portón donde no hay mostrador, y el backend lo rechaza igual.
+  useEffect(() => {
+    api<Customer[]>("/customers")
+      .then(setClientes)
+      .catch(() => setClientes([]));
+    api<Warehouse[]>("/warehouses")
+      .then((todas) => setSucursales(todas.filter((w) => w.allowsPickup)))
+      .catch(() => setSucursales([]));
+  }, []);
+
+  // Las direcciones dependen del cliente elegido, así que se piden al cambiarlo.
+  useEffect(() => {
+    if (!customerId) {
+      setDirecciones([]);
+      return;
+    }
+    api<CustomerAddress[]>(`/customers/${customerId}/addresses`)
+      .then(setDirecciones)
+      .catch(() => setDirecciones([]));
+  }, [customerId]);
+
+  /**
+   * Al elegir una dirección guardada se rellena el destino visible.
+   *
+   * Se copia al formulario en vez de dejarlo en blanco para que el usuario VEA
+   * a dónde va a ir el envío antes de crearlo, y pueda afinarlo: lo que escriba
+   * manda sobre la dirección, porque está corrigiendo este envío concreto y no
+   * la ficha del cliente.
+   */
+  function onElegirDireccion(id: string) {
+    setAddressId(id);
+    const elegida = direcciones.find((d) => d.id === id);
+    if (!elegida) return;
+    setForm((f) => ({
+      ...f,
+      destinationLabel: [
+        elegida.street,
+        elegida.neighborhood,
+        elegida.municipality,
+        elegida.department,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      destinationLat: elegida.lat != null ? String(elegida.lat) : "",
+      destinationLng: elegida.lng != null ? String(elegida.lng) : "",
+    }));
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -52,6 +119,10 @@ export default function NewShipmentPage() {
     const str = (v: string) => (v.trim() === "" ? undefined : v.trim());
     const body = {
       type,
+      deliveryMode,
+      ...(deliveryMode === "BRANCH" ? { deliveryWarehouseId } : {}),
+      ...(customerId ? { customerId } : {}),
+      ...(addressId ? { destinationAddressId: addressId } : {}),
       recipientName: form.recipientName.trim(),
       recipientPhone: str(form.recipientPhone),
       originLabel: str(form.originLabel),
@@ -118,6 +189,107 @@ export default function NewShipmentPage() {
                 onChange={set("currency")}
               />
             </div>
+            {/* Modo de entrega: se elige AQUÍ y no al descargar, porque es lo
+                que decide en qué montón va el bulto cuando llega a bodega. */}
+            <div className="grid gap-2">
+              <Label>Modo de entrega</Label>
+              <Select
+                value={deliveryMode}
+                onValueChange={(v) => {
+                  setDeliveryMode(v as DeliveryMode);
+                  // Al salir de «sucursal» se limpia la bodega elegida: el
+                  // backend rechaza un envío a domicilio que la lleve puesta, y
+                  // dejarla colgada daría un error que la pantalla no explica.
+                  if (v !== "BRANCH") setDeliveryWarehouseId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(DELIVERY_MODE_LABELS) as DeliveryMode[]).map(
+                    (m) => (
+                      <SelectItem key={m} value={m}>
+                        {DELIVERY_MODE_LABELS[m]}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            {deliveryMode === "BRANCH" && (
+              <div className="grid gap-2">
+                <Label>Sucursal de retiro *</Label>
+                <Select
+                  value={deliveryWarehouseId}
+                  onValueChange={setDeliveryWarehouseId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Elige la sucursal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sucursales.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.code} — {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* Sólo se ofrecen las que atienden mostrador. Si no hay
+                    ninguna, decirlo aquí evita que el usuario busque el fallo
+                    en el formulario. */}
+                {sucursales.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Ninguna bodega tiene activado el retiro de clientes.
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="grid gap-2 sm:col-span-2">
+              <Label>Cliente</Label>
+              <Select
+                value={customerId}
+                onValueChange={(v) => {
+                  setCustomerId(v);
+                  setAddressId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin cliente asociado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Las direcciones cuelgan del cliente, así que sin cliente elegido
+                no hay ninguna que ofrecer. */}
+            {customerId && direcciones.length > 0 && (
+              <div className="grid gap-2 sm:col-span-2">
+                <Label>Dirección guardada</Label>
+                <Select value={addressId} onValueChange={onElegirDireccion}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Escribir el destino a mano" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {direcciones.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.label}
+                        {d.isDefault ? " (por defecto)" : ""} — {d.municipality}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  El envío guarda una copia: corregir la dirección después no
+                  cambia a dónde se entregó éste.
+                </p>
+              </div>
+            )}
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="recipientName">Destinatario *</Label>
               <Input

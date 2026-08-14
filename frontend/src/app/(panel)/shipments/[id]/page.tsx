@@ -59,6 +59,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Cargos } from "./cargos";
 import { Expediente } from "./expediente";
 import { Historial } from "./historial";
+import { Intentos } from "./intentos";
 import { Textarea } from "@/components/ui/textarea";
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -676,6 +677,11 @@ export default function ShipmentDetailPage({
       {shipment.type === "INTERNATIONAL" ? (
         <LegsCard shipment={shipment} onChanged={load} />
       ) : null}
+
+      {/* Encima del historial general: cuando alguien reclama una entrega, lo
+          primero que busca es cuántas veces se fue y qué pasó cada vez, no la
+          lista completa de cambios de estado. */}
+      <Intentos intentos={shipment.deliveryAttempts} />
 
       <Historial shipment={shipment} onCambio={load} />
     </div>

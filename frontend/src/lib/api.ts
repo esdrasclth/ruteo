@@ -331,6 +331,8 @@ export interface ShipmentDetail extends Shipment {
     };
     pod: ProofOfDelivery | null;
   }[];
+  /** El historial completo del envío, a través de todas sus paradas. */
+  deliveryAttempts: DeliveryAttempt[];
   payments: Payment[];
   notifications: NotificationRow[];
   packages: {
@@ -413,6 +415,118 @@ export interface ProofOfDelivery {
   capturedAt: string;
 }
 
+/**
+ * El tablero de operación: una foto del AHORA.
+ *
+ * No lleva rango de fechas a propósito — es lo que lo separa de `Overview`, que
+ * responde «cómo nos fue» sobre un período. Aquí la pregunta es «qué está
+ * pasando», y un bulto parado en aduana desde marzo es exactamente el que hay
+ * que ver.
+ */
+export interface TableroOperacion {
+  generadoEn: string;
+  bodegas: {
+    detalle: {
+      warehouseId: string | null;
+      code: string | null;
+      name: string | null;
+      country: string | null;
+      bultos: number;
+    }[];
+    /** En bodega pero sin decir en cuál: la recepción todavía no lo pregunta. */
+    sinUbicar: number;
+  };
+  aduana: {
+    pendientes: number;
+    enRevision: number;
+    retenidos: number;
+    liberados: number;
+    rechazados: number;
+  };
+  excepciones: {
+    abiertas: number;
+    sinAsignar: number;
+    porSeveridad: { severidad: ExceptionSeverity; cuantas: number }[];
+    porTipo: { tipo: ExceptionType; cuantas: number }[];
+  };
+  ultimaMilla: {
+    enRuta: number;
+    porReintentar: number;
+    enBodega: number;
+    enTransito: number;
+    tasaPrimerIntento30Dias: number | null;
+    entregas30Dias: number;
+  };
+}
+
+export type DeliveryMode = "HOME" | "BRANCH" | "PICKUP_POINT";
+
+export const DELIVERY_MODE_LABELS: Record<DeliveryMode, string> = {
+  HOME: "A domicilio",
+  BRANCH: "Retiro en sucursal",
+  PICKUP_POINT: "Punto de entrega",
+};
+
+/** Una dirección reutilizable del cliente (fase 5.2). */
+export interface CustomerAddress {
+  id: string;
+  customerId: string;
+  label: string;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  department: string;
+  municipality: string;
+  neighborhood: string | null;
+  street: string | null;
+  reference: string | null;
+  lat: number | null;
+  lng: number | null;
+  isDefault: boolean;
+  active: boolean;
+}
+
+export type DeliveryOutcome = "SUCCESS" | "FAILED";
+
+export type DeliveryFailureReason =
+  | "NO_RECIPIENT"
+  | "WRONG_ADDRESS"
+  | "PHONE_UNREACHABLE"
+  | "CUSTOMER_REFUSED"
+  | "BUSINESS_CLOSED"
+  | "RESCHEDULED"
+  | "OTHER";
+
+/**
+ * Cómo se lee cada motivo. Debe coincidir con `MOTIVOS_DE_FALLO` del backend:
+ * ahí se usa además para el texto que se guarda en el POD, y dos listas que se
+ * separan acaban enseñando etiquetas distintas según la pantalla.
+ */
+export const MOTIVOS_DE_FALLO: Record<DeliveryFailureReason, string> = {
+  NO_RECIPIENT: "No había quien recibiera",
+  WRONG_ADDRESS: "La dirección no corresponde",
+  PHONE_UNREACHABLE: "El teléfono no contesta",
+  CUSTOMER_REFUSED: "El destinatario rechazó el paquete",
+  BUSINESS_CLOSED: "Local cerrado",
+  RESCHEDULED: "El cliente pidió otro día",
+  OTHER: "Otro motivo",
+};
+
+/** Un intento de entrega. Uno por visita, salga bien o salga mal. */
+export interface DeliveryAttempt {
+  id: string;
+  /** Cuenta por ENVÍO, no por parada: «intento 3» = se fue tres veces. */
+  attemptNumber: number;
+  outcome: DeliveryOutcome;
+  failureReason: DeliveryFailureReason | null;
+  notes: string | null;
+  receivedBy: string | null;
+  signatureUrl: string | null;
+  photoUrl: string | null;
+  lat: number | null;
+  lng: number | null;
+  attemptedAt: string;
+}
+
 export interface RouteStop {
   id: string;
   sequence: number;
@@ -427,6 +541,7 @@ export interface RouteStop {
   shipmentId: string;
   shipment: { trackingNumber: string; status: ShipmentStatus };
   pod: ProofOfDelivery | null;
+  attempts: DeliveryAttempt[];
 }
 
 export interface RouteSummary {

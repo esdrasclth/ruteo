@@ -46,4 +46,16 @@ export class AnalyticsController {
   drivers(@CurrentUser() user: AuthUser, @Query() dto: AnalyticsRangeDto) {
     return this.analytics.drivers(user.tenantId, dto);
   }
+
+  // Sin `AnalyticsRangeDto`: es una foto del ahora, no un informe de un período.
+  // Ver el comentario del servicio.
+  @Get('operacion')
+  operacion(@CurrentUser() user: AuthUser) {
+    return this.analytics.operacion(user.tenantId);
+  }
+
+  @Get('entregas')
+  entregas(@CurrentUser() user: AuthUser, @Query() dto: AnalyticsRangeDto) {
+    return this.analytics.entregas(user.tenantId, dto);
+  }
 }

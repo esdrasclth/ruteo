@@ -92,6 +92,15 @@ export class ShipmentsController {
     return this.shipments.list(user.tenantId, query);
   }
 
+  // ANTES de `@Get(':id')` a propósito: Nest resuelve por orden de declaración
+  // y `:id` lleva `ParseUUIDPipe`, así que declarada después esta ruta no caería
+  // en `findOne` sino en un 400 diciendo que «clasificacion» no es un UUID.
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  @Get('clasificacion')
+  clasificacion(@CurrentUser() user: AuthUser) {
+    return this.shipments.clasificacion(user.tenantId);
+  }
+
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
   @Get(':id/label')
   @Header('Content-Type', 'image/svg+xml')

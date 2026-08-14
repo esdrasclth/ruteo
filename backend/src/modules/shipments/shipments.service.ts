@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DeliveryMode,
   EventVisibility,
   LegStatus,
   NotificationChannel,
@@ -14,9 +15,10 @@ import {
   ShipmentStatus,
   ShipmentType,
 } from '@prisma/client';
+import { etiquetaDeDireccion } from '../customers/direccion-texto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
-import { firmarPodsDeParadas } from '../../storage/firmar-pod';
+import { firmarConClaves, firmarPodsDeParadas } from '../../storage/firmar-pod';
 import { StorageService } from '../../storage/storage.service';
 import { TrackingGateway } from '../realtime/tracking.gateway';
 import { PaymentsService } from '../payments/payments.service';
@@ -68,6 +70,10 @@ const shipmentDetail = {
       pod: true,
     },
   },
+  // El historial de intentos cuelga del ENVÍO y no de la parada: el reintento
+  // real es una parada nueva en otra ruta, así que verlo por parada mostraría
+  // tres veces «intento 1» en tres pantallas distintas en vez de la secuencia.
+  deliveryAttempts: { orderBy: { attemptNumber: 'asc' } },
   payments: { orderBy: { createdAt: 'desc' } },
   notifications: {
     orderBy: { createdAt: 'desc' },
@@ -108,6 +114,7 @@ export class ShipmentsService {
       const trackingNumber = generateTrackingNumber();
       try {
         return await this.prisma.withTenant(tenantId, async (tx) => {
+          const entrega = await this.resolverEntrega(tx, dto);
           const shipment = await tx.shipment.create({
             data: {
               tenantId,
@@ -118,14 +125,12 @@ export class ShipmentsService {
               recipientPhone: dto.recipientPhone,
               originLabel: dto.originLabel,
               originCountry: dto.originCountry,
-              destinationLabel: dto.destinationLabel,
               destinationCountry: dto.destinationCountry,
-              destinationLat: dto.destinationLat,
-              destinationLng: dto.destinationLng,
               weightKg: dto.weightKg,
               declaredValue: dto.declaredValue,
               codAmount: dto.codAmount,
               currency: dto.currency ?? 'USD',
+              ...entrega,
             },
           });
           await registrar(tx, {
@@ -153,6 +158,159 @@ export class ShipmentsService {
       }
     }
     throw new BadRequestException('Could not allocate a tracking number');
+  }
+
+  /**
+   * En qué montón va cada bulto al descargar (fase 5.3).
+   *
+   * La clasificación es una pregunta de bodega, no un informe: quien descarga
+   * necesita saber cuántas cajas van a ruta, cuántas al mostrador de cada
+   * sucursal y cuántas a puntos de terceros, ANTES de empezar a apilar. Por eso
+   * cuenta lo que está en bodega o listo para salir, y no todo el histórico:
+   * un envío entregado hace tres meses no se clasifica.
+   *
+   * Los estados que entran son los que describen «ya llegó y todavía no se
+   * entregó». `FAILED_ATTEMPT` entra a propósito: un paquete que volvió a
+   * bodega tras un intento fallido hay que volver a clasificarlo, y es
+   * justamente el que más fácil se queda olvidado en un rincón.
+   */
+  async clasificacion(tenantId: string) {
+    const enBodega: ShipmentStatus[] = [
+      ShipmentStatus.IN_WAREHOUSE_HN,
+      ShipmentStatus.CUSTOMS_CLEARED,
+      ShipmentStatus.OUT_FOR_DELIVERY,
+      ShipmentStatus.FAILED_ATTEMPT,
+    ];
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [porModo, porSucursal] = await Promise.all([
+        tx.shipment.groupBy({
+          by: ['deliveryMode'],
+          where: { status: { in: enBodega } },
+          _count: { _all: true },
+        }),
+        tx.shipment.groupBy({
+          by: ['deliveryWarehouseId'],
+          where: {
+            status: { in: enBodega },
+            deliveryMode: DeliveryMode.BRANCH,
+            deliveryWarehouseId: { not: null },
+          },
+          _count: { _all: true },
+        }),
+      ]);
+
+      // Los nombres se resuelven en una sola consulta y no uno por grupo: son
+      // pocas sucursales, pero una consulta por fila dentro de un `map` es
+      // exactamente cómo una pantalla de bodega acaba tardando dos segundos.
+      const ids = porSucursal
+        .map((f) => f.deliveryWarehouseId)
+        .filter((id): id is string => id !== null);
+      const sucursales = await tx.warehouse.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, code: true, name: true },
+      });
+      const porId = new Map(sucursales.map((s) => [s.id, s]));
+
+      return {
+        porModo: porModo.map((f) => ({
+          modo: f.deliveryMode,
+          envios: f._count._all,
+        })),
+        porSucursal: porSucursal
+          .map((f) => ({
+            warehouseId: f.deliveryWarehouseId,
+            code: porId.get(f.deliveryWarehouseId!)?.code ?? null,
+            name: porId.get(f.deliveryWarehouseId!)?.name ?? null,
+            envios: f._count._all,
+          }))
+          .sort((a, b) => b.envios - a.envios),
+      };
+    });
+  }
+
+  /**
+   * Resuelve el destino y el modo de entrega de un envío nuevo (fase 5.2/5.3).
+   *
+   * Hace dos cosas que no se pueden separar porque se contradicen entre sí: fija
+   * a dónde va y comprueba que el cómo tenga sentido con el a dónde.
+   */
+  private async resolverEntrega(
+    tx: Prisma.TransactionClient,
+    dto: CreateShipmentDto,
+  ) {
+    const deliveryMode = dto.deliveryMode ?? DeliveryMode.HOME;
+
+    // ---- El cómo -----------------------------------------------------------
+    if (deliveryMode === DeliveryMode.BRANCH) {
+      if (!dto.deliveryWarehouseId) {
+        throw new BadRequestException(
+          'Un envío que se retira en sucursal necesita decir en cuál.',
+        );
+      }
+      const sucursal = await tx.warehouse.findUnique({
+        where: { id: dto.deliveryWarehouseId },
+        select: { id: true, active: true, allowsPickup: true, name: true },
+      });
+      if (!sucursal || !sucursal.active) {
+        throw new NotFoundException('La sucursal de entrega no existe.');
+      }
+      // `allowsPickup` lo declaró la fase 2 justo para esto. Sin comprobarlo, un
+      // envío puede quedar asignado a una bodega de tránsito donde no hay
+      // mostrador ni nadie que atienda, y eso no se descubre hasta que el
+      // cliente llega y se encuentra un portón.
+      if (!sucursal.allowsPickup) {
+        throw new BadRequestException(
+          `«${sucursal.name}» no atiende retiro de clientes.`,
+        );
+      }
+    } else if (dto.deliveryWarehouseId) {
+      // Se rechaza en vez de ignorarlo en silencio: quien mandó la sucursal
+      // creía estar diciendo algo, y un envío a domicilio con sucursal puesta
+      // es justo la contradicción que después nadie sabe leer.
+      throw new BadRequestException(
+        'Sólo los envíos que se retiran en sucursal llevan sucursal de entrega.',
+      );
+    }
+
+    // ---- El a dónde --------------------------------------------------------
+    if (!dto.destinationAddressId) {
+      return {
+        deliveryMode,
+        deliveryWarehouseId: dto.deliveryWarehouseId ?? null,
+        destinationLabel: dto.destinationLabel,
+        destinationLat: dto.destinationLat,
+        destinationLng: dto.destinationLng,
+      };
+    }
+
+    const direccion = await tx.customerAddress.findUnique({
+      where: { id: dto.destinationAddressId },
+    });
+    if (!direccion || !direccion.active) {
+      throw new NotFoundException('La dirección de destino no existe.');
+    }
+    // Una dirección es de un cliente. Aceptar la de otro dejaría el envío
+    // apuntando a la casa de un tercero, y el enlace serviría además para
+    // leerla desde el detalle del envío.
+    if (dto.customerId && direccion.customerId !== dto.customerId) {
+      throw new BadRequestException(
+        'Esa dirección es de otro cliente.',
+      );
+    }
+
+    return {
+      deliveryMode,
+      deliveryWarehouseId: dto.deliveryWarehouseId ?? null,
+      destinationAddressId: direccion.id,
+      // La COPIA congelada. Lo que se escriba aquí es lo que dirá este envío
+      // dentro de dos años, aunque la dirección se corrija mañana. Lo que venga
+      // explícito en el DTO manda sobre la dirección: quien lo mandó está
+      // afinando este envío concreto, no la ficha del cliente.
+      destinationLabel: dto.destinationLabel ?? etiquetaDeDireccion(direccion),
+      destinationLat: dto.destinationLat ?? direccion.lat,
+      destinationLng: dto.destinationLng ?? direccion.lng,
+    };
   }
 
   // Bulk-creates shipments from a CSV file. Valid rows are inserted; invalid
@@ -298,6 +456,11 @@ export class ShipmentsService {
       routeStops: await firmarPodsDeParadas(
         this.storage,
         shipment.routeStops,
+        tenantId,
+      ),
+      deliveryAttempts: await firmarConClaves(
+        this.storage,
+        shipment.deliveryAttempts,
         tenantId,
       ),
     };

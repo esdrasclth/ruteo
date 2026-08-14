@@ -66,6 +66,29 @@ export async function firmarPod<T extends PodConClaves>(
 }
 
 /**
+ * Lo mismo para una lista suelta de cosas con claves: los intentos de entrega.
+ *
+ * Cada intento guarda su propia evidencia, así que una parada con tres intentos
+ * tiene tres fotos distintas y no una. Firmarlas con la misma función que el
+ * POD no es reaprovechar por reaprovechar: es que la regla —guardar clave,
+ * firmar al leer, no romperse si el almacenamiento no responde— tiene que ser
+ * idéntica en los dos sitios, o la evidencia se comportaría distinto según por
+ * qué pantalla se mire.
+ */
+export async function firmarConClaves<T extends PodConClaves>(
+  storage: StorageService,
+  elementos: T[],
+  tenantId: string,
+): Promise<(T & PodFirmado)[]> {
+  return Promise.all(
+    elementos.map(
+      async (elemento) =>
+        (await firmarPod(storage, elemento, tenantId)) as T & PodFirmado,
+    ),
+  );
+}
+
+/**
  * Lo mismo para una lista de paradas. Va en paralelo porque firmar no toca la
  * red: veinte paradas son cuarenta firmas locales, no cuarenta peticiones.
  */

@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   Scale,
   Warehouse,
   ClipboardList,
@@ -68,6 +69,15 @@ const NAV: NavGroup[] = [
         href: "/dashboard",
         label: "Dashboard",
         icon: LayoutDashboard,
+        roles: OFICINA,
+      },
+      // Arriba del todo y junto al dashboard, no dentro de «Operación»:
+      // responden preguntas distintas —«cómo nos fue» contra «qué está pasando
+      // ahora»— y las dos son de entrada, no de una sección concreta.
+      {
+        href: "/operacion",
+        label: "Tablero",
+        icon: Activity,
         roles: OFICINA,
       },
     ],

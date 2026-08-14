@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DeliveryFailureReason,
+  DeliveryOutcome,
   Prisma,
   RouteStatus,
   ShipmentStatus,
@@ -25,8 +27,9 @@ import { OptimizeRouteDto } from './dto/optimize-route.dto';
 import { QueryRoutesDto } from './dto/query-routes.dto';
 import { UpdateRouteStatusDto } from './dto/update-route-status.dto';
 import { generateRouteCode } from './route-code';
+import { describirFallo } from './motivo-fallo';
 import { CATEGORIAS, prefijoDe } from '../../storage/claves';
-import { firmarPodsDeParadas } from '../../storage/firmar-pod';
+import { firmarConClaves, firmarPodsDeParadas } from '../../storage/firmar-pod';
 import { StorageService } from '../../storage/storage.service';
 
 const routeDetail = {
@@ -36,6 +39,10 @@ const routeDetail = {
     include: {
       shipment: { select: { trackingNumber: true, status: true } },
       pod: true,
+      // Los intentos hechos EN esta parada. Normalmente uno; lo que aporta es el
+      // número, que es por envío: ver «intento 3» en la parada de hoy dice que
+      // al paquete ya se fue dos veces antes, cosa que la parada sola no sabe.
+      attempts: { orderBy: { attemptNumber: 'asc' } },
     },
   },
 } satisfies Prisma.RouteInclude;
@@ -121,9 +128,19 @@ export class RoutesService {
     // La evidencia se guarda como CLAVE y se firma al leer, nunca al guardar:
     // una URL firmada es un pase que funciona sin sesión, y guardarla sería
     // dejarlo escrito para siempre.
+    const stops = await firmarPodsDeParadas(this.storage, route.stops, tenantId);
     return {
       ...route,
-      stops: await firmarPodsDeParadas(this.storage, route.stops, tenantId),
+      stops: await Promise.all(
+        stops.map(async (stop) => ({
+          ...stop,
+          attempts: await firmarConClaves(
+            this.storage,
+            stop.attempts,
+            tenantId,
+          ),
+        })),
+      ),
     };
   }
 
@@ -279,40 +296,56 @@ export class RoutesService {
       this.comprobarEvidencia(tenantId, stopId, dto.photoKey),
     ]);
 
-    const info = await this.prisma.withTenant(tenantId, async (tx) => {
-      const stop = await this.loadStop(tx, routeId, stopId);
-      this.assertNotFinal(stop.status);
-      await tx.routeStop.update({
-        where: { id: stopId },
-        data: {
-          status: StopStatus.COMPLETED,
-          completedAt: new Date(),
-          arrivedAt: stop.arrivedAt ?? new Date(),
-        },
-      });
-      await tx.proofOfDelivery.upsert({
-        where: { routeStopId: stopId },
-        create: {
+    const info = await this.conNumeroDeIntento(() =>
+      this.prisma.withTenant(tenantId, async (tx) => {
+        const stop = await this.loadStop(tx, routeId, stopId);
+        this.assertNotFinal(stop.status);
+        await tx.routeStop.update({
+          where: { id: stopId },
+          data: {
+            status: StopStatus.COMPLETED,
+            completedAt: new Date(),
+            arrivedAt: stop.arrivedAt ?? new Date(),
+          },
+        });
+        await this.registrarIntento(tx, {
           tenantId,
           shipmentId: stop.shipmentId,
           routeStopId: stopId,
+          outcome: DeliveryOutcome.SUCCESS,
           receivedBy: dto.receivedBy,
           signatureKey,
           photoKey,
           lat: dto.lat,
           lng: dto.lng,
-        },
-        update: {
-          receivedBy: dto.receivedBy,
-          signatureKey,
-          photoKey,
-          lat: dto.lat,
-          lng: dto.lng,
-          failureReason: null,
-        },
-      });
-      return { shipment: stop.shipment, type: stop.type };
-    });
+          createdByUserId: user.userId,
+        });
+        // El POD se sigue escribiendo como proyección del último intento: lo
+        // leen el detalle de ruta y el de envío. Ver `DeliveryAttempt`.
+        await tx.proofOfDelivery.upsert({
+          where: { routeStopId: stopId },
+          create: {
+            tenantId,
+            shipmentId: stop.shipmentId,
+            routeStopId: stopId,
+            receivedBy: dto.receivedBy,
+            signatureKey,
+            photoKey,
+            lat: dto.lat,
+            lng: dto.lng,
+          },
+          update: {
+            receivedBy: dto.receivedBy,
+            signatureKey,
+            photoKey,
+            lat: dto.lat,
+            lng: dto.lng,
+            failureReason: null,
+          },
+        });
+        return { shipment: stop.shipment, type: stop.type };
+      }),
+    );
 
     const target =
       info.type === StopType.PICKUP
@@ -330,43 +363,71 @@ export class RoutesService {
     dto: FailStopDto,
   ) {
     const { tenantId } = user;
+
+    // «Otro motivo» sin explicación es el texto libre de antes con menos
+    // información: no se puede revisar, ni contar como categoría, ni ascender a
+    // valor propio si resulta que se repite. Se exige aquí y no en el DTO
+    // porque es una regla entre dos campos, no de uno solo.
+    if (dto.failureReason === DeliveryFailureReason.OTHER && !dto.notes?.trim()) {
+      throw new BadRequestException(
+        'Explica en la nota qué pasó cuando el motivo es «Otro motivo».',
+      );
+    }
+
     const photoKey = await this.comprobarEvidencia(
       tenantId,
       stopId,
       dto.photoKey,
     );
+    const descripcion = describirFallo(dto.failureReason, dto.notes);
 
-    const info = await this.prisma.withTenant(tenantId, async (tx) => {
-      const stop = await this.loadStop(tx, routeId, stopId);
-      this.assertNotFinal(stop.status);
-      await tx.routeStop.update({
-        where: { id: stopId },
-        data: {
-          status: StopStatus.FAILED,
-          completedAt: new Date(),
-          arrivedAt: stop.arrivedAt ?? new Date(),
-        },
-      });
-      await tx.proofOfDelivery.upsert({
-        where: { routeStopId: stopId },
-        create: {
+    const info = await this.conNumeroDeIntento(() =>
+      this.prisma.withTenant(tenantId, async (tx) => {
+        const stop = await this.loadStop(tx, routeId, stopId);
+        this.assertNotFinal(stop.status);
+        await tx.routeStop.update({
+          where: { id: stopId },
+          data: {
+            status: StopStatus.FAILED,
+            completedAt: new Date(),
+            arrivedAt: stop.arrivedAt ?? new Date(),
+          },
+        });
+        await this.registrarIntento(tx, {
           tenantId,
           shipmentId: stop.shipmentId,
           routeStopId: stopId,
+          outcome: DeliveryOutcome.FAILED,
           failureReason: dto.failureReason,
+          notes: dto.notes,
           photoKey,
           lat: dto.lat,
           lng: dto.lng,
-        },
-        update: {
-          failureReason: dto.failureReason,
-          photoKey,
-          lat: dto.lat,
-          lng: dto.lng,
-        },
-      });
-      return { shipment: stop.shipment };
-    });
+          createdByUserId: user.userId,
+        });
+        // El POD sigue guardando el motivo como texto porque es lo que leen las
+        // pantallas de hoy. El dato que se cuenta es el del intento.
+        await tx.proofOfDelivery.upsert({
+          where: { routeStopId: stopId },
+          create: {
+            tenantId,
+            shipmentId: stop.shipmentId,
+            routeStopId: stopId,
+            failureReason: descripcion,
+            photoKey,
+            lat: dto.lat,
+            lng: dto.lng,
+          },
+          update: {
+            failureReason: descripcion,
+            photoKey,
+            lat: dto.lat,
+            lng: dto.lng,
+          },
+        });
+        return { shipment: stop.shipment };
+      }),
+    );
 
     await this.advanceShipment(
       user,
@@ -374,10 +435,66 @@ export class RoutesService {
       ShipmentStatus.FAILED_ATTEMPT,
       dto.lat,
       dto.lng,
-      dto.failureReason,
+      descripcion,
     );
 
     return this.findOne(tenantId, routeId);
+  }
+
+  /**
+   * Inserta el intento numerándolo dentro del ENVÍO.
+   *
+   * El número sale de `MAX(attemptNumber) + 1` sobre los intentos del envío, no
+   * de contar filas: si algún día se anula un intento, contar daría un número
+   * ya usado y el índice único lo rechazaría, además de renumerar hacia atrás
+   * un historial que ya se le comunicó al cliente.
+   *
+   * Entre el `MAX` y el `INSERT` cabe otra transacción haciendo lo mismo. No se
+   * bloquea la tabla para evitarlo: el índice único ya lo detecta y reintentar
+   * es más barato que serializar todos los cierres de parada de la empresa.
+   * Quien reintenta es `conNumeroDeIntento`.
+   */
+  private async registrarIntento(
+    tx: Prisma.TransactionClient,
+    datos: Omit<Prisma.DeliveryAttemptUncheckedCreateInput, 'attemptNumber'>,
+  ) {
+    const ultimo = await tx.deliveryAttempt.aggregate({
+      where: { shipmentId: datos.shipmentId },
+      _max: { attemptNumber: true },
+    });
+    return tx.deliveryAttempt.create({
+      data: { ...datos, attemptNumber: (ultimo._max.attemptNumber ?? 0) + 1 },
+    });
+  }
+
+  /**
+   * Reintenta la operación si dos cierres simultáneos pidieron el mismo número.
+   *
+   * Sólo se reintenta la colisión de `[shipmentId, attemptNumber]`. Cualquier
+   * otro P2002 —un código de ruta repetido, por ejemplo— se deja pasar tal
+   * cual: reintentarlo daría el mismo choque tres veces y convertiría un error
+   * claro en uno lento.
+   *
+   * La transacción entera se repite, no sólo el `INSERT`. Al abortar no se
+   * confirmó nada, así que la parada sigue abierta y las comprobaciones vuelven
+   * a correr sobre el estado real en vez de sobre el que se leyó antes.
+   */
+  private async conNumeroDeIntento<T>(operacion: () => Promise<T>): Promise<T> {
+    for (let intento = 0; ; intento++) {
+      try {
+        return await operacion();
+      } catch (error) {
+        const esColisionDeNumero =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          (error.meta?.target as string[] | undefined)?.includes(
+            'attempt_number',
+          );
+        if (!esColisionDeNumero || intento >= 2) {
+          throw error;
+        }
+      }
+    }
   }
 
   /**

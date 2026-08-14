@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { DeliveryFailureReason } from '@prisma/client';
 import {
+  IsEnum,
   IsLatitude,
   IsLongitude,
   IsOptional,
@@ -8,10 +10,39 @@ import {
 } from 'class-validator';
 
 export class FailStopDto {
-  @ApiProperty({ example: 'Destinatario ausente' })
+  /**
+   * Por qué no se pudo entregar, de una lista cerrada.
+   *
+   * Antes era texto libre, y el texto libre no se puede contar: «no estaba»,
+   * «ausente», «nadie en casa» y «Ausente!!» son la misma causa escrita de
+   * cuatro formas. La pregunta que la operación se hace todos los meses
+   * —cuántas entregas fallan por dirección mala y cuántas porque el cliente no
+   * está— no tenía respuesta, y de ahí no sale ninguna decisión.
+   *
+   * **Es un cambio incompatible de la API a propósito.** Aceptar también el
+   * texto de antes habría dejado las dos formas conviviendo para siempre, que
+   * es exactamente el problema que esto viene a cerrar.
+   */
+  @ApiProperty({
+    enum: DeliveryFailureReason,
+    example: DeliveryFailureReason.NO_RECIPIENT,
+  })
+  @IsEnum(DeliveryFailureReason)
+  failureReason: DeliveryFailureReason;
+
+  /**
+   * El detalle a mano. Obligatorio cuando el motivo es `OTHER` —lo comprueba el
+   * servicio—, porque un «Otro motivo» sin explicación no se puede revisar ni
+   * ascender a categoría propia: es el texto libre de antes con menos
+   * información.
+   */
+  @ApiPropertyOptional({
+    example: 'Dejó dicho con el vigilante que pasemos por la tarde',
+  })
+  @IsOptional()
   @IsString()
-  @MaxLength(255)
-  failureReason: string;
+  @MaxLength(500)
+  notes?: string;
 
   /**
    * Foto del intento fallido: la puerta cerrada, la dirección que no existe, el
