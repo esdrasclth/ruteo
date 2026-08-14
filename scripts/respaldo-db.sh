@@ -16,6 +16,26 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+# Alternativa a `docker compose`: apuntar al contenedor por nombre.
+#
+# Con Dokploy hace falta. El compose vive en
+# /etc/dokploy/compose/<appName>/code, un directorio que Dokploy BORRA y vuelve
+# a clonar en cada despliegue, y cuyo <appName> lleva un sufijo aleatorio que
+# cambia si se recrea el servicio. Un cron anclado ahi funciona hasta el dia que
+# deja de hacerlo, sin avisar.
+#
+#   RUTEO_DB_CONTAINER=ruteo-stack-shc0uh-db-1
+DB_CONTAINER="${RUTEO_DB_CONTAINER:-}"
+
+# `exec -T` en los dos casos: sin el, docker mete retornos de carro en el flujo
+# y el volcado queda corrupto de una forma que solo se descubre al restaurar.
+psql_exec() {
+  if [[ -n "$DB_CONTAINER" ]]; then
+    docker exec -i "$DB_CONTAINER" "$@"
+  else
+    docker compose -f "$COMPOSE_FILE" exec -T db "$@"
+  fi
+}
 DESTINO="${RUTEO_BACKUP_DIR:-/var/backups/ruteo}"
 # Cuántos días se conservan. Un mes cubre el caso realista —"esto se borró hace
 # tres semanas y nadie se dio cuenta"— sin llenar el disco de un VPS.
