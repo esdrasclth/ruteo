@@ -32,6 +32,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -512,9 +513,8 @@ export default function TeamPage() {
           <form onSubmit={onResetPassword} className="grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="reset-password">Nueva contraseña</Label>
-              <Input
+              <PasswordInput
                 id="reset-password"
-                type="password"
                 required
                 minLength={8}
                 value={newPassword}

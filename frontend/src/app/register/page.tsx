@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   AuthAside,
@@ -386,9 +387,8 @@ export default function RegisterPage() {
               <Label htmlFor="password" className="text-white/80">
                 Contraseña
               </Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 className="auth-field h-11"
                 autoComplete="new-password"
                 minLength={8}

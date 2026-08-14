@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSlugTenant } from "@/lib/use-tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { OtpInput } from "@/components/ui/otp-input";
 import {
@@ -104,9 +105,8 @@ function Formulario() {
           <Label htmlFor="password" className="text-white/80">
             Nueva contraseña
           </Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             className="auth-field h-11"
             autoComplete="new-password"
             minLength={8}
@@ -119,9 +119,8 @@ function Formulario() {
           <Label htmlFor="confirmar" className="text-white/80">
             Repite la contraseña
           </Label>
-          <Input
+          <PasswordInput
             id="confirmar"
-            type="password"
             className="auth-field h-11"
             autoComplete="new-password"
             minLength={8}

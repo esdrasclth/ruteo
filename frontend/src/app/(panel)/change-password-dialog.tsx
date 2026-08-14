@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
 export function ChangePasswordDialog() {
@@ -62,9 +62,8 @@ export function ChangePasswordDialog() {
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="currentPassword">Contraseña actual</Label>
-            <Input
+            <PasswordInput
               id="currentPassword"
-              type="password"
               required
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
@@ -72,9 +71,8 @@ export function ChangePasswordDialog() {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="newPassword">Nueva contraseña</Label>
-            <Input
+            <PasswordInput
               id="newPassword"
-              type="password"
               required
               minLength={8}
               value={newPassword}

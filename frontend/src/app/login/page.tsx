@@ -15,6 +15,7 @@ import { useSlugTenant } from "@/lib/use-tenant";
 import { INICIO_POR_ROL } from "@/lib/logistics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   AuthAside,
@@ -207,9 +208,8 @@ export default function LoginPage() {
                   ¿La olvidaste?
                 </Link>
               </div>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 className="auth-field h-11"
                 autoComplete="current-password"
                 value={password}
