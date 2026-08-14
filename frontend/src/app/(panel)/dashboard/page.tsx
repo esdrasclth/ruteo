@@ -17,7 +17,8 @@ import {
   PAYMENT_TYPE_LABELS,
   paymentStatusBadgeClass,
 } from "@/lib/logistics";
-import { STATUS_LABELS, TYPE_LABELS } from "@/lib/shipment-status";
+import { TYPE_LABELS } from "@/lib/shipment-status";
+import { Ahora } from "./ahora";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
@@ -118,52 +119,77 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
-  if (!overview || !shipments || !payments || !drivers) {
-    return (
-      <div className="flex flex-col gap-6">
-        <div className="grid gap-4 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 rounded-2xl" />
-          ))}
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Skeleton className="h-64 rounded-2xl lg:col-span-2" />
-          <Skeleton className="h-64 rounded-2xl" />
-        </div>
-      </div>
-    );
-  }
+  // El skeleton cubre SOLO la mitad del período. Antes cortaba la pantalla
+  // entera, y ahora eso escondería la mitad «Ahora» —que ya tiene sus datos y
+  // es la que se atiende— mientras se descarga una gráfica que nadie está
+  // esperando.
+  const periodoListo = overview && shipments && payments && drivers;
 
-  const maxDaily = Math.max(0, ...shipments.daily.map((d) => d.count));
-  const totalRango = shipments.daily.reduce((acc, d) => acc + d.count, 0);
+  const maxDaily = periodoListo
+    ? Math.max(0, ...shipments.daily.map((d) => d.count))
+    : 0;
+  const totalRango = periodoListo
+    ? shipments.daily.reduce((acc, d) => acc + d.count, 0)
+    : 0;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-6 transition-opacity duration-200",
-        recargando && "opacity-60",
-      )}
-    >
+    <div className="flex flex-col gap-6">
       <PageHeader
-        title="Dashboard"
-        // El rango ya lo dice el Select de al lado; repetirlo aquí era ruido.
-        description="Resumen de operación, cobros y notificaciones del período."
-        actions={
-          <Select value={dias} onValueChange={setDias}>
-            <SelectTrigger className="w-48" aria-label="Rango de fechas">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RANGOS.map((r) => (
-                <SelectItem key={r.dias} value={String(r.dias)}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
+        title="Inicio"
+        description="Lo que está pasando ahora y cómo ha ido el período."
       />
 
+      {/* La mitad de arriba: la foto del ahora. Va PRIMERO porque es sobre lo
+          que se actúa hoy; el histórico se consulta, no se atiende. */}
+      <Ahora />
+
+      {/* Cabecera de la segunda mitad. El selector de rango vive AQUÍ y no en
+          la cabecera de la página: mandando sobre toda la pantalla parecería
+          filtrar también las cifras de arriba, que no dependen de fechas, y esa
+          confusión —dos bloques de números que parecen lo mismo y no cuadran—
+          es justo la que se cargó la separación anterior en dos pantallas. */}
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-3 border-t border-border/70 pt-6">
+        <div>
+          <h2 className="text-lg font-semibold text-primary">En el período</h2>
+          <p className="text-sm text-muted-foreground">
+            Volumen, cobros y notificaciones del rango elegido.
+          </p>
+        </div>
+        <Select value={dias} onValueChange={setDias}>
+          <SelectTrigger className="w-48" aria-label="Rango de fechas">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RANGOS.map((r) => (
+              <SelectItem key={r.dias} value={String(r.dias)}>
+                {r.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {!periodoListo ? (
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-4 md:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-32 rounded-2xl" />
+            ))}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Skeleton className="h-64 rounded-2xl lg:col-span-2" />
+            <Skeleton className="h-64 rounded-2xl" />
+          </div>
+        </div>
+      ) : (
+      // El atenuado al cambiar de rango envuelve SOLO esta mitad: la de arriba
+      // no se recarga, así que oscurecerla sugeriría que también está cambiando.
+      <div
+        className={cn(
+          "flex flex-col gap-6 transition-opacity duration-200",
+          recargando && "opacity-60",
+        )}
+      >
       <div className="grid gap-4 md:grid-cols-4">
         <Kpi
           title="Envíos"
@@ -218,20 +244,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Aquí había además un desglose «Por estado» del rango. Se quitó al
+            fusionar las dos pantallas: la mitad «Ahora» ya cuenta los envíos por
+            estado, y en vivo. Tener los dos hacía que la misma pregunta —cuántos
+            hay en cada estado— tuviera dos respuestas distintas en la misma
+            pantalla, porque ésta filtraba por fecha de creación y la otra no. El
+            desglose por TIPO sí se queda: es del período y no lo da nadie más. */}
         <div className="glass-card rounded-2xl p-6">
-          <h2 className="text-base font-semibold text-primary">Por estado</h2>
+          <h2 className="text-base font-semibold text-primary">Por tipo</h2>
           <div className="mt-4 flex flex-col gap-2">
-            {shipments.byStatus.length === 0 ? (
+            {shipments.byType.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin datos.</p>
             ) : (
-              shipments.byStatus.map((row) => (
+              shipments.byType.map((row) => (
                 <Link
-                  key={row.status}
-                  href={`/shipments?status=${row.status}`}
+                  key={row.type}
+                  href={`/shipments?type=${row.type}`}
                   className="-mx-2 flex items-center justify-between rounded-lg px-2 py-1 text-sm transition-colors hover:bg-primary/5"
                 >
                   <span className="text-foreground/80">
-                    {STATUS_LABELS[row.status] ?? row.status}
+                    {TYPE_LABELS[row.type] ?? row.type}
                   </span>
                   <span className="font-semibold text-primary">
                     {row.count}
@@ -239,19 +271,6 @@ export default function DashboardPage() {
                 </Link>
               ))
             )}
-            {shipments.byType.length > 0 ? (
-              <div className="mt-3 border-t border-border/70 pt-3">
-                {shipments.byType.map((row) => (
-                  <div
-                    key={row.type}
-                    className="flex items-center justify-between text-sm text-muted-foreground"
-                  >
-                    <span>{TYPE_LABELS[row.type] ?? row.type}</span>
-                    <span>{row.count}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
@@ -329,6 +348,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }

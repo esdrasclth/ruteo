@@ -17,19 +17,22 @@ import {
   EXCEPTION_TYPE_LABELS,
   severityBadgeClass,
 } from "@/lib/fase2";
-import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * El tablero de operación (§6 del plan).
+ * La mitad «ahora» de la pantalla de inicio (§6 del plan): dónde está la carga
+ * en este momento y qué necesita que alguien lo mire.
  *
- * Responde «qué está pasando ahora», que es otra pregunta que la del dashboard
- * —«cómo nos fue»— y por eso es otra pantalla y no una pestaña de aquélla. No
- * tiene selector de fechas a propósito: un bulto parado en aduana desde marzo es
- * exactamente el que hay que ver, y cualquier ventana razonable lo escondería.
+ * **No tiene selector de fechas, y por eso vive separada de la mitad de abajo.**
+ * Un bulto parado en aduana desde marzo es exactamente el que hay que ver, y
+ * cualquier ventana de tiempo razonable lo escondería. Nació como pantalla
+ * aparte («Tablero») y se fusionó aquí: dos entradas de menú llamadas
+ * «Dashboard» y «Tablero» —la misma palabra en dos idiomas— obligaban a
+ * adivinar cuál abrir, y peor, enseñaban cifras distintas de lo que parecía lo
+ * mismo, porque una filtra por rango y la otra no.
  */
 
 /** Una cifra grande con su enlace a la pantalla donde se actúa. */
@@ -74,7 +77,7 @@ function Cifra({
   );
 }
 
-export default function OperacionPage() {
+export function Ahora() {
   const [tablero, setTablero] = useState<TableroOperacion | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -96,13 +99,10 @@ export default function OperacionPage() {
 
   if (cargando || !tablero) {
     return (
-      <div className="grid gap-4">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
-          ))}
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 rounded-2xl" />
+        ))}
       </div>
     );
   }
@@ -113,23 +113,30 @@ export default function OperacionPage() {
 
   return (
     <div className="grid gap-6">
-      <PageHeader
-        title="Tablero de operación"
-        description="Dónde está la carga ahora mismo y qué necesita que alguien lo mire."
-        actions={
-          <div className="flex items-center gap-3">
-            {/* La hora importa: es una foto, y quien la mira tiene que saber de
-                cuándo es antes de tomar una decisión con ella. */}
-            <span className="text-xs text-muted-foreground">
-              {new Date(tablero.generadoEn).toLocaleTimeString("es-HN")}
-            </span>
-            <Button variant="outline" size="sm" onClick={load}>
-              <RefreshCw className="size-4" aria-hidden />
-              Actualizar
-            </Button>
-          </div>
-        }
-      />
+      {/* Cabecera de SECCIÓN, no de página: lo que separa esta mitad de la de
+          abajo es que aquí no hay rango que elegir. Decirlo en el subtítulo
+          evita que el selector de fechas de más abajo parezca que manda sobre
+          estas cifras. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-primary">Ahora</h2>
+          <p className="text-sm text-muted-foreground">
+            Dónde está la carga en este momento y qué necesita que alguien lo
+            mire. No depende del rango de fechas.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* La hora importa: es una foto, y quien la mira tiene que saber de
+              cuándo es antes de tomar una decisión con ella. */}
+          <span className="text-xs text-muted-foreground">
+            {new Date(tablero.generadoEn).toLocaleTimeString("es-HN")}
+          </span>
+          <Button variant="outline" size="sm" onClick={load}>
+            <RefreshCw className="size-4" aria-hidden />
+            Actualizar
+          </Button>
+        </div>
+      </div>
 
       {/* Lo que necesita atención va PRIMERO. Un tablero que abre con los
           totales obliga a buscar el problema entre cifras que están bien. */}

@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Activity,
   Scale,
   Warehouse,
   ClipboardList,
@@ -65,19 +64,15 @@ const NAV: NavGroup[] = [
   {
     label: null,
     items: [
+      // Una sola entrada. Hubo dos —«Dashboard» y «Tablero»— y era un error:
+      // son la misma palabra en dos idiomas, así que el menú obligaba a
+      // adivinar cuál abrir, y encima enseñaban cifras distintas de lo que
+      // parecía lo mismo porque una filtraba por rango de fechas y la otra no.
+      // Ahora es una pantalla con dos mitades: «Ahora» y «En el período».
       {
         href: "/dashboard",
-        label: "Dashboard",
+        label: "Inicio",
         icon: LayoutDashboard,
-        roles: OFICINA,
-      },
-      // Arriba del todo y junto al dashboard, no dentro de «Operación»:
-      // responden preguntas distintas —«cómo nos fue» contra «qué está pasando
-      // ahora»— y las dos son de entrada, no de una sección concreta.
-      {
-        href: "/operacion",
-        label: "Tablero",
-        icon: Activity,
         roles: OFICINA,
       },
     ],

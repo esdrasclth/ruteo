@@ -59,10 +59,14 @@ function ShipmentsContent() {
   // El dashboard enlaza aqui con un estado ya aplicado (ej. ?status=DELIVERED),
   // de modo que un KPI lleve directo a la lista que lo explica.
   const statusInicial = searchParams.get("status") ?? ALL;
+  // Lo mismo para el tipo, que el desglose «Por tipo» del inicio enlaza igual.
+  // Sin esto el enlace navegaba hasta aquí pero no filtraba nada, que es peor
+  // que no enlazar: parece que la lista está mal, no que falte el filtro.
+  const typeInicial = searchParams.get("type") ?? ALL;
 
   const [data, setData] = useState<Paginated<Shipment> | null>(null);
   const [status, setStatus] = useState<string>(statusInicial);
-  const [type, setType] = useState<string>(ALL);
+  const [type, setType] = useState<string>(typeInicial);
   const [search, setSearch] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [page, setPage] = useState(1);
