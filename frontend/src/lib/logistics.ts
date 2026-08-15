@@ -1,4 +1,5 @@
 import type {
+  ApiScope,
   CarrierType,
   ChargeConcept,
   ChargeKind,
@@ -21,6 +22,47 @@ import type {
   UserStatus,
   VehicleType,
 } from "./api";
+
+/**
+ * Alcances de una llave de API, en el orden en que se ofrecen al crearla.
+ *
+ * La descripción no es decorativa: quien crea la llave está decidiendo qué
+ * podrá hacer un sistema ajeno con los datos de su empresa, y «LOCKERS_WRITE»
+ * no dice si eso incluye recibir bultos en bodega —no lo incluye—.
+ */
+export const API_SCOPES: {
+  value: ApiScope;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "LOCKERS_WRITE",
+    label: "Casilleros: escribir",
+    description: "Crear casilleros y registrar prealertas de compras.",
+  },
+  {
+    value: "LOCKERS_READ",
+    label: "Casilleros: leer",
+    description: "Consultar casilleros y los bultos de cada uno.",
+  },
+  {
+    value: "SHIPMENTS_WRITE",
+    label: "Envíos: escribir",
+    description: "Crear envíos, uno a uno o importando un CSV.",
+  },
+  {
+    value: "SHIPMENTS_READ",
+    label: "Envíos: leer",
+    description: "Consultar envíos y descargar sus etiquetas.",
+  },
+];
+
+export const API_SCOPE_LABELS: Record<ApiScope, string> = {
+  LOCKERS_WRITE: "Casilleros: escribir",
+  LOCKERS_READ: "Casilleros: leer",
+  SHIPMENTS_WRITE: "Envíos: escribir",
+  SHIPMENTS_READ: "Envíos: leer",
+};
 
 export const ROLE_LABELS: Record<Role, string> = {
   OWNER: "Propietario",

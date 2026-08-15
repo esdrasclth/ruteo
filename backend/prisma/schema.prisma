@@ -1748,12 +1748,30 @@ model Payment {
   @@map("payments")
 }
 
+/// Lo que una llave de API puede hacer. Es lo que separa «una llave» de «la
+/// llave»: sin esto, la clave que la empresa entrega a quien le programó la web
+/// sirve para todo lo que acepte `x-api-key`, y el día que se filtre se lleva
+/// por delante mucho más de lo que hacía falta.
+///
+/// El catálogo es corto a propósito. Un alcance por endpoint es un permiso que
+/// nadie configura bien; la unidad útil es «leer» y «escribir» por área.
+enum ApiScope {
+  SHIPMENTS_READ
+  SHIPMENTS_WRITE
+  LOCKERS_READ
+  LOCKERS_WRITE
+}
+
 model ApiKey {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @map("tenant_id") @db.Uuid
   name       String
   prefix     String    @unique
   keyHash    String    @map("key_hash")
+  /// Sin alcances la llave no abre nada. El valor por defecto es la lista
+  /// vacía, no «todo», para que una llave creada por un camino que todavía no
+  /// los pide nazca inútil en vez de omnipotente.
+  scopes     ApiScope[]
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")

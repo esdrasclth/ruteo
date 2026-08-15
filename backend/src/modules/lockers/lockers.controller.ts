@@ -12,12 +12,17 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PackageStatus, Role } from '@prisma/client';
+import { ApiBearerAuth, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiScope, PackageStatus, Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
+import { Alcances } from '../../common/decorators/alcances.decorator';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AlcancesGuard } from '../../common/guards/alcances.guard';
+import { API_KEY_HEADER } from '../../common/guards/api-key.guard';
+import { JwtOrApiKeyGuard } from '../../common/guards/jwt-or-api-key.guard';
+import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CreateLockerDto } from './dto/create-locker.dto';
 import { AddPackagePhotoDto } from './dto/add-photo.dto';
@@ -27,21 +32,43 @@ import { QueryPackagesDto } from './dto/query-packages.dto';
 import { UpdateLockerDto } from './dto/update-locker.dto';
 import { LockersService } from './lockers.service';
 
+/**
+ * Acepta sesión de panel **y** llave de API (`x-api-key`).
+ *
+ * Lo segundo existe para que una empresa pueda dar de alta casilleros desde su
+ * propia web sin que un operador teclee nada. Qué endpoints entran en ese trato
+ * lo dice `@Alcances`, uno por uno: sin el decorador la llave no pasa, así que
+ * la recepción de bodega y las fotos siguen siendo cosa de quien tiene sesión
+ * aunque cuelguen de este mismo controlador.
+ *
+ * El cupo es más estrecho que el de envíos a propósito: detrás de esto hay un
+ * formulario público, y el alta de casillero crea también un cliente.
+ */
 @ApiTags('lockers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TenantAccessGuard)
+@ApiSecurity(API_KEY_HEADER)
+@UseGuards(
+  JwtOrApiKeyGuard,
+  RolesGuard,
+  AlcancesGuard,
+  RateLimitGuard,
+  TenantAccessGuard,
+)
+@RateLimit(60, 60)
 @Controller('lockers')
 @Modulo(TenantModule.LOCKERS)
 export class LockersController {
   constructor(private readonly lockers: LockersService) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @Alcances(ApiScope.LOCKERS_WRITE)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateLockerDto) {
     return this.lockers.create(user.tenantId, dto);
   }
 
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT, Role.MERCHANT)
+  @Alcances(ApiScope.LOCKERS_READ)
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.lockers.list(user.tenantId);
@@ -63,7 +90,8 @@ export class LockersController {
     return this.lockers.listAllPackages(user.tenantId, query);
   }
 
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT, Role.MERCHANT)
+  @Alcances(ApiScope.LOCKERS_READ)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,
@@ -73,7 +101,8 @@ export class LockersController {
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @Alcances(ApiScope.LOCKERS_WRITE)
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -84,6 +113,7 @@ export class LockersController {
 
   @Post(':id/packages')
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @Alcances(ApiScope.LOCKERS_WRITE)
   preAlert(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -92,7 +122,8 @@ export class LockersController {
     return this.lockers.preAlert(user.tenantId, id, dto);
   }
 
-  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT, Role.MERCHANT)
+  @Alcances(ApiScope.LOCKERS_READ)
   @Get(':id/packages')
   @ApiQuery({ name: 'status', enum: PackageStatus, required: false })
   listPackages(

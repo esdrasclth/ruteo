@@ -18,11 +18,20 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiScope, Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
+import { Alcances } from '../../common/decorators/alcances.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { AlcancesGuard } from '../../common/guards/alcances.guard';
+import { API_KEY_HEADER } from '../../common/guards/api-key.guard';
 import { JwtOrApiKeyGuard } from '../../common/guards/jwt-or-api-key.guard';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -38,7 +47,14 @@ import { ShipmentsService } from './shipments.service';
 
 @ApiTags('shipments')
 @ApiBearerAuth()
-@UseGuards(JwtOrApiKeyGuard, RolesGuard, RateLimitGuard, TenantAccessGuard)
+@ApiSecurity(API_KEY_HEADER)
+@UseGuards(
+  JwtOrApiKeyGuard,
+  RolesGuard,
+  AlcancesGuard,
+  RateLimitGuard,
+  TenantAccessGuard,
+)
 @RateLimit(120, 60)
 @Controller('shipments')
 @Modulo(TenantModule.SHIPMENTS)
@@ -47,6 +63,7 @@ export class ShipmentsController {
 
   @Post()
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @Alcances(ApiScope.SHIPMENTS_WRITE)
   @UseInterceptors(IdempotencyInterceptor)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateShipmentDto) {
     return this.shipments.create(user, dto);
@@ -54,6 +71,7 @@ export class ShipmentsController {
 
   @Post('import')
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @Alcances(ApiScope.SHIPMENTS_WRITE)
   // Multer NO topa nada por defecto: sin `limits`, un archivo de cientos de MB
   // se cargaba entero a memoria (`file.buffer.toString`) y tumbaba el proceso.
   // 2 MB dan de sobra para las ~10.000 filas que permite `parseShipmentCsv`.
@@ -87,6 +105,7 @@ export class ShipmentsController {
     Role.MERCHANT,
     Role.SUPPORT,
   )
+  @Alcances(ApiScope.SHIPMENTS_READ)
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: QueryShipmentsDto) {
     return this.shipments.list(user.tenantId, query);
@@ -102,6 +121,7 @@ export class ShipmentsController {
   }
 
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.MERCHANT)
+  @Alcances(ApiScope.SHIPMENTS_READ)
   @Get(':id/label')
   @Header('Content-Type', 'image/svg+xml')
   label(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
@@ -116,6 +136,7 @@ export class ShipmentsController {
     Role.MERCHANT,
     Role.SUPPORT,
   )
+  @Alcances(ApiScope.SHIPMENTS_READ)
   @Get(':id')
   findOne(
     @CurrentUser() user: AuthUser,

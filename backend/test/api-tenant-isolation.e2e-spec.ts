@@ -245,14 +245,35 @@ describe('Aislamiento multi-tenant a través de la API', () => {
 
   describe('con API key', () => {
     let claveDeA: string;
+    // Sólo lee envíos. Sirve de doble red: prueba el aislamiento entre
+    // empresas y, de paso, que el alcance acota dentro de la propia.
+    let claveSoloLecturaDeA: string;
 
     beforeAll(async () => {
       const res = await request(http)
         .post('/api/api-keys')
         .set(comoA())
-        .send({ name: 'Integración de prueba' })
+        .send({
+          name: 'Integración de prueba',
+          scopes: ['SHIPMENTS_READ', 'SHIPMENTS_WRITE'],
+        })
         .expect(201);
       claveDeA = (res.body as { key: string }).key;
+
+      const soloLectura = await request(http)
+        .post('/api/api-keys')
+        .set(comoA())
+        .send({ name: 'Sólo lectura', scopes: ['SHIPMENTS_READ'] })
+        .expect(201);
+      claveSoloLecturaDeA = (soloLectura.body as { key: string }).key;
+    });
+
+    it('una llave sin alcances no se puede emitir', async () => {
+      await request(http)
+        .post('/api/api-keys')
+        .set(comoA())
+        .send({ name: 'Sin alcances', scopes: [] })
+        .expect(400);
     });
 
     it('la API key de A solo ve los envíos de A', async () => {
@@ -277,6 +298,30 @@ describe('Aislamiento multi-tenant a través de la API', () => {
         .get('/api/shipments')
         .set({ 'x-api-key': `rk_${randomUUID().slice(0, 12)}_falsa` })
         .expect(401);
+    });
+
+    it('el alcance de lectura no deja escribir', async () => {
+      await request(http)
+        .post('/api/shipments')
+        .set({ 'x-api-key': claveSoloLecturaDeA })
+        .send({
+          type: 'LOCAL',
+          recipientName: 'Quien sea',
+          recipientPhone: '+504 9999-8888',
+          destinationAddress: 'Cualquier sitio',
+        })
+        .expect(403);
+    });
+
+    it('una llave de envíos no alcanza los casilleros', async () => {
+      // El endpoint acepta `x-api-key` desde que las empresas dan de alta
+      // casilleros desde su web; que lo acepte no significa que ESTA llave
+      // pueda. Sin esta prueba, ampliar la superficie de la API a un módulo
+      // nuevo abre en silencio todas las llaves ya emitidas.
+      await request(http)
+        .get('/api/lockers')
+        .set({ 'x-api-key': claveDeA })
+        .expect(403);
     });
   });
 

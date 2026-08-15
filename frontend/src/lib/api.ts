@@ -1031,10 +1031,17 @@ export interface PublicTracking {
   }[];
 }
 
+export type ApiScope =
+  | "SHIPMENTS_READ"
+  | "SHIPMENTS_WRITE"
+  | "LOCKERS_READ"
+  | "LOCKERS_WRITE";
+
 export interface ApiKey {
   id: string;
   name: string;
   prefix: string;
+  scopes: ApiScope[];
   lastUsedAt: string | null;
   revokedAt: string | null;
   createdAt: string;

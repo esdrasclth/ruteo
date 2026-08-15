@@ -31,17 +31,31 @@ export class ApiKeysService {
           name: dto.name,
           prefix,
           keyHash: hashApiKey(fullKey),
+          scopes: dto.scopes,
         },
-        select: { id: true, name: true, prefix: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          prefix: true,
+          scopes: true,
+          createdAt: true,
+        },
       }),
     );
 
+    // Los alcances van a la bitácora porque son la mitad de lo que se concedió.
+    // Una entrada que sólo diga «se creó una llave» no permite responder
+    // después a qué llegó a tener acceso quien la tuviera.
     this.audit.dispatch(tenantId, {
       action: 'api_key.created',
       entityType: 'api_key',
       entityId: record.id,
       actor: { userId: actor.userId, role: actor.role },
-      metadata: { name: record.name, prefix: record.prefix },
+      metadata: {
+        name: record.name,
+        prefix: record.prefix,
+        scopes: record.scopes,
+      },
     });
 
     return { ...record, key: fullKey };
@@ -55,6 +69,7 @@ export class ApiKeysService {
           id: true,
           name: true,
           prefix: true,
+          scopes: true,
           lastUsedAt: true,
           revokedAt: true,
           createdAt: true,

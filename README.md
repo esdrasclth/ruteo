@@ -184,6 +184,7 @@ reciente: `scripts/respaldo-db.sh`.
 | --- | --- |
 | [`plan-courier.md`](docs/plan-courier.md) | El plan por fases y su estado. Empieza por aquí |
 | [`funcionalidades-ruteo.md`](docs/funcionalidades-ruteo.md) | Catálogo funcional |
+| [`api-para-empresas.md`](docs/api-para-empresas.md) | Llaves de API y sus permisos: integrar la web de una empresa |
 | [`almacenamiento-archivos.md`](docs/almacenamiento-archivos.md) | Cómo se guardan y se firman los archivos |
 | [`decision-auth-zitadel.md`](docs/decision-auth-zitadel.md) | Por qué las credenciales están fuera |
 | [`acceso-por-subdominio.md`](docs/acceso-por-subdominio.md) | Un panel por empresa |

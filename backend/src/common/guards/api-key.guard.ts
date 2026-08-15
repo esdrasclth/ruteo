@@ -4,7 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { ApiScope, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hashApiKey } from '../../modules/api-keys/api-keys.service';
 import { AuthUser } from '../decorators/current-user.decorator';
@@ -15,6 +15,7 @@ interface ApiKeyRow {
   tenant_id: string;
   key_hash: string;
   revoked_at: Date | null;
+  scopes: ApiScope[];
 }
 
 @Injectable()
@@ -34,7 +35,7 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     const rows = await this.prisma.$queryRaw<ApiKeyRow[]>`
-      SELECT tenant_id, key_hash, revoked_at FROM api_key_by_prefix(${prefix})`;
+      SELECT tenant_id, key_hash, revoked_at, scopes FROM api_key_by_prefix(${prefix})`;
     const row = rows[0];
     if (!row || row.revoked_at) {
       throw new UnauthorizedException('Invalid API key');
@@ -43,10 +44,14 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Invalid API key');
     }
 
+    // El rol sigue siendo `MERCHANT` y los alcances viajan aparte: son dos
+    // filtros distintos y encadenarlos es lo que hace que una llave nunca pueda
+    // más que el rol. `AlcancesGuard` es quien los mira.
     const user: AuthUser = {
       userId: null,
       tenantId: row.tenant_id,
       role: Role.MERCHANT,
+      llave: { prefix, alcances: row.scopes ?? [] },
     };
     request.user = user;
 

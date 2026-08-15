@@ -8,9 +8,11 @@ import {
   ApiError,
   ApiKey,
   ApiKeyCreated,
+  ApiScope,
   WebhookEndpoint,
   WebhookEndpointCreated,
 } from "@/lib/api";
+import { API_SCOPE_LABELS, API_SCOPES } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,6 +87,9 @@ export default function IntegrationsPage() {
 
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyName, setKeyName] = useState("");
+  // Ninguno marcado de salida: el alcance se elige, no se hereda. Marcar algo
+  // por defecto convierte la opción cómoda en la que nadie revisa.
+  const [keyScopes, setKeyScopes] = useState<ApiScope[]>([]);
   const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
 
   const [whOpen, setWhOpen] = useState(false);
@@ -117,14 +122,19 @@ export default function IntegrationsPage() {
 
   async function onCreateKey(e: FormEvent) {
     e.preventDefault();
+    if (keyScopes.length === 0) {
+      toast.error("Elige al menos un permiso");
+      return;
+    }
     setBusy(true);
     try {
       const created = await api<ApiKeyCreated>("/api-keys", {
         method: "POST",
-        body: JSON.stringify({ name: keyName.trim() }),
+        body: JSON.stringify({ name: keyName.trim(), scopes: keyScopes }),
       });
       setCreatedKey(created);
       setKeyName("");
+      setKeyScopes([]);
       toast.success("API key creada");
       await load();
     } catch (err) {
@@ -251,6 +261,7 @@ export default function IntegrationsPage() {
                 <TableRow>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Key</TableHead>
+                  <TableHead>Permisos</TableHead>
                   <TableHead>Último uso</TableHead>
                   <TableHead>Creada</TableHead>
                   <TableHead>Estado</TableHead>
@@ -263,6 +274,24 @@ export default function IntegrationsPage() {
                     <TableCell className="font-medium">{k.name}</TableCell>
                     <TableCell>
                       <code className="text-xs">rk_{k.prefix}_••••••••</code>
+                    </TableCell>
+                    <TableCell>
+                      {k.scopes.length === 0 ? (
+                        // Existe: una llave anterior a los permisos, o una a la
+                        // que se los quitaron. No hace nada, y decirlo evita
+                        // que se depure como «la llave no funciona».
+                        <span className="text-xs text-muted-foreground">
+                          Sin permisos
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {k.scopes.map((s) => (
+                            <Badge key={s} variant="secondary">
+                              {API_SCOPE_LABELS[s] ?? s}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>{fmtDate(k.lastUsedAt)}</TableCell>
                     <TableCell>{fmtDate(k.createdAt)}</TableCell>
@@ -395,6 +424,11 @@ export default function IntegrationsPage() {
                 value={createdKey.key}
                 label={`API key "${createdKey.name}"`}
               />
+              <p className="text-xs text-muted-foreground">
+                Guárdala en el servidor que la vaya a usar, nunca en el código
+                que se descarga el navegador: una llave en una página web es una
+                llave pública.
+              </p>
               <DialogFooter>
                 <Button onClick={() => setKeyOpen(false)}>Listo</Button>
               </DialogFooter>
@@ -412,6 +446,40 @@ export default function IntegrationsPage() {
                   maxLength={80}
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Permisos</Label>
+                <p className="text-xs text-muted-foreground">
+                  Da sólo los que la integración necesite. La recepción en
+                  bodega y las fotos no se pueden dar a una llave.
+                </p>
+                <div className="space-y-1">
+                  {API_SCOPES.map((s) => (
+                    <label
+                      key={s.value}
+                      className="flex cursor-pointer items-start gap-3 rounded-md border p-2.5 hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={keyScopes.includes(s.value)}
+                        onChange={(e) =>
+                          setKeyScopes((prev) =>
+                            e.target.checked
+                              ? [...prev, s.value]
+                              : prev.filter((v) => v !== s.value),
+                          )
+                        }
+                      />
+                      <span className="grid gap-0.5">
+                        <span className="text-sm font-medium">{s.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {s.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={busy}>
