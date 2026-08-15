@@ -4,11 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
-  MapPin,
+  BadgeCheck,
+  Clock,
+  FileSearch,
+  Lock,
   PackageSearch,
   RefreshCw,
+  RotateCcw,
+  Route,
   Scale,
+  Target,
   Truck,
+  Warehouse,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, TableroOperacion } from "@/lib/api";
@@ -19,7 +26,7 @@ import {
 } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Cifra, GrupoCifras } from "@/components/cifra";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -33,50 +40,14 @@ import { Skeleton } from "@/components/ui/skeleton";
  * «Dashboard» y «Tablero» —la misma palabra en dos idiomas— obligaban a
  * adivinar cuál abrir, y peor, enseñaban cifras distintas de lo que parecía lo
  * mismo, porque una filtra por rango y la otra no.
+ *
+ * Las cifras las dibuja `Cifra`, la MISMA pieza que la mitad del período. Esta
+ * mitad tenía las suyas propias —cajas con borde dentro de tarjetas con
+ * título— y el cambio de dibujo a media pantalla hacía que la juntura entre las
+ * dos mitades se leyera como el final de la página. Lo único que separa ahora
+ * las dos mitades es lo que de verdad las distingue: que aquí no hay rango que
+ * elegir.
  */
-
-/** Una cifra grande con su enlace a la pantalla donde se actúa. */
-function Cifra({
-  valor,
-  etiqueta,
-  href,
-  alerta,
-  nota,
-}: {
-  valor: number | string;
-  etiqueta: string;
-  href?: string;
-  alerta?: boolean;
-  nota?: string;
-}) {
-  const cuerpo = (
-    <div
-      className={`rounded-lg border p-4 transition-colors ${
-        href ? "hover:bg-accent" : ""
-      } ${alerta ? "border-destructive/40" : ""}`}
-    >
-      <p
-        className={`text-2xl font-semibold tabular-nums ${
-          alerta ? "text-destructive" : ""
-        }`}
-      >
-        {valor}
-      </p>
-      <p className="text-sm text-muted-foreground">{etiqueta}</p>
-      {nota && <p className="mt-1 text-xs text-muted-foreground">{nota}</p>}
-    </div>
-  );
-  // Cada cifra lleva a donde se actúa sobre ella. Un tablero que sólo informa
-  // obliga a buscar a mano lo que acaba de señalar.
-  return href ? (
-    <Link href={href} className="block">
-      {cuerpo}
-    </Link>
-  ) : (
-    cuerpo
-  );
-}
-
 export function Ahora() {
   const [tablero, setTablero] = useState<TableroOperacion | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -101,7 +72,7 @@ export function Ahora() {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-2xl" />
+          <Skeleton key={i} className="h-32 rounded-2xl" />
         ))}
       </div>
     );
@@ -140,58 +111,106 @@ export function Ahora() {
 
       {/* Lo que necesita atención va PRIMERO. Un tablero que abre con los
           totales obliga a buscar el problema entre cifras que están bien. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <AlertTriangle className="size-4" aria-hidden />
-            Necesita atención
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Cifra
-            valor={excepciones.abiertas}
-            etiqueta="Excepciones abiertas"
-            href="/exceptions"
-            alerta={excepciones.abiertas > 0}
-            nota={
-              excepciones.sinAsignar > 0
-                ? `${excepciones.sinAsignar} sin asignar a nadie`
-                : undefined
-            }
-          />
-          <Cifra
-            valor={aduana.retenidos}
-            etiqueta="Retenidos en aduana"
-            href="/customs"
-            alerta={aduana.retenidos > 0}
-            nota="No avanzan y cuestan cada día"
-          />
-          <Cifra
-            valor={ultimaMilla.porReintentar}
-            etiqueta="Por reintentar"
-            href="/shipments?status=FAILED_ATTEMPT"
-            alerta={ultimaMilla.porReintentar > 0}
-            nota="Volvieron tras un intento fallido"
-          />
-          <Cifra
-            valor={bodegas.sinUbicar}
-            etiqueta="Bultos sin ubicar"
-            href="/lockers"
-            alerta={bodegas.sinUbicar > 0}
-            nota="En bodega, pero sin decir en cuál"
-          />
-        </CardContent>
-      </Card>
+      <GrupoCifras titulo="Necesita atención">
+        <Cifra
+          valor={excepciones.abiertas}
+          etiqueta="Excepciones abiertas"
+          icono={AlertTriangle}
+          href="/exceptions"
+          alerta={excepciones.abiertas > 0}
+          nota={
+            excepciones.sinAsignar > 0
+              ? `${excepciones.sinAsignar} sin asignar a nadie`
+              : undefined
+          }
+        />
+        <Cifra
+          valor={aduana.retenidos}
+          etiqueta="Retenidos en aduana"
+          icono={Lock}
+          href="/customs"
+          alerta={aduana.retenidos > 0}
+          nota="No avanzan y cuestan cada día"
+        />
+        <Cifra
+          valor={ultimaMilla.porReintentar}
+          etiqueta="Por reintentar"
+          icono={RotateCcw}
+          href="/shipments?status=FAILED_ATTEMPT"
+          alerta={ultimaMilla.porReintentar > 0}
+          nota="Volvieron tras un intento fallido"
+        />
+        <Cifra
+          valor={bodegas.sinUbicar}
+          etiqueta="Bultos sin ubicar"
+          icono={PackageSearch}
+          href="/lockers"
+          alerta={bodegas.sinUbicar > 0}
+          nota="En bodega, pero sin decir en cuál"
+        />
+      </GrupoCifras>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <MapPin className="size-4" aria-hidden />
-              Dónde está la carga
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+      <GrupoCifras titulo="Aduana">
+        <Cifra valor={aduana.pendientes} etiqueta="Pendientes" icono={Clock} />
+        <Cifra
+          valor={aduana.enRevision}
+          etiqueta="En revisión"
+          icono={FileSearch}
+        />
+        <Cifra
+          valor={aduana.retenidos}
+          etiqueta="Retenidos"
+          icono={Scale}
+          alerta={aduana.retenidos > 0}
+        />
+        <Cifra
+          valor={aduana.liberados}
+          etiqueta="Liberados"
+          icono={BadgeCheck}
+        />
+      </GrupoCifras>
+
+      <GrupoCifras titulo="Última milla">
+        <Cifra
+          valor={ultimaMilla.enRuta}
+          etiqueta="En ruta ahora"
+          icono={Truck}
+          href="/routes"
+        />
+        <Cifra
+          valor={ultimaMilla.enBodega}
+          etiqueta="En bodega, sin salir"
+          icono={Warehouse}
+        />
+        <Cifra
+          valor={ultimaMilla.enTransito}
+          etiqueta="En tránsito"
+          icono={Route}
+        />
+        {/* Nulo y no 0%: sin entregas la pregunta no tiene respuesta
+            todavía, y un 0% se lee como que se entregó mal. */}
+        <Cifra
+          valor={
+            ultimaMilla.tasaPrimerIntento30Dias === null
+              ? "—"
+              : `${ultimaMilla.tasaPrimerIntento30Dias}%`
+          }
+          etiqueta="Al primer intento"
+          icono={Target}
+          nota={`${ultimaMilla.entregas30Dias} entrega${
+            ultimaMilla.entregas30Dias === 1 ? "" : "s"
+          } en 30 días`}
+        />
+      </GrupoCifras>
+
+      {/* Estas dos SÍ son tarjetas: lo que llevan dentro son listas, no cifras.
+          Es la línea que separa un caso del otro en toda la pantalla. */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="glass-card rounded-2xl p-6">
+          <h3 className="text-base font-semibold text-primary">
+            Dónde está la carga
+          </h3>
+          <div className="mt-4 grid gap-3">
             {bodegas.detalle.length === 0 && bodegas.sinUbicar === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No hay bultos en bodega ahora mismo.
@@ -238,67 +257,14 @@ export function Ahora() {
                 </p>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Scale className="size-4" aria-hidden />
-              Aduana
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Cifra valor={aduana.pendientes} etiqueta="Pendientes" />
-            <Cifra valor={aduana.enRevision} etiqueta="En revisión" />
-            <Cifra
-              valor={aduana.retenidos}
-              etiqueta="Retenidos"
-              alerta={aduana.retenidos > 0}
-            />
-            <Cifra valor={aduana.liberados} etiqueta="Liberados" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Truck className="size-4" aria-hidden />
-              Última milla
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Cifra
-              valor={ultimaMilla.enRuta}
-              etiqueta="En ruta ahora"
-              href="/routes"
-            />
-            <Cifra valor={ultimaMilla.enBodega} etiqueta="En bodega, sin salir" />
-            <Cifra valor={ultimaMilla.enTransito} etiqueta="En tránsito" />
-            {/* Nulo y no 0%: sin entregas la pregunta no tiene respuesta
-                todavía, y un 0% se lee como que se entregó mal. */}
-            <Cifra
-              valor={
-                ultimaMilla.tasaPrimerIntento30Dias === null
-                  ? "—"
-                  : `${ultimaMilla.tasaPrimerIntento30Dias}%`
-              }
-              etiqueta="Entregas al primer intento"
-              nota={`${ultimaMilla.entregas30Dias} entrega${
-                ultimaMilla.entregas30Dias === 1 ? "" : "s"
-              } en 30 días`}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <PackageSearch className="size-4" aria-hidden />
-              Excepciones abiertas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+        <div className="glass-card rounded-2xl p-6">
+          <h3 className="text-base font-semibold text-primary">
+            Excepciones abiertas
+          </h3>
+          <div className="mt-4 grid gap-3">
             {excepciones.abiertas === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Ninguna abierta. Nada que perseguir.
@@ -335,8 +301,8 @@ export function Ahora() {
                 </Link>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

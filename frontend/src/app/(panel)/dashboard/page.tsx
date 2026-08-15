@@ -1,7 +1,7 @@
 "use client";
 
-import { ComponentType, useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Bell, DollarSign, Package, TrendingUp } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Bell, DollarSign, Package, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -20,6 +20,7 @@ import {
 import { TYPE_LABELS } from "@/lib/shipment-status";
 import { Ahora } from "./ahora";
 import { Badge } from "@/components/ui/badge";
+import { Cifra } from "@/components/cifra";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { DailyChart } from "@/components/daily-chart";
@@ -38,45 +39,9 @@ const RANGOS = [
   { dias: 90, label: "Últimos 90 días" },
 ];
 
-// Cada KPI es un enlace a la lista que lo explica: ver "12 entregados" y no
-// poder abrir esos 12 es el tipo de callejon sin salida que hace sentir el
-// panel como modulos sueltos.
-function Kpi({
-  title,
-  value,
-  hint,
-  icon: Icon,
-  href,
-}: {
-  title: string;
-  value: string;
-  hint?: string;
-  icon: ComponentType<{ className?: string }>;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="glass-card group relative overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-24px_rgba(4,21,31,0.45)]"
-    >
-      <div className="flex items-start justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {title}
-        </span>
-        <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10">
-          <Icon className="size-5" />
-        </span>
-      </div>
-      <p className="mt-4 flex items-baseline gap-1.5 text-3xl font-semibold tracking-tight text-primary">
-        {value}
-        <ArrowUpRight className="size-4 shrink-0 self-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-      </p>
-      {hint ? (
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-      ) : null}
-    </Link>
-  );
-}
+// El KPI que vivía aquí se mudó a `@/components/cifra` y ahora lo comparten las
+// dos mitades de la pantalla. Tenerlo suelto en este archivo es lo que dejó que
+// la mitad de arriba se dibujara distinta sin que nadie lo notara al escribirla.
 
 export default function DashboardPage() {
   const [dias, setDias] = useState("30");
@@ -143,12 +108,18 @@ export default function DashboardPage() {
           que se actúa hoy; el histórico se consulta, no se atiende. */}
       <Ahora />
 
+      {/* Regla que nace y muere en transparente, no un borde de lado a lado: la
+          línea dura cerraba la página en vez de separar dos secciones de la
+          misma. Ahora que las dos mitades dibujan sus cifras igual, con esto y
+          el aire de alrededor basta para marcar el cambio. */}
+      <div className="mt-6 rule-fade" aria-hidden />
+
       {/* Cabecera de la segunda mitad. El selector de rango vive AQUÍ y no en
           la cabecera de la página: mandando sobre toda la pantalla parecería
           filtrar también las cifras de arriba, que no dependen de fechas, y esa
           confusión —dos bloques de números que parecen lo mismo y no cuadran—
           es justo la que se cargó la separación anterior en dos pantallas. */}
-      <div className="mt-2 flex flex-wrap items-end justify-between gap-3 border-t border-border/70 pt-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-primary">En el período</h2>
           <p className="text-sm text-muted-foreground">
@@ -171,7 +142,7 @@ export default function DashboardPage() {
 
       {!periodoListo ? (
         <div className="flex flex-col gap-6">
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-32 rounded-2xl" />
             ))}
@@ -190,33 +161,35 @@ export default function DashboardPage() {
           recargando && "opacity-60",
         )}
       >
-      <div className="grid gap-4 md:grid-cols-4">
-        <Kpi
-          title="Envíos"
-          value={String(overview.shipments.total)}
-          hint={`${overview.shipments.delivered} entregados`}
-          icon={Package}
+      {/* Misma rejilla que los grupos de cifras de arriba (`GrupoCifras`), para
+          que las columnas caigan en el mismo sitio al hacer scroll. */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Cifra
+          etiqueta="Envíos"
+          valor={overview.shipments.total}
+          nota={`${overview.shipments.delivered} entregados`}
+          icono={Package}
           href="/shipments"
         />
-        <Kpi
-          title="Tasa de entrega"
-          value={`${(overview.shipments.deliveryRate * 100).toFixed(1)}%`}
-          hint={`${overview.shipments.failed} intentos fallidos`}
-          icon={TrendingUp}
+        <Cifra
+          etiqueta="Tasa de entrega"
+          valor={`${(overview.shipments.deliveryRate * 100).toFixed(1)}%`}
+          nota={`${overview.shipments.failed} intentos fallidos`}
+          icono={TrendingUp}
           href="/shipments?status=DELIVERED"
         />
-        <Kpi
-          title="COD cobrado"
-          value={overview.cod.collected}
-          hint={`Pendiente: ${overview.cod.pending} · Remitido: ${overview.cod.remitted}`}
-          icon={DollarSign}
+        <Cifra
+          etiqueta="COD cobrado"
+          valor={overview.cod.collected}
+          nota={`Pendiente: ${overview.cod.pending} · Remitido: ${overview.cod.remitted}`}
+          icono={DollarSign}
           href="/payments"
         />
-        <Kpi
-          title="Notificaciones"
-          value={String(overview.notifications.sent)}
-          hint={`${overview.notifications.failed} fallidas`}
-          icon={Bell}
+        <Cifra
+          etiqueta="Notificaciones"
+          valor={overview.notifications.sent}
+          nota={`${overview.notifications.failed} fallidas`}
+          icono={Bell}
           href="/notifications"
         />
       </div>
@@ -225,9 +198,9 @@ export default function DashboardPage() {
         <div className="glass-panel rounded-2xl p-6 lg:col-span-2">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-base font-semibold text-primary">
+              <h3 className="text-base font-semibold text-primary">
                 Envíos por día
-              </h2>
+              </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {totalRango} en el período · máximo {maxDaily} en un día
               </p>
@@ -251,7 +224,7 @@ export default function DashboardPage() {
             pantalla, porque ésta filtraba por fecha de creación y la otra no. El
             desglose por TIPO sí se queda: es del período y no lo da nadie más. */}
         <div className="glass-card rounded-2xl p-6">
-          <h2 className="text-base font-semibold text-primary">Por tipo</h2>
+          <h3 className="text-base font-semibold text-primary">Por tipo</h3>
           <div className="mt-4 flex flex-col gap-2">
             {shipments.byType.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin datos.</p>
@@ -277,9 +250,9 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="glass-card rounded-2xl p-6">
-          <h2 className="text-base font-semibold text-primary">
+          <h3 className="text-base font-semibold text-primary">
             Pagos por tipo y estado
-          </h2>
+          </h3>
           {payments.breakdown.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">
               Sin pagos en el rango.
@@ -314,9 +287,9 @@ export default function DashboardPage() {
         </div>
 
         <div className="glass-card rounded-2xl p-6">
-          <h2 className="text-base font-semibold text-primary">
+          <h3 className="text-base font-semibold text-primary">
             COD por repartidor
-          </h2>
+          </h3>
           {drivers.drivers.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">
               Ningún repartidor registró cobros en el rango. El COD que se cobra
