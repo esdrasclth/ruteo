@@ -247,13 +247,25 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex flex-1 min-h-screen">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-white/5 bg-sidebar text-sidebar-foreground">
+    // El panel es un armazón de altura fija: la VENTANA no scrollea nunca y el
+    // único que scrollea es `main`. Antes esto era `min-h-screen`, así que el
+    // documento crecía con el contenido y pasaban dos cosas a la vez: salía una
+    // segunda barra de scroll (la ventana además de la de `main`, que se hacía
+    // scrollable sin querer, ver más abajo) y la rueda del ratón movía uno u
+    // otro contenedor según dónde estuviera el puntero.
+    //
+    // `h-dvh` y no `h-screen`: en el móvil la barra de direcciones se recoge al
+    // scrollear y `100vh` deja cortado justo lo de abajo del todo.
+    <div className="flex h-dvh overflow-hidden">
+      {/* Alto completo y fijo. Estirándose con el documento —que es lo que hacía
+          antes— el menú se iba hacia arriba al scrollear y dejaba una columna
+          oscura vacía debajo. */}
+      <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/5 bg-sidebar text-sidebar-foreground">
         {/* El SVG es el lockup completo (símbolo + palabra) en su versión
             negativa, para el fondo oscuro del sidebar: ocupa el sitio de la
             pastilla del icono y del rótulo. El slug del tenant se queda: no es
             decoración, es en qué empresa estás trabajando. */}
-        <div className="px-4 py-5">
+        <div className="px-4 py-3">
           <Image
             src="/logo-negativo.svg"
             alt="Ruteo"
@@ -267,14 +279,21 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           </span>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 pb-2">
+        {/* `overscroll-contain` es lo que quita el comportamiento raro: sin él,
+            al llegar al final del menú la rueda seguía y arrastraba el panel de
+            al lado, así que mover el menú movía la pantalla entera.
+            `overflow-y-auto` se queda porque no scrollea cuando cabe, y con 20
+            entradas + cabecera + pie no cabe por debajo de ~1060px de alto: sin
+            él, en un portátil normal quedarían fuera de alcance las últimas
+            entradas y el botón de cerrar sesión. */}
+        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-2 pb-1">
           {NAV.map((grupo) => {
             const items = grupo.items.filter(visible);
             if (items.length === 0) return null;
             return (
               <div key={grupo.label ?? "principal"} className="flex flex-col gap-0.5">
                 {grupo.label ? (
-                  <p className="px-3 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/35">
+                  <p className="px-3 pb-0.5 pt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/35">
                     {grupo.label}
                   </p>
                 ) : null}
@@ -286,7 +305,10 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
                       href={href}
                       aria-current={activo ? "page" : undefined}
                       className={cn(
-                        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all",
+                        // `py-1.5` y no `py-2`: son 4px por entrada y con 20
+                        // entradas eso es lo que decide si el menú cabe en un
+                        // portátil o hay que scrollearlo para llegar al final.
+                        "group flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-all",
                         activo
                           ? "glass-active text-sidebar-foreground"
                           : "text-sidebar-foreground/65 hover:bg-white/5 hover:text-sidebar-foreground",
@@ -309,7 +331,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="border-t border-sidebar-border p-3 text-xs">
+        <div className="border-t border-sidebar-border px-3 py-2 text-xs">
           <p className="truncate font-medium">{session.name || session.email}</p>
           <p className="truncate text-sidebar-foreground/60">
             {ROLE_LABELS[session.role]}
@@ -328,7 +350,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           {/* Crédito del desarrollador: al pie del sidebar, en el tono más
               tenue disponible. Está presente sin robarle sitio a la navegación,
               que es lo que se usa todo el día. */}
-          <p className="mt-3 border-t border-sidebar-border pt-3 text-[10px] leading-tight text-sidebar-foreground/40">
+          <p className="mt-2 border-t border-sidebar-border pt-2 text-[10px] leading-tight text-sidebar-foreground/40">
             Desarrollado por{" "}
             <a
               href="https://www.brandsofts.com/"
@@ -342,10 +364,12 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="panel-surface flex min-w-0 flex-1 flex-col">
+      <div className="panel-surface flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Barra superior: el buscador global vive aquí para que esté a un
-            clic (o ⌘K) desde cualquier pantalla. */}
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/5 bg-white/70 px-6 backdrop-blur-md lg:px-8">
+            clic (o ⌘K) desde cualquier pantalla.
+            Ya no necesita `sticky`: al estar FUERA del contenedor que scrollea
+            se queda quieta por estructura. */}
+        <header className="z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/5 bg-white/70 px-6 backdrop-blur-md lg:px-8">
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
@@ -359,7 +383,13 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           </button>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-x-auto p-6 lg:p-8">
+        {/* El ÚNICO contenedor que scrollea de todo el panel.
+            Antes ponía `overflow-x-auto` a secas, y ahí estaba la segunda barra:
+            en CSS, en cuanto un eje deja de ser `visible` el otro pasa de
+            `visible` a `auto` solo. O sea que pedir scroll horizontal para las
+            tablas anchas activaba también el vertical, y el documento seguía
+            scrolleando por su cuenta. Ahora se declara entero y a propósito. */}
+        <main className="min-w-0 flex-1 overflow-auto p-6 lg:p-8">
           <VerifyEmailBanner />
           {children}
         </main>

@@ -88,8 +88,14 @@ body {
      hairline border and soft navy shadow with a faint top highlight. */
   .glass-card {
     background: color-mix(in srgb, #ffffff 82%, transparent);
+    /* NO añadir aquí `-webkit-backdrop-filter` a mano. Escribiendo las dos,
+       Lightning CSS —el compilador de Tailwind v4— las colapsa en una sola y se
+       queda con la prefijada, y Chrome 151 ya retiró ese alias: el resultado era
+       que el desenfoque no se aplicaba en NINGUNA pantalla y el vidrio quedaba
+       en un blanco translúcido con sombra. Con la propiedad estándar sola, el
+       compilador añade el prefijo él mismo donde los navegadores objetivo lo
+       necesiten. Vale para las cinco clases de vidrio de este archivo. */
     backdrop-filter: blur(10px) saturate(125%);
-    -webkit-backdrop-filter: blur(10px) saturate(125%);
     border: 1px solid rgba(24, 58, 55, 0.07);
     box-shadow:
       0 1px 2px rgba(4, 21, 31, 0.04),
@@ -105,7 +111,6 @@ body {
       color-mix(in srgb, #183a37 3%, rgba(255, 255, 255, 0.86))
     );
     backdrop-filter: blur(12px) saturate(125%);
-    -webkit-backdrop-filter: blur(12px) saturate(125%);
     border: 1px solid rgba(24, 58, 55, 0.08);
     box-shadow:
       0 1px 2px rgba(4, 21, 31, 0.04),
@@ -210,7 +215,6 @@ body {
   .auth-panel {
     background: rgba(7, 29, 38, 0.82);
     backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
     border: 1px solid rgba(255, 255, 255, 0.07);
     box-shadow:
       0 40px 90px -40px rgba(0, 0, 0, 0.75),
@@ -316,7 +320,6 @@ body {
   .glass-float {
     background: color-mix(in srgb, #ffffff 88%, transparent);
     backdrop-filter: blur(18px) saturate(135%);
-    -webkit-backdrop-filter: blur(18px) saturate(135%);
     border: 1px solid rgba(255, 255, 255, 0.65);
     box-shadow:
       0 1px 2px rgba(4, 21, 31, 0.05),
@@ -368,7 +371,6 @@ body {
   .glass-active {
     background: rgba(255, 255, 255, 0.09);
     backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
