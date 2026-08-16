@@ -10,12 +10,12 @@ import {
   CustomerAddress,
   DeliveryMode,
   DELIVERY_MODE_LABELS,
-  Paginated,
   Shipment,
   ShipmentType,
   Warehouse,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { BuscadorRemoto, itemsDe } from "@/components/buscador-remoto";
 import { TYPE_LABELS } from "@/lib/shipment-status";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,9 @@ export default function NewShipmentPage() {
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("HOME");
   const [deliveryWarehouseId, setDeliveryWarehouseId] = useState("");
   const [customerId, setCustomerId] = useState("");
+  // El cliente elegido entero, no solo su id: el buscador lo necesita para
+  // poder pintar a quién elegiste sin volver a consultarlo.
+  const [cliente, setCliente] = useState<Customer | null>(null);
   const [addressId, setAddressId] = useState("");
   const [form, setForm] = useState({
     recipientName: "",
@@ -69,15 +72,10 @@ export default function NewShipmentPage() {
   // Las sucursales se filtran por `allowsPickup`: ofrecer una bodega de tránsito
   // como punto de retiro manda al cliente a un portón donde no hay mostrador, y
   // el backend lo rechaza igual.
-  const { datos: datosClientes } = useApi<Paginated<Customer>>(
-    "/customers?pageSize=100",
-    { silencioso: true },
-  );
   const { datos: bodegas } = useApi<Warehouse[]>("/warehouses", {
     silencioso: true,
   });
 
-  const clientes = datosClientes?.items ?? [];
   const sucursales = bodegas?.filter((w) => w.allowsPickup) ?? [];
 
   // Las direcciones dependen del cliente elegido: sin cliente no hay clave y no
@@ -255,25 +253,33 @@ export default function NewShipmentPage() {
               </div>
             )}
             <div className="grid gap-2 sm:col-span-2">
-              <Label>Cliente</Label>
-              <Select
-                value={customerId}
-                onValueChange={(v) => {
-                  setCustomerId(v);
+              <Label htmlFor="cliente">Cliente</Label>
+              {/* Buscador y no desplegable: los clientes crecen con la
+                  operación. Con una lista traída de golpe, la empresa que pasa
+                  de cien no encuentra a los demás y nada se lo explica. */}
+              <BuscadorRemoto<Customer>
+                id="cliente"
+                ruta={(q) =>
+                  `/customers?search=${encodeURIComponent(q)}&pageSize=20`
+                }
+                extraer={itemsDe<Customer>}
+                etiqueta={(c) => c.name}
+                detalle={(c) => c.email ?? c.phone}
+                elegido={cliente}
+                onElegir={(c) => {
+                  setCliente(c);
+                  setCustomerId(c?.id ?? "");
+                  // La dirección cuelga del cliente: cambiar de cliente y
+                  // conservar la dirección del anterior mandaría el envío a
+                  // casa de otra persona.
                   setAddressId("");
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin cliente asociado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="Buscar por nombre, correo, teléfono o documento…"
+              />
+              <p className="text-xs text-muted-foreground">
+                Opcional. Asociarlo permite reutilizar sus direcciones y agrupa
+                el envío en su ficha.
+              </p>
             </div>
             {/* Las direcciones cuelgan del cliente, así que sin cliente elegido
                 no hay ninguna que ofrecer. */}

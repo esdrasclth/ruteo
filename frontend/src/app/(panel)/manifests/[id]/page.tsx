@@ -13,6 +13,7 @@ import {
   Trip,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { BuscadorRemoto, itemsDe } from "@/components/buscador-remoto";
 import {
   EXCEPTION_SEVERITY_LABELS,
   EXCEPTION_TYPE_LABELS,
@@ -67,7 +68,7 @@ export default function ManifestDetailPage({
   const [busy, setBusy] = useState(false);
 
   const [agregando, setAgregando] = useState(false);
-  const [candidatos, setCandidatos] = useState<Shipment[]>([]);
+  const [envioElegido, setEnvioElegido] = useState<Shipment | null>(null);
   const [shipmentId, setShipmentId] = useState("");
   const [pieces, setPieces] = useState("1");
 
@@ -88,22 +89,23 @@ export default function ManifestDetailPage({
   useEffect(() => {
     // Los viajes no bloquean la pantalla: si fallan, el manifiesto se ve igual y
     // solo queda sin selector de vuelo.
-    void api<Trip[]>("/warehouses/trips")
-      .then(setViajes)
+    // `/warehouses/trips` devuelve una página, no un array: se paginó al
+    // arreglar el truncado silencioso y este consumidor se quedó atrás.
+    // Ordena por salida descendente, así que la primera página son los vuelos
+    // recientes, que es justo lo que se engancha a un manifiesto.
+    void api<Paginated<Trip>>("/warehouses/trips?pageSize=50")
+      .then((r) => setViajes(r.items))
       .catch(() => setViajes([]));
   }, []);
 
-  async function abrirAgregar() {
+  // Las guías que ya lleva el manifiesto, para no volver a ofrecerlas.
+  const yaEnManifiesto = new Set((m?.items ?? []).map((i) => i.shipmentId));
+
+  // Abrir ya no precarga una lista: el buscador consulta al teclear.
+  function abrirAgregar() {
+    setEnvioElegido(null);
+    setShipmentId("");
     setAgregando(true);
-    try {
-      const res = await api<Paginated<Shipment>>(
-        "/shipments?page=1&pageSize=100",
-      );
-      const dentro = new Set(m?.items.map((i) => i.shipmentId));
-      setCandidatos(res.items.filter((s) => !dentro.has(s.id)));
-    } catch {
-      setCandidatos([]);
-    }
   }
 
   async function accion(fn: () => Promise<unknown>, exito: string) {
@@ -367,7 +369,14 @@ export default function ManifestDetailPage({
                 {m.items.map((i) => (
                   <TableRow key={i.id}>
                     <TableCell className="font-mono text-xs">
-                      {i.shipment.trackingNumber}
+                      {/* Enlazado: al cotejar se ve una diferencia y lo
+                          siguiente que se quiere es abrir esa guía. */}
+                      <Link
+                        href={`/shipments/${i.shipmentId}`}
+                        className="text-primary underline-offset-2 hover:underline"
+                      >
+                        {i.shipment.trackingNumber}
+                      </Link>
                     </TableCell>
                     <TableCell>{i.consignee ?? "—"}</TableCell>
                     <TableCell className="text-right">
@@ -466,19 +475,35 @@ export default function ManifestDetailPage({
           </DialogHeader>
           <form onSubmit={onAgregar} className="grid gap-4">
             <div className="grid gap-2">
-              <Label>Envío *</Label>
-              <Select value={shipmentId} onValueChange={setShipmentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Elige un envío" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidatos.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.trackingNumber} — {s.recipientName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="envio-manifiesto">Envío *</Label>
+              {/* Buscador y no desplegable: traía una página de cien envíos y
+                  filtraba aquí, así que a partir de ahí el que buscabas no
+                  aparecía. Se teclea la guía y pregunta al servidor. */}
+              <BuscadorRemoto<Shipment>
+                id="envio-manifiesto"
+                ruta={(q) =>
+                  `/shipments?search=${encodeURIComponent(q)}&pageSize=20`
+                }
+                extraer={(d) =>
+                  // Los que ya están en el manifiesto no se vuelven a ofrecer.
+                  itemsDe<Shipment>(d).filter((s) => !yaEnManifiesto.has(s.id))
+                }
+                etiqueta={(s) => s.trackingNumber}
+                detalle={(s) =>
+                  [s.recipientName, s.destinationLabel]
+                    .filter(Boolean)
+                    .join(" · ")
+                }
+                elegido={envioElegido}
+                onElegir={(s) => {
+                  setEnvioElegido(s);
+                  setShipmentId(s?.id ?? "");
+                }}
+                placeholder="Buscar por guía, destinatario o destino…"
+              />
+              <p className="text-xs text-muted-foreground">
+                No se ofrecen las guías que ya están en este manifiesto.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="pieces">Bultos</Label>

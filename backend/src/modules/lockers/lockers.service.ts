@@ -13,11 +13,16 @@ import { calcularPesos } from './pesos';
 import { AddPackagePhotoDto } from './dto/add-photo.dto';
 import { StorageService } from '../../storage/storage.service';
 import { PreAlertPackageDto } from './dto/pre-alert-package.dto';
+import { QueryLockersDto } from './dto/query-lockers.dto';
 import { QueryPackagesDto } from './dto/query-packages.dto';
 import { UpdateLockerDto } from './dto/update-locker.dto';
 import { generateLockerCode } from './locker-code';
 import { packageReceivedMessage } from './package-message';
-import { Pagina, saltar } from '../../common/dto/paginacion.dto';
+import {
+  Pagina,
+  saltar,
+  TOPE_CATALOGO,
+} from '../../common/dto/paginacion.dto';
 import { coincideSinTildes, patronDe } from '../../common/sql/sin-tildes';
 
 /** Un bulto con el casillero al que pertenece. */
@@ -81,10 +86,43 @@ export class LockersService {
     throw new BadRequestException('Could not allocate a locker code');
   }
 
-  list(tenantId: string) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.locker.findMany({ orderBy: { createdAt: 'desc' } }),
-    );
+  /**
+   * Los casilleros, con tope y búsqueda sin tildes.
+   *
+   * Antes era un `findMany` **sin ningún límite**: una empresa con miles de
+   * casilleros se los descargaba todos en cada carga de la pantalla de
+   * Recepción, que además los filtraba en el navegador. `TOPE_CATALOGO` pone
+   * techo y `search` mueve el filtro al servidor, que es donde escala.
+   *
+   * Sigue devolviendo un array y no una página: este endpoint está abierto a
+   * llaves de API y cambiarle la forma rompería las integraciones. Ver la nota
+   * de `QueryLockersDto`.
+   */
+  list(tenantId: string, filtros: QueryLockersDto = {}) {
+    const search = filtros.search?.trim();
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const where: Prisma.LockerWhereInput = {
+        ...(filtros.status ? { status: filtros.status } : {}),
+      };
+
+      if (search) {
+        const filas = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id
+            FROM lockers
+           WHERE ${coincideSinTildes(
+             ['code', 'customer_name', 'customer_email', 'customer_phone'],
+             patronDe(search),
+           )}`;
+        where.id = { in: filas.map((f) => f.id) };
+      }
+
+      return tx.locker.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: TOPE_CATALOGO,
+      });
+    });
   }
 
   async findOne(tenantId: string, id: string) {

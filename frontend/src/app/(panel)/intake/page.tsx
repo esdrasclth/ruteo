@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Camera, Check, PackageCheck, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -107,10 +107,26 @@ export default function IntakePage() {
   const [pendingQuery, setPendingQuery] = useState("");
   const [fotosDe, setFotosDe] = useState<LockerPackageWithLocker | null>(null);
 
-  // Misma clave que la pantalla de Casilleros: la recepción es lo primero que
-  // se abre por la mañana y el listado ya suele estar en caché.
+  // **La búsqueda de casillero va contra el servidor, no en el navegador.**
+  //
+  // Antes se descargaban TODOS los casilleros —el endpoint no tenía tope— y se
+  // filtraban aquí. Con el tope que ahora lleva ese endpoint, filtrar en local
+  // dejaría de encontrar a partir del casillero 500 sin decir nada, que es
+  // peor que el problema original. Preguntando al servidor no hay techo que
+  // pueda morder en silencio.
+  //
+  // Sin término se piden los últimos, que es lo que cubre el caso de teclear
+  // por primera vez en la mañana; a partir de ahí manda lo que se escriba.
+  const [lockerDebounced, setLockerDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setLockerDebounced(lockerQuery.trim()), 220);
+    return () => clearTimeout(t);
+  }, [lockerQuery]);
+
   const { datos: datosLockers } = useApi<Locker[]>(
-    "/lockers",
+    lockerDebounced
+      ? `/lockers?search=${encodeURIComponent(lockerDebounced)}`
+      : "/lockers",
     { mensajeDeError: "Error cargando casilleros" },
   );
   const lockers = datosLockers ?? null;
@@ -134,18 +150,9 @@ export default function IntakePage() {
     await Promise.all([recargarPrealertados(), recargarRecibidos()]);
   }, [recargarPrealertados, recargarRecibidos]);
 
-  const lockerMatches = useMemo(() => {
-    if (!lockers) return [];
-    const q = lockerQuery.trim().toLowerCase();
-    if (!q) return lockers.slice(0, 6);
-    return lockers
-      .filter(
-        (l) =>
-          l.code.toLowerCase().includes(q) ||
-          l.customerName.toLowerCase().includes(q),
-      )
-      .slice(0, 6);
-  }, [lockers, lockerQuery]);
+  // El filtro ya lo hizo el servidor —y sin tildes—; aquí solo se recortan a
+  // seis para que la lista no tape el formulario que tiene debajo.
+  const lockerMatches = useMemo(() => (lockers ?? []).slice(0, 6), [lockers]);
 
   const pendingFiltered = useMemo(() => {
     if (!pending) return [];

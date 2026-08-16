@@ -28,6 +28,7 @@ import { CreateLockerDto } from './dto/create-locker.dto';
 import { AddPackagePhotoDto } from './dto/add-photo.dto';
 import { IntakePackageDto } from './dto/intake-package.dto';
 import { PreAlertPackageDto } from './dto/pre-alert-package.dto';
+import { QueryLockersDto } from './dto/query-lockers.dto';
 import { QueryPackagesDto } from './dto/query-packages.dto';
 import { UpdateLockerDto } from './dto/update-locker.dto';
 import { LockersService } from './lockers.service';
@@ -70,8 +71,8 @@ export class LockersController {
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT, Role.MERCHANT)
   @Alcances(ApiScope.LOCKERS_READ)
   @Get()
-  list(@CurrentUser() user: AuthUser) {
-    return this.lockers.list(user.tenantId);
+  list(@CurrentUser() user: AuthUser, @Query() query: QueryLockersDto) {
+    return this.lockers.list(user.tenantId, query);
   }
 
   // Declared before ':id' routes so the static segments win the match.

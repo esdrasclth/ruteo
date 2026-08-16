@@ -15,13 +15,13 @@ import {
   ApiError,
   DeliveryFailureReason,
   MOTIVOS_DE_FALLO,
-  Paginated,
   RoadRoute,
   RouteDetail,
   RouteStop,
   Shipment,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { BuscadorRemoto, itemsDe } from "@/components/buscador-remoto";
 import { STATUS_LABELS, statusBadgeClass } from "@/lib/shipment-status";
 import {
   ROUTE_NEXT_STATUSES,
@@ -78,8 +78,8 @@ export default function RouteDetailPage({
   const [busy, setBusy] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [candidates, setCandidates] = useState<Shipment[]>([]);
   const [shipmentId, setShipmentId] = useState("");
+  const [envioElegido, setEnvioElegido] = useState<Shipment | null>(null);
 
   const [completeStop, setCompleteStop] = useState<RouteStop | null>(null);
   const [receivedBy, setReceivedBy] = useState("");
@@ -112,29 +112,20 @@ export default function RouteDetailPage({
   );
   const carretera = datosCarretera ?? null;
 
-  async function openAddStop() {
+  // Las paradas que ya tiene la ruta, para no volver a ofrecerlas.
+  const yaEnRuta = new Set((route?.stops ?? []).map((s) => s.shipmentId));
+
+  // Abrir ya no precarga una lista: el buscador consulta al teclear.
+  function openAddStop() {
+    setEnvioElegido(null);
+    setShipmentId("");
     setAddOpen(true);
-    try {
-      const res = await api<Paginated<Shipment>>(
-        "/shipments?page=1&pageSize=100",
-      );
-      const inRoute = new Set(route?.stops.map((s) => s.shipmentId));
-      setCandidates(
-        res.items.filter(
-          (s) =>
-            !inRoute.has(s.id) &&
-            !["DELIVERED", "CANCELLED", "RETURNED"].includes(s.status),
-        ),
-      );
-    } catch {
-      setCandidates([]);
-    }
   }
 
   async function onAddStop(e: FormEvent) {
     e.preventDefault();
     if (!shipmentId) return;
-    const shipment = candidates.find((s) => s.id === shipmentId);
+    const shipment = envioElegido;
     setBusy(true);
     try {
       await api(`/routes/${id}/stops`, {
@@ -558,24 +549,42 @@ export default function RouteDetailPage({
           </DialogHeader>
           <form onSubmit={onAddStop} className="grid gap-4">
             <div className="grid gap-2">
-              <Label>Envío *</Label>
-              <Select value={shipmentId} onValueChange={setShipmentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un envío" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.trackingNumber} — {s.recipientName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {candidates.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No hay envíos elegibles (activos y fuera de esta ruta).
-                </p>
-              ) : null}
+              <Label htmlFor="envio-parada">Envío *</Label>
+              {/* Buscador y no desplegable: se traía una página de cien envíos
+                  y se filtraba aquí, así que en una operación con más el que
+                  buscabas no aparecía y nada lo explicaba. Ahora se teclea la
+                  guía o el destinatario y pregunta al servidor. */}
+              <BuscadorRemoto<Shipment>
+                id="envio-parada"
+                ruta={(q) =>
+                  `/shipments?search=${encodeURIComponent(q)}&pageSize=20`
+                }
+                extraer={(d) =>
+                  // Los que ya están en la ruta o ya terminaron no se ofrecen:
+                  // el backend los aceptaría y crearía una parada sin sentido.
+                  itemsDe<Shipment>(d).filter(
+                    (s) =>
+                      !yaEnRuta.has(s.id) &&
+                      !["DELIVERED", "CANCELLED", "RETURNED"].includes(s.status),
+                  )
+                }
+                etiqueta={(s) => s.trackingNumber}
+                detalle={(s) =>
+                  [s.recipientName, s.destinationLabel]
+                    .filter(Boolean)
+                    .join(" · ")
+                }
+                elegido={envioElegido}
+                onElegir={(s) => {
+                  setEnvioElegido(s);
+                  setShipmentId(s?.id ?? "");
+                }}
+                placeholder="Buscar por guía, destinatario o destino…"
+              />
+                            <p className="text-xs text-muted-foreground">
+                No se ofrecen los que ya están en esta ruta ni los que ya
+                terminaron.
+              </p>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={busy || !shipmentId}>
