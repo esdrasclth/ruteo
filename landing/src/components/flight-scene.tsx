@@ -34,14 +34,17 @@ export function FlightScene() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Aquí había un corte por ancho (`max-width: 767px`) que dejaba el vuelo
+    // fuera del móvil por consumo. Se quita a propósito: el bucle de render se
+    // apaga solo en cuanto el avión llega a su sitio (ver la nota 2 de arriba),
+    // así que en reposo —que es casi todo el rato— no cuesta nada, y el
+    // `import()` de three.js sigue ocurriendo después de la hidratación.
+    //
+    // Lo que SÍ sigue en pie es `prefers-reduced-motion`: quien lo pide no ve
+    // nada, y en móvil es donde más gente lo lleva activado.
     if (
       typeof window === "undefined" ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-      // En móvil no se monta. El lienzo fijo estaría todo el rato detrás del
-      // contenido, donde el avión apenas asoma entre tarjeta y tarjeta, y a
-      // cambio se paga GPU y batería en el dispositivo que menos tiene de las
-      // dos. Si algún día se quiere allí, basta con quitar esta condición.
-      window.matchMedia("(max-width: 767px)").matches
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ) {
       return;
     }
@@ -420,7 +423,21 @@ export function FlightScene() {
       aria-hidden="true"
       // `opacity` aquí y no en el material: es el único punto donde se regula
       // cuánto pesa el avión en la página. Ver la nota del material.
-      className="pointer-events-none fixed left-0 right-0 top-16 z-0 h-[calc(100vh-4rem)] w-full opacity-[0.42]"
+      //
+      // `svh` y no `vh` ni `dvh`, y la diferencia importa justo en móvil:
+      //
+      // - `vh` mide con la barra de direcciones recogida, así que con la barra
+      //   desplegada el lienzo es más alto que la ventana y el avión aterriza
+      //   por debajo del borde visible.
+      // - `dvh` lo arregla pero cambia de valor MIENTRAS se scrollea, y cada
+      //   cambio dispara el `resize` de aquí abajo, que reasigna el búfer de
+      //   WebGL. Reasignarlo en pleno scroll es exactamente lo que no se quiere
+      //   en un móvil.
+      // - `svh` es el alto con la barra desplegada: nunca se queda corto y
+      //   nunca cambia. Cuando la barra se recoge sobra una franja abajo, pero
+      //   el lienzo es transparente y detrás está el fondo de la página, así
+      //   que no se ve nada.
+      className="pointer-events-none fixed left-0 right-0 top-16 z-0 h-[calc(100svh-4rem)] w-full opacity-[0.42]"
     />
   );
 }
