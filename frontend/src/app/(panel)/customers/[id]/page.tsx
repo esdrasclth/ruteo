@@ -1,9 +1,8 @@
 "use client";
 
 import { FormEvent, use, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Customer, CustomerDetail } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -13,6 +12,8 @@ import {
   PAYMENT_STATUS_LABELS,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { NoExiste } from "@/components/no-existe";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -56,9 +57,14 @@ export default function CustomerDetailPage({
     notes: "",
   });
 
-  const { datos, recargar: load } = useApi<CustomerDetail>(`/customers/${id}`, {
+  const { datos, error, recargar: load } = useApi<CustomerDetail>(
+    `/customers/${id}`,
+    {
     mensajeDeError: "Error cargando el cliente",
-  });
+    // El 404 ya lo explica la pantalla entera; un aviso rojo encima sobra.
+    silencioso: (e) => e.status === 404,
+    },
+  );
   // `?? null` para no cambiar el resto de la pantalla: antes esto era
   // `T | null` y `useApi` entrega `T | undefined`.
   const customer = datos ?? null;
@@ -106,6 +112,18 @@ export default function CustomerDetailPage({
     }
   }
 
+  // Un 404 no es «sigue cargando»: sin esto la pantalla se quedaba en
+  // esqueleto para siempre, que es lo que peor se lee de todos los estados.
+  if (error?.status === 404) {
+    return (
+      <NoExiste
+        recurso="el cliente"
+        volverA="/customers"
+        etiquetaVolver="Ver todos los clientes"
+      />
+    );
+  }
+
   if (!customer) {
     return (
       <div className="flex flex-col gap-4">
@@ -117,26 +135,22 @@ export default function CustomerDetailPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/customers">
-              <ArrowLeft className="size-4" />
-              Clientes
-            </Link>
+      {/* Las migas sustituyen al botón de volver: dicen dónde estás además de
+          cómo salir, y es lo que hace el resto del panel. */}
+      <PageHeader
+        breadcrumbs={[
+          { label: "Clientes", href: "/customers" },
+          { label: customer.name },
+        ]}
+        title={customer.name}
+        description={customer.email ?? customer.phone ?? "Sin contacto"}
+        actions={
+          <Button variant="outline" size="sm" onClick={openEdit}>
+            <Pencil className="size-4" />
+            Editar
           </Button>
-          <div>
-            <h1 className="text-2xl font-semibold">{customer.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              {customer.email ?? customer.phone ?? "Sin contacto"}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={openEdit}>
-          <Pencil className="size-4" />
-          Editar
-        </Button>
-      </div>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>

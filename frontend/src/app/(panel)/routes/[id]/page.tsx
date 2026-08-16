@@ -3,7 +3,6 @@
 import { FormEvent, use, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Image as ImageIcon,
   MapPin,
   PenLine,
@@ -33,6 +32,8 @@ import {
   stopStatusBadgeClass,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { NoExiste } from "@/components/no-existe";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -92,9 +93,13 @@ export default function RouteDetailPage({
   const [fotoEntrega, setFotoEntrega] = useState<string | null>(null);
   const [fotoFallo, setFotoFallo] = useState<string | null>(null);
 
-  const { datos: datosRuta, recargar: load } = useApi<RouteDetail>(
+  const { datos: datosRuta, error, recargar: load } = useApi<RouteDetail>(
     `/routes/${id}`,
-    { mensajeDeError: "Error cargando la ruta" },
+    {
+      mensajeDeError: "Error cargando la ruta",
+      // El 404 ya lo explica la pantalla entera; un aviso rojo encima sobra.
+      silencioso: (e) => e.status === 404,
+    },
   );
   const route = datosRuta ?? null;
 
@@ -264,6 +269,18 @@ export default function RouteDetailPage({
     }
   }
 
+  // Un 404 no es «sigue cargando»: sin esto la pantalla se quedaba en
+  // esqueleto para siempre, que es lo que peor se lee de todos los estados.
+  if (error?.status === 404) {
+    return (
+      <NoExiste
+        recurso="la ruta"
+        volverA="/routes"
+        etiquetaVolver="Ver todas las rutas"
+      />
+    );
+  }
+
   if (!route) {
     return (
       <div className="flex flex-col gap-4">
@@ -290,24 +307,17 @@ export default function RouteDetailPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/routes">
-              <ArrowLeft className="size-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="font-mono text-xl font-semibold">{route.code}</h1>
-            <p className="text-sm text-muted-foreground">
-              {route.driver?.name} ·{" "}
-              {new Date(route.scheduledDate).toLocaleDateString("es-HN", {
-                timeZone: "UTC",
-              })}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        breadcrumbs={[
+          { label: "Rutas", href: "/routes" },
+          { label: route.code },
+        ]}
+        title={<span className="font-mono">{route.code}</span>}
+        description={`${route.driver?.name ?? "Sin repartidor"} · ${new Date(
+          route.scheduledDate,
+        ).toLocaleDateString("es-HN", { timeZone: "UTC" })}`}
+        actions={
+          <div className="flex items-center gap-2">
           <Badge className={routeStatusBadgeClass(route.status)}>
             {ROUTE_STATUS_LABELS[route.status]}
           </Badge>
@@ -322,8 +332,9 @@ export default function RouteDetailPage({
               {ROUTE_STATUS_LABELS[s]}
             </Button>
           ))}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {paradasGeo.length > 0 ? (
         <Card>

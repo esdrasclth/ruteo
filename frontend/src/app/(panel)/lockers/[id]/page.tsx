@@ -3,7 +3,7 @@
 import { FormEvent, use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Boxes, PackagePlus } from "lucide-react";
+import { Boxes, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -19,6 +19,8 @@ import {
   packageStatusBadgeClass,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { NoExiste } from "@/components/no-existe";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -73,9 +75,14 @@ export default function LockerDetailPage({
     destinationLabel: "",
   });
 
-  const { datos, recargar: load } = useApi<LockerDetail>(`/lockers/${id}`, {
+  const { datos, error, recargar: load } = useApi<LockerDetail>(
+    `/lockers/${id}`,
+    {
     mensajeDeError: "Error cargando el casillero",
-  });
+    // El 404 ya lo explica la pantalla entera; un aviso rojo encima sobra.
+    silencioso: (e) => e.status === 404,
+    },
+  );
   // `?? null` para no cambiar el resto de la pantalla: antes esto era
   // `T | null` y `useApi` entrega `T | undefined`.
   const locker = datos ?? null;
@@ -165,6 +172,18 @@ export default function LockerDetailPage({
     }
   }
 
+  // Un 404 no es «sigue cargando»: sin esto la pantalla se quedaba en
+  // esqueleto para siempre, que es lo que peor se lee de todos los estados.
+  if (error?.status === 404) {
+    return (
+      <NoExiste
+        recurso="el casillero"
+        volverA="/lockers"
+        etiquetaVolver="Ver todos los casilleros"
+      />
+    );
+  }
+
   if (!locker) {
     return (
       <div className="flex flex-col gap-4">
@@ -179,20 +198,14 @@ export default function LockerDetailPage({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/lockers">
-              <ArrowLeft className="size-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="font-mono text-xl font-semibold">{locker.code}</h1>
-            <p className="text-sm text-muted-foreground">
-              {locker.customerName} · {locker.addressLine1}, {locker.city},{" "}
-              {locker.state} {locker.postalCode}
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Casilleros", href: "/lockers" },
+            { label: locker.code },
+          ]}
+          title={<span className="font-mono">{locker.code}</span>}
+          description={`${locker.customerName} · ${locker.addressLine1}, ${locker.city}, ${locker.state} ${locker.postalCode}`}
+        />
         <div className="flex items-center gap-2">
           <Badge
             className={

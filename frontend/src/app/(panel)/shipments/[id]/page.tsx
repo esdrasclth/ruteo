@@ -40,6 +40,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { LegsCard } from "@/components/legs-card";
 import { Badge } from "@/components/ui/badge";
+import { NoExiste } from "@/components/no-existe";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -474,9 +475,12 @@ export default function ShipmentDetailPage({
   // hijos que también necesitan el envío, así que montan sin pedir de nuevo.
   const {
     datos: shipment,
+    error,
     recargar,
   } = useApi<ShipmentDetail>(`/shipments/${id}`, {
     mensajeDeError: "Error cargando el envío",
+      // El 404 ya lo explica la pantalla entera; un aviso rojo encima sobra.
+      silencioso: (e) => e.status === 404,
   });
   const [nextStatus, setNextStatus] = useState<string>("");
   const [note, setNote] = useState("");
@@ -522,6 +526,18 @@ export default function ShipmentDetailPage({
     }
     const blob = await res.blob();
     window.open(URL.createObjectURL(blob), "_blank");
+  }
+
+  // Un 404 no es «sigue cargando»: sin esto la pantalla se quedaba en
+  // esqueleto para siempre, que es lo que peor se lee de todos los estados.
+  if (error?.status === 404) {
+    return (
+      <NoExiste
+        recurso="el envío"
+        volverA="/shipments"
+        etiquetaVolver="Ver todos los envíos"
+      />
+    );
   }
 
   if (!shipment) {
