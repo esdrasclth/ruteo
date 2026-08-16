@@ -204,7 +204,23 @@ export default function LockerDetailPage({
             { label: locker.code },
           ]}
           title={<span className="font-mono">{locker.code}</span>}
-          description={`${locker.customerName} · ${locker.addressLine1}, ${locker.city}, ${locker.state} ${locker.postalCode}`}
+          description={
+            <>
+              {/* El casillero conoce a su cliente: sin este salto hay que
+                  copiar el nombre e ir a buscarlo a mano. */}
+              {locker.customerId ? (
+                <Link
+                  href={`/customers/${locker.customerId}`}
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  {locker.customerName}
+                </Link>
+              ) : (
+                locker.customerName
+              )}
+              {` · ${locker.addressLine1}, ${locker.city}, ${locker.state} ${locker.postalCode}`}
+            </>
+          }
         />
         <div className="flex items-center gap-2">
           <Badge

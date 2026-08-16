@@ -17,6 +17,7 @@ import { Paginacion } from "@/components/paginacion";
 import { TRIP_STATUS_LABELS } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -244,7 +245,14 @@ export default function TripsPage() {
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {v._count?.manifests ?? 0}
+                      {/* La cifra lleva a los manifiestos: verla y no poder
+                          abrirlos es lo que obliga a volver por el menú. */}
+                      <Link
+                        href="/manifests"
+                        className="text-primary underline-offset-2 hover:underline"
+                      >
+                        {v._count?.manifests ?? 0}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <Badge className={claseEstado(v.status)}>

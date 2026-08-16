@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { NoExiste } from "@/components/no-existe";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -167,7 +168,17 @@ export default function CustomerDetailPage({
 
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Resumen de pagos</CardTitle>
+            <CardTitle className="flex items-center justify-between gap-2 text-base">
+              Resumen de pagos
+              {/* Ver «L 4,320 pendiente» y no poder abrirlo es lo que hace que
+                  la ficha del cliente se consulte una vez y no se vuelva. */}
+              <Link
+                href="/payments"
+                className="text-xs font-normal text-primary underline-offset-2 hover:underline"
+              >
+                Ver cobros
+              </Link>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {customer.paymentSummary.length === 0 ? (
