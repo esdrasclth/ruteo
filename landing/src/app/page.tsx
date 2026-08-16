@@ -5,10 +5,13 @@ import {
   ArrowRight,
   Bell,
   Check,
+  ClipboardList,
   CreditCard,
   Landmark,
   MapPin,
+  MessageSquareWarning,
   Package,
+  PackageCheck,
   Route as RouteIcon,
   ShieldCheck,
 } from "lucide-react";
@@ -25,7 +28,7 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Ruteo — Casillero, aduana y última milla en una sola operación",
   description:
-    "Plataforma de envíos para couriers y casilleros que traen paquetes del extranjero a Honduras. Rastreo por tramos, aduana, rutas, cobro contra entrega y API.",
+    "Plataforma de envíos para couriers y casilleros que traen paquetes del extranjero a Honduras. Rastreo por tramos, aduana, manifiestos, rutas, cobro contra entrega, posventa y API.",
 };
 
 // --- piezas de composición ---------------------------------------------------
@@ -111,22 +114,40 @@ const MODULOS: {
       "Alta individual o importación por CSV, etiqueta con código de barras y número de guía propio. Ningún envío se salta pasos: solo se admite el siguiente estado válido.",
   },
   {
+    icon: PackageCheck,
+    titulo: "Recepción en bodega",
+    texto:
+      "El bulto se registra al llegar con sus medidas, su peso volumétrico y sus fotos. Esa foto del primer día es lo que convierte un «llegó dañado» de la semana que viene en una discusión con datos.",
+  },
+  {
     icon: RouteIcon,
     titulo: "Rutas y repartidores",
     texto:
-      "Paradas ordenadas sobre el mapa, con la ruta real por calles. La firma y la foto de la entrega quedan adjuntas al envío.",
+      "Paradas ordenadas sobre el mapa, con la ruta real por calles. Cada visita queda registrada —entregada o fallida, con su motivo, su firma y su foto— así que «se fue tres veces» es un dato y no un recuerdo.",
   },
   {
     icon: Landmark,
     titulo: "Aduana e impuestos",
     texto:
-      "Valor declarado, aranceles y estado aduanal por envío. Nada se libera con el cargo pendiente y el cliente ve el monto en su rastreo.",
+      "Las reglas se versionan por fecha, así que una liquidación vieja se sigue explicando con la regla que se le aplicó. El expediente guarda la factura y los permisos que esa regla exige.",
+  },
+  {
+    icon: ClipboardList,
+    titulo: "Manifiestos y excepciones",
+    texto:
+      "Se coteja lo que llegó contra lo que venía declarado, y las diferencias —un bulto de menos, un peso que no cuadra— se abren solas como excepción en vez de quedarse en la memoria de quien descargó.",
   },
   {
     icon: CreditCard,
     titulo: "Cobros y COD",
     texto:
-      "El contra entrega se registra por repartidor: lo cobrado, lo pendiente y lo ya remitido cuadran por período.",
+      "El contra entrega se registra por repartidor: lo cobrado, lo pendiente y lo ya remitido cuadran por período. Los cargos separan tu ingreso del tributo que solo trasladas.",
+  },
+  {
+    icon: MessageSquareWarning,
+    titulo: "Posventa",
+    texto:
+      "Reclamos, devoluciones y reembolsos. Lo que el cliente reclama, la mercancía que vuelve y el dinero que se devuelve son tres cosas distintas, y aquí se registran como tales.",
   },
   {
     icon: Bell,
@@ -173,26 +194,41 @@ const PLANES: {
     nombre: "Free",
     precio: "L 0",
     envios: "50 envíos al mes",
-    incluye: ["Rastreo público", "1 usuario"],
+    // Ya no dice «1 usuario»: no existe tal límite en el producto, y encima
+    // contradecía el titular de esta misma sección («no por asiento»).
+    incluye: ["Envíos y clientes", "Rastreo público", "Avisos automáticos"],
   },
   {
     nombre: "Starter",
     precio: "L 490",
     envios: "500 envíos al mes",
-    incluye: ["Rutas y repartidores", "Etiquetas", "Llaves de API"],
+    incluye: [
+      "Rutas y repartidores",
+      "Recepción en bodega",
+      "Zonas y tarifas",
+      "Llaves de API y webhooks",
+    ],
   },
   {
     nombre: "Pro",
     precio: "L 1,490",
     envios: "5,000 envíos al mes",
-    incluye: ["Webhooks", "Importación CSV", "Cobro contra entrega"],
+    // Antes listaba «Webhooks, CSV, COD» y se dejaba fuera lo que de verdad
+    // abre este plan: casilleros y aduana, que son el motivo por el que
+    // alguien llega a esta página.
+    incluye: [
+      "Casilleros y aduana",
+      "Manifiestos y excepciones",
+      "Cobros y posventa",
+      "Auditoría",
+    ],
     destacado: true,
   },
   {
     nombre: "Enterprise",
     precio: "L 4,990",
     envios: "Envíos ilimitados",
-    incluye: ["Todos los módulos", "Soporte dedicado"],
+    incluye: ["Los 17 módulos", "Soporte dedicado"],
   },
 ];
 
@@ -220,6 +256,10 @@ const PREGUNTAS: { p: string; r: string }[] = [
   {
     p: "¿Qué pasa si un paquete se queda retenido en aduana?",
     r: "Pasa a retenido, deja de avanzar y el estado se ve tanto en el panel como en el rastreo público. Al liberarlo retoma el recorrido en el tramo que le tocaba.",
+  },
+  {
+    p: "¿Y cuando un paquete llega roto o el cliente no lo quiere?",
+    r: "Eso es posventa, y son tres cosas distintas a propósito. Un reclamo es lo que pide quien recibe; una devolución mueve la mercancía de vuelta —a sucursal, al remitente o al proveedor— y guarda cuántas veces se intentó entregar antes; un reembolso mueve el dinero contra el cobro original. El envío conserva su número de guía al devolverse: quien pregunte por él sigue teniendo el mismo.",
   },
   {
     p: "¿Se integra con mi tienda o mi ERP?",
@@ -333,7 +373,8 @@ export default function LandingPage() {
                 </div>
 
                 <p className="mt-6 text-sm text-muted-foreground">
-                  Sin tarjeta. El plan gratuito cubre 50 envíos al mes.
+                  Sin tarjeta. El plan gratuito cubre 50 envíos al mes, y los de
+                  pago se prueban 14 días.
                 </p>
               </div>
 
@@ -454,7 +495,7 @@ export default function LandingPage() {
                 {
                   icon: Landmark,
                   t: "Aduana con cifras",
-                  d: "Valor declarado e impuestos calculados por envío, visibles antes de que llegue el cobro.",
+                  d: "Impuestos calculados con la regla vigente ese día, y el expediente con la factura y los permisos que exige.",
                 },
                 {
                   icon: Bell,
@@ -482,7 +523,7 @@ export default function LandingPage() {
             <TituloSeccion
               antetitulo="Para tu equipo"
               titulo="El día se ve entero desde una pantalla"
-              descripcion="Envíos, cobros y avisos del período, con cada cifra enlazada a la lista que la explica. Ver «46 intentos fallidos» y no poder abrirlos es lo que hace que nadie entre al panel dos veces."
+              descripcion="Arriba, lo que hay que atender ahora: qué está parado en aduana, qué excepciones no tienen dueño, qué sale a reparto. Abajo, cómo fue el período. Y cada cifra enlaza a la lista que la explica: ver «46 intentos fallidos» y no poder abrirlos es lo que hace que nadie entre al panel dos veces."
               className="max-w-none"
             />
 
@@ -562,7 +603,7 @@ export default function LandingPage() {
 
               <ul className="mt-8 flex flex-col gap-3">
                 {[
-                  "Llaves de API por comercio, revocables",
+                  "Llaves por comercio, revocables y con alcance: solo lectura de envíos, o también casilleros",
                   "Firma x-ruteo-signature en cada entrega",
                   "Reintentos con espera creciente ante un 5xx",
                   "Eventos en vivo por WebSocket para el mapa",
@@ -699,8 +740,9 @@ export default function LandingPage() {
 
           <p className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck className="size-3.5 shrink-0" />
-            Precios en lempiras, sin impuestos. Se cambia de plan cuando quieras
-            y el límite cuenta por período de facturación.
+            Precios en lempiras, sin impuestos. Los planes de pago empiezan con
+            14 días de prueba y sin tarjeta. Se cambia de plan cuando quieras y
+            el límite cuenta por período de facturación.
           </p>
         </Seccion>
 

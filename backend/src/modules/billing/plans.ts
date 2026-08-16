@@ -10,6 +10,16 @@ export interface PlanDefinition {
 }
 
 // Static plan catalog. Prices are in HNL/month; `shipmentLimit` null = unlimited.
+//
+// **`features` es un RESUMEN de venta, no la fuente de la verdad.** Quién puede
+// entrar a qué lo decide `MODULOS_POR_PLAN` en `platform/modules.catalog.ts`, y
+// es lo único que aplican los guards. Esto son las cuatro líneas que se pintan
+// en la pantalla de Facturación y en la landing, agrupadas para que se lean.
+//
+// Al tocar el catálogo hay que repasar esta lista, porque nada obliga a que
+// cuadren: así fue como el plan FREE acabó anunciando «1 usuario» —un límite
+// que no existe en ningún sitio del código— y PRO se dejaba fuera casilleros y
+// aduana, que son justamente lo que ese plan abre.
 export const PLANS: Record<Plan, PlanDefinition> = {
   [Plan.FREE]: {
     plan: Plan.FREE,
@@ -17,7 +27,8 @@ export const PLANS: Record<Plan, PlanDefinition> = {
     monthlyAmount: 0,
     currency: 'HNL',
     shipmentLimit: 50,
-    features: ['Rastreo básico', '1 usuario'],
+    // SHIPMENTS, CUSTOMERS, BILLING, NOTIFICATIONS.
+    features: ['Envíos y clientes', 'Rastreo público', 'Avisos automáticos'],
   },
   [Plan.STARTER]: {
     plan: Plan.STARTER,
@@ -25,7 +36,13 @@ export const PLANS: Record<Plan, PlanDefinition> = {
     monthlyAmount: 490,
     currency: 'HNL',
     shipmentLimit: 500,
-    features: ['Rutas', 'Etiquetas', 'API keys'],
+    // + ROUTES, DRIVERS, INTAKE, PRICING, INTEGRATIONS.
+    features: [
+      'Rutas y repartidores',
+      'Recepción en bodega',
+      'Zonas y tarifas',
+      'Llaves de API y webhooks',
+    ],
   },
   [Plan.PRO]: {
     plan: Plan.PRO,
@@ -33,7 +50,14 @@ export const PLANS: Record<Plan, PlanDefinition> = {
     monthlyAmount: 1490,
     currency: 'HNL',
     shipmentLimit: 5000,
-    features: ['Webhooks', 'Importación CSV', 'COD'],
+    // + LOCKERS, CUSTOMS, CARRIERS, MANIFESTS, EXCEPTIONS, PAYMENTS,
+    // AFTERSALES, AUDIT.
+    features: [
+      'Casilleros y aduana',
+      'Manifiestos y excepciones',
+      'Cobros y posventa',
+      'Auditoría',
+    ],
   },
   [Plan.ENTERPRISE]: {
     plan: Plan.ENTERPRISE,
@@ -41,7 +65,7 @@ export const PLANS: Record<Plan, PlanDefinition> = {
     monthlyAmount: 4990,
     currency: 'HNL',
     shipmentLimit: null,
-    features: ['Todo incluido', 'Soporte dedicado'],
+    features: ['Los 17 módulos', 'Soporte dedicado'],
   },
 };
 
