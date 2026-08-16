@@ -4,7 +4,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Plan, TenantModule, TenantStatus, UserStatus } from '@prisma/client';
+import {
+  Plan,
+  Prisma,
+  TenantModule,
+  TenantStatus,
+  UserStatus,
+} from '@prisma/client';
 import { claveEstadoTenant } from '../../common/guards/tenant-access.guard';
 import { RedisService } from '../../redis/redis.service';
 import { StorageService } from '../../storage/storage.service';
@@ -17,6 +23,7 @@ import {
   modulosEfectivos,
 } from './modules.catalog';
 import { PlatformPrismaService } from './platform-prisma.service';
+import { coincideSinTildes, patronDe } from '../../common/sql/sin-tildes';
 
 function inicioDeMes(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -133,15 +140,22 @@ export class PlatformService {
 
   /** Lista de empresas con lo que se necesita para decidir de un vistazo. */
   async listarTenants(busqueda?: string) {
+    const termino = busqueda?.trim();
+
+    // Sin tildes, igual que el resto de buscadores. Aquí no hay `withTenant`
+    // —esta consulta es de plataforma y cruza todas las empresas a propósito—,
+    // así que el SQL crudo va contra el cliente sin filtro de RLS.
+    let filtro: Prisma.TenantWhereInput | undefined;
+    if (termino) {
+      const filas = await this.db.$queryRaw<{ id: string }[]>`
+        SELECT id
+          FROM tenants
+         WHERE ${coincideSinTildes(['name', 'slug'], patronDe(termino))}`;
+      filtro = { id: { in: filas.map((f) => f.id) } };
+    }
+
     const tenants = await this.db.tenant.findMany({
-      where: busqueda
-        ? {
-            OR: [
-              { name: { contains: busqueda, mode: 'insensitive' } },
-              { slug: { contains: busqueda, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
+      where: filtro,
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

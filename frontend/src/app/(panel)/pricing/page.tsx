@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { api, ApiError, Rate, RateQuote, Zone } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -61,6 +63,7 @@ const EMPTY_RATE = {
 const num = (v: string) => (v.trim() === "" ? undefined : Number(v));
 
 export default function PricingPage() {
+  const confirmar = useConfirmar();
   const [busy, setBusy] = useState(false);
 
   const [zoneOpen, setZoneOpen] = useState(false);
@@ -169,7 +172,15 @@ export default function PricingPage() {
   }
 
   async function remove(kind: "zones" | "rates", id: string, label: string) {
-    if (!window.confirm(`¿Eliminar ${label}?`)) return;
+    if (
+      !(await confirmar({
+        titulo: `¿Eliminar ${label}?`,
+        accion: "Eliminar",
+        peligro: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await api(`/${kind}/${id}`, { method: "DELETE" });
@@ -210,12 +221,10 @@ export default function PricingPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Zonas y tarifas</h1>
-        <p className="text-sm text-muted-foreground">
-          Cobertura, precios por zona y cotizador
-        </p>
-      </div>
+      <PageHeader
+        title="Zonas y tarifas"
+        description="Cobertura, precios por zona y cotizador"
+      />
 
       <Card className="overflow-hidden pb-0">
         <CardHeader>

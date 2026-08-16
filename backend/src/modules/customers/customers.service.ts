@@ -1,9 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Pagina, saltar } from '../../common/dto/paginacion.dto';
+import { coincideSinTildes, patronDe } from '../../common/sql/sin-tildes';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { QueryCustomersDto } from './dto/query-customers.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
+/** Lo que devuelve el listado: el cliente con sus dos contadores. */
+type Cliente = Prisma.CustomerGetPayload<{
+  include: { _count: { select: { lockers: true; shipments: true } } };
+}>;
 
 type ContactInput = {
   name: string;
@@ -31,25 +38,56 @@ export class CustomersService {
     );
   }
 
-  list(tenantId: string, filters: QueryCustomersDto) {
+  /**
+   * Los clientes, paginados y buscando sin tildes.
+   *
+   * Antes traía `take: 100` a secas y sin total: una empresa con 300 clientes
+   * veía 100 y nada en la pantalla decía que faltaban 200. Los clientes crecen
+   * con la operación, así que van con `PaginacionDto` y no con el tope de
+   * catálogo (ver la nota de `paginacion.dto.ts`).
+   */
+  async list(
+    tenantId: string,
+    filters: QueryCustomersDto,
+  ): Promise<Pagina<Cliente>> {
     const search = filters.search?.trim();
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.customer.findMany({
-        where: search
-          ? {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' } },
-                { email: { contains: search, mode: 'insensitive' } },
-                { phone: { contains: search, mode: 'insensitive' } },
-                { documentId: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {},
-        include: { _count: { select: { lockers: true, shipments: true } } },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-    );
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      let where: Prisma.CustomerWhereInput = {};
+
+      if (search) {
+        // Los ids que coinciden salen de SQL crudo porque hace falta
+        // `unaccent()`; el resto de la consulta sigue en el query builder para
+        // no perder `_count`, que en SQL habría que escribir a mano.
+        //
+        // Se materializan TODOS los ids que coinciden, no solo los de la
+        // página: es lo que permite que `count` diga la verdad. Está acotado
+        // por el tamaño de la tabla del tenant, que a esta escala es de miles.
+        // Si algún día molesta, el arreglo no es trocear esto sino una columna
+        // normalizada e indexada, y entonces todo vuelve al query builder.
+        const filas = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id
+            FROM customers
+           WHERE ${coincideSinTildes(
+             ['name', 'email', 'phone', 'document_id'],
+             patronDe(search),
+           )}`;
+        where = { id: { in: filas.map((f) => f.id) } };
+      }
+
+      const [items, total] = await Promise.all([
+        tx.customer.findMany({
+          where,
+          include: { _count: { select: { lockers: true, shipments: true } } },
+          orderBy: { createdAt: 'desc' },
+          skip: saltar(filters),
+          take: filters.pageSize,
+        }),
+        tx.customer.count({ where }),
+      ]);
+
+      return { items, total, page: filters.page, pageSize: filters.pageSize };
+    });
   }
 
   async findOne(tenantId: string, id: string) {

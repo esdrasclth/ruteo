@@ -10,12 +10,14 @@ import {
   CustomerAddress,
   DeliveryMode,
   DELIVERY_MODE_LABELS,
+  Paginated,
   Shipment,
   ShipmentType,
   Warehouse,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { TYPE_LABELS } from "@/lib/shipment-status";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -67,14 +69,15 @@ export default function NewShipmentPage() {
   // Las sucursales se filtran por `allowsPickup`: ofrecer una bodega de tránsito
   // como punto de retiro manda al cliente a un portón donde no hay mostrador, y
   // el backend lo rechaza igual.
-  const { datos: datosClientes } = useApi<Customer[]>("/customers", {
-    silencioso: true,
-  });
+  const { datos: datosClientes } = useApi<Paginated<Customer>>(
+    "/customers?pageSize=100",
+    { silencioso: true },
+  );
   const { datos: bodegas } = useApi<Warehouse[]>("/warehouses", {
     silencioso: true,
   });
 
-  const clientes = datosClientes ?? [];
+  const clientes = datosClientes?.items ?? [];
   const sucursales = bodegas?.filter((w) => w.allowsPickup) ?? [];
 
   // Las direcciones dependen del cliente elegido: sin cliente no hay clave y no
@@ -156,7 +159,12 @@ export default function NewShipmentPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <h1 className="mb-4 text-2xl font-semibold">Nuevo envío</h1>
+      <PageHeader
+        breadcrumbs={[{ label: "Envíos", href: "/shipments" }, { label: "Nuevo" }]}
+        title="Nuevo envío"
+        description="Un envío local va directo a reparto; uno internacional arranca su recorrido por tramos."
+      />
+      <div className="h-4" />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Datos del envío</CardTitle>

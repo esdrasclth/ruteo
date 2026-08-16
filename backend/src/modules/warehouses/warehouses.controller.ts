@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -24,6 +25,7 @@ import {
   UpdateWarehouseDto,
 } from './dto/warehouse.dto';
 import { WarehousesService } from './warehouses.service';
+import { PaginacionDto } from '../../common/dto/paginacion.dto';
 
 // Bajo el módulo INTAKE: una bodega es parte de la recepción, y darle módulo
 // propio habría obligado a activar una entrada más para poder usar la que ya
@@ -51,8 +53,8 @@ export class WarehousesController {
   // Antes de ':id' para que el segmento estático gane el match.
   @Get('trips')
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
-  listTrips(@CurrentUser() user: AuthUser) {
-    return this.warehouses.listTrips(user.tenantId);
+  listTrips(@CurrentUser() user: AuthUser, @Query() query: PaginacionDto) {
+    return this.warehouses.listTrips(user.tenantId, query);
   }
 
   @Post('trips')

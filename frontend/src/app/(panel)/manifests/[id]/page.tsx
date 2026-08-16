@@ -2,7 +2,7 @@
 
 import { FormEvent, use, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Send, Trash2 } from "lucide-react";
+import { Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -21,6 +21,7 @@ import {
   severityBadgeClass,
 } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -176,22 +177,21 @@ export default function ManifestDetailPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <Link
-        href="/manifests"
-        className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Manifiestos
-      </Link>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{m.number}</h1>
-          <Badge className={manifestStatusBadgeClass(m.status)}>
-            {MANIFEST_STATUS_LABELS[m.status]}
-          </Badge>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        breadcrumbs={[
+          { label: "Manifiestos", href: "/manifests" },
+          { label: m.number },
+        ]}
+        title={
+          <span className="flex items-center gap-3">
+            {m.number}
+            <Badge className={manifestStatusBadgeClass(m.status)}>
+              {MANIFEST_STATUS_LABELS[m.status]}
+            </Badge>
+          </span>
+        }
+        actions={
+          <div className="flex gap-2">
           {esBorrador && (
             <>
               <Button variant="outline" onClick={abrirAgregar} disabled={busy}>
@@ -213,8 +213,9 @@ export default function ManifestDetailPage({
               </Button>
             </>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* El vuelo se engancha DESPUÉS de armar el manifiesto: un manifiesto se
           prepara antes de saber en qué vuelo sale. Se puede cambiar incluso tras

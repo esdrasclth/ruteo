@@ -2,12 +2,14 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Archive, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Locker } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { LOCKER_STATUS_LABELS } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -89,12 +91,10 @@ export default function LockersPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Casilleros USA</h1>
-          <p className="text-sm text-muted-foreground">
-            {lockers ? `${lockers.length} casilleros` : "Cargando…"}
-          </p>
-        </div>
+      <PageHeader
+        title="Casilleros USA"
+        description="{lockers ? `${lockers.length} casilleros` : &quot;Cargando…&quot;}"
+      />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -193,10 +193,17 @@ export default function LockersPage() {
               ))}
             </div>
           ) : lockers.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              Sin casilleros. Crea el primero para asignar una dirección en USA
-              a un cliente.
-            </p>
+            <EmptyState
+              icon={Archive}
+              title="Sin casilleros"
+              description="Un casillero le da a un cliente una dirección propia en tu bodega de origen, y es a donde le llegan sus compras."
+              action={
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <Plus className="size-4" />
+                  Nuevo casillero
+                </Button>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

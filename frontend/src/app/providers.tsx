@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { SWRConfig } from "swr";
 import { conviveReintentar } from "@/lib/use-api";
+import { ConfirmarProvider } from "@/components/confirmar";
 
 /**
  * Política de caché de todo el panel, en un solo sitio.
@@ -34,7 +35,10 @@ export function Providers({ children }: { children: ReactNode }) {
         errorRetryCount: 2,
       }}
     >
-      {children}
+      {/* La confirmación vive aquí y no en el armazón del panel porque también
+          la necesitan las pantallas de plataforma. Solo monta un diálogo, que
+          está cerrado mientras nadie pregunte nada. */}
+      <ConfirmarProvider>{children}</ConfirmarProvider>
     </SWRConfig>
   );
 }

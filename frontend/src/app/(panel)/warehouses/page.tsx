@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api, ApiError, Warehouse, WarehouseType } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -185,13 +186,15 @@ export default function WarehousesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Bodegas</h1>
-        <Button onClick={abrirAlta}>
-          <Plus className="size-4" />
-          Nueva bodega
-        </Button>
-      </div>
+      <PageHeader
+        title="Bodegas"
+        actions={
+          <Button onClick={abrirAlta}>
+            <Plus className="size-4" />
+            Nueva bodega
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>

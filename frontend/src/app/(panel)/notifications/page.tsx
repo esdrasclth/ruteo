@@ -10,9 +10,12 @@ import {
   ApiError,
   NotificationChannel,
   NotificationRow,
+  Paginated,
   NotificationStatus,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { usePagina } from "@/lib/use-pagina";
+import { Paginacion } from "@/components/paginacion";
 import {
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_STATUS_LABELS,
@@ -94,16 +97,20 @@ function NotificationsContent() {
   if (status !== TODOS) params.set("status", status);
   if (channel !== TODOS) params.set("channel", channel);
   if (shipmentId) params.set("shipmentId", shipmentId);
-  const qs = params.toString();
+  // La página vuelve a 1 al cambiar cualquier filtro.
+  const [page, setPage] = usePagina(`${status}|${channel}|${shipmentId ?? ""}`);
 
-  const { datos, recargar: load } = useApi<NotificationRow[]>(
-    `/notifications${qs ? `?${qs}` : ""}`,
+  params.set("page", String(page));
+  params.set("pageSize", "20");
+
+  const { datos, recargar: load } = useApi<Paginated<NotificationRow>>(
+    `/notifications?${params}`,
     {
       mensajeDeError: "Error cargando notificaciones",
       keepPreviousData: true,
     },
   );
-  const rows = datos ?? null;
+  const rows = datos?.items ?? null;
 
   async function onSend(e: FormEvent) {
     e.preventDefault();
@@ -164,10 +171,18 @@ function NotificationsContent() {
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <CardTitle>Historial</CardTitle>
-            {fallidas > 0 ? (
-              <Badge className="bg-destructive/10 text-destructive">
-                {fallidas} fallida{fallidas === 1 ? "" : "s"}
-              </Badge>
+            {/* Cuenta solo lo que hay en pantalla, así que lo dice: antes
+                contaba sobre las 100 últimas y se leía como el total. Pulsarlo
+                filtra por fallidas, y entonces el pie sí da la cifra real. */}
+            {fallidas > 0 && status !== "FAILED" ? (
+              <button
+                type="button"
+                onClick={() => setStatus("FAILED")}
+                className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20"
+              >
+                {fallidas} fallida{fallidas === 1 ? "" : "s"} en esta página ·
+                ver todas
+              </button>
             ) : null}
           </div>
           <div className="flex items-center gap-2">
@@ -285,6 +300,16 @@ function NotificationsContent() {
           )}
         </CardContent>
       </Card>
+
+      {datos ? (
+        <Paginacion
+          page={datos.page}
+          pageSize={datos.pageSize}
+          total={datos.total}
+          onPage={setPage}
+          etiqueta="avisos"
+        />
+      ) : null}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

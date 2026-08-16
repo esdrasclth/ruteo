@@ -17,6 +17,8 @@ import {
   subscriptionStatusBadgeClass,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DatosFiscales } from "@/components/datos-fiscales";
 
 export default function BillingPage() {
+  const confirmar = useConfirmar();
   const [busy, setBusy] = useState(false);
 
   const mensajeDeError = "Error cargando facturación";
@@ -79,13 +82,19 @@ export default function BillingPage() {
 
   async function onCancel(atPeriodEnd: boolean) {
     if (
-      !window.confirm(
-        atPeriodEnd
-          ? "¿Cancelar al final del período actual?"
-          : "¿Cancelar ahora y volver al plan FREE?",
-      )
-    )
+      !(await confirmar({
+        titulo: atPeriodEnd
+          ? "¿Cancelar al final del período?"
+          : "¿Cancelar ahora?",
+        descripcion: atPeriodEnd
+          ? "Sigues con tu plan hasta que termine el período que ya pagaste, y no se renueva."
+          : "Vuelves al plan FREE en el acto, con sus límites y sin los módulos de pago.",
+        accion: "Cancelar suscripción",
+        peligro: true,
+      }))
+    ) {
       return;
+    }
     setBusy(true);
     try {
       await api("/billing/cancel", {
@@ -120,12 +129,10 @@ export default function BillingPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Facturación</h1>
-        <p className="text-sm text-muted-foreground">
-          Plan, uso del período y suscripción
-        </p>
-      </div>
+      <PageHeader
+        title="Facturación"
+        description="Plan, uso del período y suscripción."
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

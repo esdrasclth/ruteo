@@ -5,7 +5,17 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { NotificationChannel, NotificationStatus } from '@prisma/client';
+import {
+  Notification,
+  NotificationChannel,
+  NotificationStatus,
+  Prisma,
+} from '@prisma/client';
+import {
+  Pagina,
+  PaginacionDto,
+  saltar,
+} from '../../common/dto/paginacion.dto';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -142,25 +152,41 @@ export class NotificationsService {
     return updated;
   }
 
-  list(
+  /**
+   * El historial de avisos, paginado.
+   *
+   * Es de los listados que más rápido crecen —uno por cada cambio de estado de
+   * cada envío—, así que el `take: 100` que había se agotaba en días. Y la
+   * pantalla cuenta los fallidos sobre lo que recibe: con el corte mudo, «12
+   * fallidas» significaba «12 de las últimas 100», no del total.
+   */
+  async list(
     tenantId: string,
     filters: {
       status?: NotificationStatus;
       channel?: NotificationChannel;
       shipmentId?: string;
-    },
-  ) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.notification.findMany({
-        where: {
-          ...(filters.status ? { status: filters.status } : {}),
-          ...(filters.channel ? { channel: filters.channel } : {}),
-          ...(filters.shipmentId ? { shipmentId: filters.shipmentId } : {}),
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-    );
+    } & PaginacionDto,
+  ): Promise<Pagina<Notification>> {
+    const where: Prisma.NotificationWhereInput = {
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.channel ? { channel: filters.channel } : {}),
+      ...(filters.shipmentId ? { shipmentId: filters.shipmentId } : {}),
+    };
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [items, total] = await Promise.all([
+        tx.notification.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: saltar(filters),
+          take: filters.pageSize,
+        }),
+        tx.notification.count({ where }),
+      ]);
+
+      return { items, total, page: filters.page, pageSize: filters.pageSize };
+    });
   }
 
   /**

@@ -1,10 +1,21 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { Contact, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import { api, ApiError, Customer, CustomerListItem } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  Customer,
+  CustomerListItem,
+  Paginated,
+} from "@/lib/api";
+import { useApi } from "@/lib/use-api";
+import { usePagina } from "@/lib/use-pagina";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
+import { Paginacion } from "@/components/paginacion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -37,29 +48,31 @@ const EMPTY_FORM = {
 
 export default function CustomersPage() {
   const router = useRouter();
-  const [customers, setCustomers] = useState<CustomerListItem[] | null>(null);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const load = useCallback(async (term: string) => {
-    try {
-      const qs = term.trim()
-        ? `?search=${encodeURIComponent(term.trim())}`
-        : "";
-      setCustomers(await api<CustomerListItem[]>(`/customers${qs}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando clientes",
-      );
-    }
-  }, []);
-
+  // El `setState` va dentro del temporizador, no en el cuerpo del efecto: eso
+  // es sincronizar con algo de fuera y no un render en cascada.
+  const [busqueda, setBusqueda] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => load(search), 250);
+    const t = setTimeout(() => setBusqueda(search.trim()), 250);
     return () => clearTimeout(t);
-  }, [load, search]);
+  }, [search]);
+
+  // Al cambiar la búsqueda se vuelve a la página 1: quedarse en la 3 de un
+  // término nuevo enseña una lista vacía sin explicar por qué.
+  const [page, setPage] = usePagina(busqueda);
+
+  const params = new URLSearchParams({ page: String(page), pageSize: "20" });
+  if (busqueda) params.set("search", busqueda);
+
+  const { datos } = useApi<Paginated<CustomerListItem>>(
+    `/customers?${params}`,
+    { mensajeDeError: "Error cargando clientes", keepPreviousData: true },
+  );
+  const customers = datos?.items ?? null;
 
   function set(field: keyof typeof EMPTY_FORM) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -94,14 +107,17 @@ export default function CustomersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Clientes</h1>
-          <p className="text-sm text-muted-foreground">
-            {customers ? `${customers.length} clientes` : "Cargando…"}
-          </p>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+      <PageHeader
+        title="Clientes"
+        description={
+          datos
+            ? `${datos.total} cliente${datos.total === 1 ? "" : "s"}${
+                busqueda ? ` para “${busqueda}”` : ""
+              }`
+            : "Cargando…"
+        }
+        actions={
+          <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="size-4" />
@@ -165,8 +181,9 @@ export default function CustomersPage() {
               </DialogFooter>
             </form>
           </DialogContent>
-        </Dialog>
-      </div>
+          </Dialog>
+        }
+      />
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -187,9 +204,23 @@ export default function CustomersPage() {
               ))}
             </div>
           ) : customers.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              Sin clientes. Crea el primero o se generarán al abrir casilleros.
-            </p>
+            <EmptyState
+              icon={Contact}
+              title={busqueda ? "Sin coincidencias" : "Sin clientes"}
+              description={
+                busqueda
+                  ? `Ningún cliente coincide con “${busqueda}”. La búsqueda ignora las tildes, así que «lopez» encuentra «López».`
+                  : "Crea el primero o se generarán solos al abrir casilleros."
+              }
+              action={
+                busqueda ? null : (
+                  <Button size="sm" onClick={() => setOpen(true)}>
+                    <Plus className="size-4" />
+                    Nuevo cliente
+                  </Button>
+                )
+              }
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -228,6 +259,16 @@ export default function CustomersPage() {
           )}
         </CardContent>
       </Card>
+
+      {datos ? (
+        <Paginacion
+          page={datos.page}
+          pageSize={datos.pageSize}
+          total={datos.total}
+          onPage={setPage}
+          etiqueta="clientes"
+        />
+      ) : null}
     </div>
   );
 }

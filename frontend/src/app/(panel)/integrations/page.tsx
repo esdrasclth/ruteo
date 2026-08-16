@@ -15,6 +15,8 @@ import {
 import { useApi } from "@/lib/use-api";
 import { API_SCOPE_LABELS, API_SCOPES } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -82,6 +84,7 @@ function SecretReveal({ value, label }: { value: string; label: string }) {
 }
 
 export default function IntegrationsPage() {
+  const confirmar = useConfirmar();
   const [busy, setBusy] = useState(false);
 
   const [keyOpen, setKeyOpen] = useState(false);
@@ -140,7 +143,17 @@ export default function IntegrationsPage() {
   }
 
   async function onRevokeKey(k: ApiKey) {
-    if (!window.confirm(`¿Revocar la API key "${k.name}"?`)) return;
+    if (
+      !(await confirmar({
+        titulo: `¿Revocar la llave ${k.name}?`,
+        descripcion:
+          "Cualquier integración que la esté usando dejará de funcionar en el acto. No se puede volver a activar.",
+        accion: "Revocar",
+        peligro: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await api(`/api-keys/${k.id}`, { method: "DELETE" });
@@ -203,7 +216,16 @@ export default function IntegrationsPage() {
   }
 
   async function onDeleteWebhook(w: WebhookEndpoint) {
-    if (!window.confirm(`¿Eliminar el webhook ${w.url}?`)) return;
+    if (
+      !(await confirmar({
+        titulo: "¿Eliminar el webhook?",
+        descripcion: `Se dejarán de enviar eventos a ${w.url}.`,
+        accion: "Eliminar",
+        peligro: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await api(`/webhooks/${w.id}`, { method: "DELETE" });
@@ -220,12 +242,10 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Integraciones</h1>
-        <p className="text-sm text-muted-foreground">
-          API keys y webhooks para conectar sistemas externos.
-        </p>
-      </div>
+      <PageHeader
+        title="Integraciones"
+        description="API keys y webhooks para conectar sistemas externos."
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

@@ -13,6 +13,7 @@ import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { NotificationsService } from './notifications.service';
+import { PaginacionDto } from '../../common/dto/paginacion.dto';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
@@ -29,11 +30,13 @@ export class NotificationsController {
   @ApiQuery({ name: 'shipmentId', required: false })
   list(
     @CurrentUser() user: AuthUser,
+    @Query() paginacion: PaginacionDto,
     @Query('status') status?: NotificationStatus,
     @Query('channel') channel?: NotificationChannel,
     @Query('shipmentId') shipmentId?: string,
   ) {
     return this.notifications.list(user.tenantId, {
+      ...paginacion,
       status,
       channel,
       shipmentId,

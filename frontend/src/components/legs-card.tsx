@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { legModeLabel } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -89,6 +90,7 @@ export function LegsCard({
   shipment: ShipmentDetail;
   onChanged: () => void;
 }) {
+  const confirmar = useConfirmar();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(VACIO);
   const [carriers, setCarriers] = useState<Carrier[]>([]);
@@ -161,7 +163,17 @@ export function LegsCard({
   }
 
   async function borrar(legId: string, seq: number) {
-    if (!window.confirm(`¿Eliminar el tramo ${seq}?`)) return;
+    if (
+      !(await confirmar({
+        titulo: `¿Eliminar el tramo ${seq}?`,
+        descripcion:
+          "El recorrido se recalcula con los tramos que queden.",
+        accion: "Eliminar",
+        peligro: true,
+      }))
+    ) {
+      return;
+    }
     try {
       await api(`/shipments/${shipment.id}/legs/${legId}`, {
         method: "DELETE",

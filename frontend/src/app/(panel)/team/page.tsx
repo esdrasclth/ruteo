@@ -22,6 +22,7 @@ import {
   userStatusBadgeClass,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -100,16 +101,20 @@ export default function TeamPage() {
   const { datos: repartidores, recargar: recargarRepartidores } = useApi<
     Driver[]
   >(open ? "/drivers" : null, { silencioso: true });
+  // `pageSize` al tope: es un desplegable para enlazar cuenta, no un listado.
+  // Si una empresa llega a tener más clientes sin cuenta que esto, lo correcto
+  // no es subir el número sino buscar contra el servidor —ver la nota de
+  // `paginacion.dto.ts` en el backend.
   const { datos: clientes, recargar: recargarClientes } = useApi<
-    CustomerListItem[]
-  >(open ? "/customers" : null, { silencioso: true });
+    Paginated<CustomerListItem>
+  >(open ? "/customers?pageSize=100" : null, { silencioso: true });
 
   // Solo se puede enlazar lo que todavía no tiene cuenta.
   const linkables =
     repartidores && clientes
       ? {
           drivers: repartidores.filter((d) => !d.userId),
-          customers: clientes.filter((c) => !c.userId),
+          customers: clientes.items.filter((c) => !c.userId),
         }
       : null;
 
@@ -199,13 +204,10 @@ export default function TeamPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Equipo</h1>
-          <p className="text-sm text-muted-foreground">
-            {data ? `${data.total} miembros` : "Cargando…"}
-          </p>
-        </div>
+      <PageHeader
+        title="Equipo"
+        description={data ? `${data.total} miembros` : "Cargando…"}
+        actions={
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -347,7 +349,8 @@ export default function TeamPage() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       <Card className="overflow-hidden py-0">
         <CardContent className="p-0">

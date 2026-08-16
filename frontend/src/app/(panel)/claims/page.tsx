@@ -18,6 +18,7 @@ import {
   CLAIM_TYPE_LABELS,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -139,13 +140,10 @@ export default function ClaimsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Reclamos</h1>
-        <p className="text-sm text-muted-foreground">
-          Lo que el cliente reclama y qué se decidió. Las excepciones son lo que
-          detecta la bodega; esto es lo que pregunta quien recibe.
-        </p>
-      </div>
+      <PageHeader
+        title="Reclamos"
+        description="Lo que el cliente reclama y qué se decidió. Las excepciones son lo que detecta la bodega; esto es lo que pregunta quien recibe."
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
@@ -209,7 +207,6 @@ export default function ClaimsPage() {
               No hay reclamos con este filtro.
             </p>
           ) : (
-            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -323,7 +320,6 @@ export default function ClaimsPage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

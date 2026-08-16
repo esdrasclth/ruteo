@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { api, ApiError, CustomsCategory, CustomsRule } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -97,6 +99,7 @@ const VACIO = {
 };
 
 export default function CustomsRulesPage() {
+  const confirmar = useConfirmar();
   const [abierto, setAbierto] = useState(false);
   const [form, setForm] = useState(VACIO);
   const [busy, setBusy] = useState(false);
@@ -144,11 +147,12 @@ export default function CustomsRulesPage() {
 
   async function cerrar(r: CustomsRule) {
     if (
-      !window.confirm(
-        `¿Cerrar la regla ${etiquetaCategoria(r.category)} de ${r.country}?\n\n` +
-          "Deja de aplicarse desde ahora, pero se conserva: las liquidaciones " +
-          "que se hicieron con ella tienen que seguir pudiendo explicarse.",
-      )
+      !(await confirmar({
+        titulo: `¿Cerrar la regla ${etiquetaCategoria(r.category)} de ${r.country}?`,
+        descripcion:
+          "Deja de aplicarse desde ahora, pero se conserva: las liquidaciones que se hicieron con ella tienen que seguir pudiendo explicarse.",
+        accion: "Cerrar la regla",
+      }))
     ) {
       return;
     }
@@ -171,13 +175,15 @@ export default function CustomsRulesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Reglas de aduana</h1>
-        <Button onClick={() => setAbierto(true)}>
-          <Plus className="size-4" />
-          Nueva regla
-        </Button>
-      </div>
+      <PageHeader
+        title="Reglas de aduana"
+        actions={
+          <Button onClick={() => setAbierto(true)}>
+            <Plus className="size-4" />
+            Nueva regla
+          </Button>
+        }
+      />
 
       {reglas && !hayVigentes && (
         <Card className="border-amber-500/40 bg-amber-500/5">

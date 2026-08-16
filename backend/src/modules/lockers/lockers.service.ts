@@ -17,6 +17,13 @@ import { QueryPackagesDto } from './dto/query-packages.dto';
 import { UpdateLockerDto } from './dto/update-locker.dto';
 import { generateLockerCode } from './locker-code';
 import { packageReceivedMessage } from './package-message';
+import { Pagina, saltar } from '../../common/dto/paginacion.dto';
+import { coincideSinTildes, patronDe } from '../../common/sql/sin-tildes';
+
+/** Un bulto con el casillero al que pertenece. */
+type BultoConCasillero = Prisma.LockerPackageGetPayload<{
+  include: { locker: { select: { id: true; code: true; customerName: true } } };
+}>;
 
 @Injectable()
 export class LockersService {
@@ -424,36 +431,61 @@ export class LockersService {
     return { ...pkg, matched };
   }
 
-  // Cross-locker package feed for the warehouse intake screen.
-  listAllPackages(tenantId: string, filters: QueryPackagesDto) {
+  /**
+   * Los bultos de todos los casilleros, para la pantalla de recepción.
+   *
+   * Busca sin tildes y va paginado. Antes hacía las dos cosas mal: `contains`
+   * no encontraba «Rodríguez» tecleando «rodriguez», y el `take: 100` cortaba
+   * la bandeja sin decirlo —justo en la pantalla que se usa para vaciar una
+   * descarga entera.
+   */
+  async listAllPackages(
+    tenantId: string,
+    filters: QueryPackagesDto,
+  ): Promise<Pagina<BultoConCasillero>> {
     const search = filters.search?.trim();
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.lockerPackage.findMany({
-        where: {
-          ...(filters.status ? { status: filters.status } : {}),
-          ...(search
-            ? {
-                OR: [
-                  { externalTracking: { contains: search, mode: 'insensitive' } },
-                  { merchant: { contains: search, mode: 'insensitive' } },
-                  { description: { contains: search, mode: 'insensitive' } },
-                  { locker: { is: { code: { contains: search, mode: 'insensitive' } } } },
-                  {
-                    locker: {
-                      is: { customerName: { contains: search, mode: 'insensitive' } },
-                    },
-                  },
-                ],
-              }
-            : {}),
-        },
-        include: {
-          locker: { select: { id: true, code: true, customerName: true } },
-        },
-        orderBy: [{ receivedAt: 'desc' }, { preAlertedAt: 'desc' }],
-        take: 100,
-      }),
-    );
+
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const where: Prisma.LockerPackageWhereInput = {
+        ...(filters.status ? { status: filters.status } : {}),
+      };
+
+      if (search) {
+        // El join con `lockers` va aquí y no en el query builder porque se
+        // busca también por código de casillero y por nombre del cliente, que
+        // viven en la otra tabla. Ver `sin-tildes.ts`.
+        const filas = await tx.$queryRaw<{ id: string }[]>`
+          SELECT p.id
+            FROM locker_packages p
+            JOIN lockers l ON l.id = p.locker_id
+           WHERE ${coincideSinTildes(
+             [
+               'p.external_tracking',
+               'p.merchant',
+               'p.description',
+               'l.code',
+               'l.customer_name',
+             ],
+             patronDe(search),
+           )}`;
+        where.id = { in: filas.map((f) => f.id) };
+      }
+
+      const [items, total] = await Promise.all([
+        tx.lockerPackage.findMany({
+          where,
+          include: {
+            locker: { select: { id: true, code: true, customerName: true } },
+          },
+          orderBy: [{ receivedAt: 'desc' }, { preAlertedAt: 'desc' }],
+          skip: saltar(filters),
+          take: filters.pageSize,
+        }),
+        tx.lockerPackage.count({ where }),
+      ]);
+
+      return { items, total, page: filters.page, pageSize: filters.pageSize };
+    });
   }
 
   private async ensureExists(tenantId: string, id: string) {

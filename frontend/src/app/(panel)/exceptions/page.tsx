@@ -20,6 +20,7 @@ import {
   severityBadgeClass,
 } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -115,9 +116,11 @@ export default function ExceptionsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Excepciones</h1>
-        <div className="flex gap-1">
+      <PageHeader
+        title="Excepciones"
+        description="Diferencias detectadas al cotejar lo que llegó contra lo que venía declarado."
+        actions={
+          <div className="flex gap-1">
           {(["OPEN", "INVESTIGATING", "TODAS"] as const).map((f) => (
             <Button
               key={f}
@@ -128,8 +131,9 @@ export default function ExceptionsPage() {
               {f === "TODAS" ? "Todas" : EXCEPTION_STATUS_LABELS[f]}
             </Button>
           ))}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {resumen && resumen.abiertas > 0 && (
         <Card>

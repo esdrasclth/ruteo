@@ -10,6 +10,7 @@ import {
   IntakeResult,
   Locker,
   LockerPackageWithLocker,
+  Paginated,
   PackageCategory,
   PackageCondition,
 } from "@/lib/api";
@@ -19,6 +20,7 @@ import {
   packageStatusBadgeClass,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -114,17 +116,17 @@ export default function IntakePage() {
   const lockers = datosLockers ?? null;
 
   const mensajeDeError = "Error cargando recibos";
-  const prealertados = useApi<LockerPackageWithLocker[]>(
-    "/lockers/packages?status=PRE_ALERTED",
+  const prealertados = useApi<Paginated<LockerPackageWithLocker>>(
+    "/lockers/packages?status=PRE_ALERTED&pageSize=100",
     { mensajeDeError },
   );
-  const recibidos = useApi<LockerPackageWithLocker[]>(
-    "/lockers/packages?status=RECEIVED",
+  const recibidos = useApi<Paginated<LockerPackageWithLocker>>(
+    "/lockers/packages?status=RECEIVED&pageSize=50",
     { mensajeDeError },
   );
 
-  const pending = prealertados.datos ?? null;
-  const recent = recibidos.datos ?? null;
+  const pending = prealertados.datos?.items ?? null;
+  const recent = recibidos.datos?.items ?? null;
 
   const { recargar: recargarPrealertados } = prealertados;
   const { recargar: recargarRecibidos } = recibidos;
@@ -224,13 +226,10 @@ export default function IntakePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Recepción de almacén</h1>
-        <p className="text-sm text-muted-foreground">
-          Registra paquetes recibidos en bodega y asócialos a un casillero, sin
-          entrar a cada uno.
-        </p>
-      </div>
+      <PageHeader
+        title="Recepción de almacén"
+        description="Registra paquetes recibidos en bodega y asócialos a un casillero, sin entrar a cada uno."
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Registrar recibo */}

@@ -1,12 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ExternalLink, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Carrier, CarrierType } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { CARRIER_TYPE_LABELS } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -45,6 +48,7 @@ const EMPTY_FORM = {
 };
 
 export default function CarriersPage() {
+  const confirmar = useConfirmar();
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -106,7 +110,17 @@ export default function CarriersPage() {
   }
 
   async function onDelete(c: Carrier) {
-    if (!window.confirm(`¿Eliminar el transportista "${c.name}"?`)) return;
+    if (
+      !(await confirmar({
+        titulo: `¿Eliminar el transportista ${c.name}?`,
+        descripcion:
+          "Dejará de poder asignarse a viajes y tramos. Los que ya lo llevan no cambian.",
+        accion: "Eliminar",
+        peligro: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await api(`/carriers/${c.id}`, { method: "DELETE" });
@@ -123,13 +137,10 @@ export default function CarriersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Transportistas</h1>
-        <p className="text-sm text-muted-foreground">
-          Couriers, aerolíneas y navieras que mueven los tramos internacionales.
-          La plantilla de rastreo genera el enlace externo que ve el cliente.
-        </p>
-      </div>
+      <PageHeader
+        title="Transportistas"
+        description="Couriers, aerolíneas y navieras que mueven los tramos internacionales. La plantilla de rastreo genera el enlace externo que ve el cliente."
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -143,10 +154,17 @@ export default function CarriersPage() {
           {!carriers ? (
             <Skeleton className="h-24 w-full" />
           ) : carriers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay transportistas todavía. Agrega uno para poder asignarlo a
-              los tramos de un envío internacional.
-            </p>
+            <EmptyState
+              icon={Truck}
+              title="Sin transportistas"
+              description="Agrega uno para poder asignarlo a los tramos de un envío internacional."
+              action={
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <Plus className="size-4" />
+                  Nuevo transportista
+                </Button>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

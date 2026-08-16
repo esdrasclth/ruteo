@@ -6,11 +6,27 @@ import {
 import { Prisma, TripStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  Pagina,
+  PaginacionDto,
+  saltar,
+  TOPE_CATALOGO,
+} from '../../common/dto/paginacion.dto';
+import {
   CreateTripDto,
   CreateWarehouseDto,
   UpdateTripStatusDto,
   UpdateWarehouseDto,
 } from './dto/warehouse.dto';
+
+/** Lo que devuelve el listado de viajes: el viaje con su contexto. */
+type Viaje = Prisma.TripGetPayload<{
+  include: {
+    carrier: { select: { id: true; name: true } };
+    origin: { select: { id: true; code: true } };
+    destination: { select: { id: true; code: true } };
+    _count: { select: { manifests: true } };
+  };
+}>;
 
 /**
  * Bodegas y viajes.
@@ -31,7 +47,14 @@ export class WarehousesService {
   // tiene bodegas, no miles de bodegas.
   list(tenantId: string) {
     return this.prisma.withTenant(tenantId, (tx) =>
-      tx.warehouse.findMany({ orderBy: [{ type: 'asc' }, { code: 'asc' }] }),
+      // Las bodegas SÍ son catálogo —crecen con el tamaño de la empresa, no
+      // con la operación— y alimentan desplegables, así que no se paginan.
+      // Pero tampoco pueden ir sin techo, que es como estaban: `TOPE_CATALOGO`
+      // es el punto donde se deja de servir. Ver `paginacion.dto.ts`.
+      tx.warehouse.findMany({
+        orderBy: [{ type: 'asc' }, { code: 'asc' }],
+        take: TOPE_CATALOGO,
+      }),
     );
   }
 
@@ -60,19 +83,36 @@ export class WarehousesService {
 
   // --- Viajes ---------------------------------------------------------------
 
-  listTrips(tenantId: string) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.trip.findMany({
-        orderBy: { departureAt: 'desc' },
-        take: 100,
-        include: {
-          carrier: { select: { id: true, name: true } },
-          origin: { select: { id: true, code: true } },
-          destination: { select: { id: true, code: true } },
-          _count: { select: { manifests: true } },
-        },
-      }),
-    );
+  /**
+   * Los viajes, paginados.
+   *
+   * A diferencia de las bodegas, un viaje es un hecho de la operación: se
+   * acumulan uno por vuelo y no paran de crecer. Con el `take: 100` que había,
+   * una empresa con un año de vuelos veía los cien últimos y ninguna pantalla
+   * decía que hubiera más.
+   */
+  async listTrips(
+    tenantId: string,
+    filters: PaginacionDto,
+  ): Promise<Pagina<Viaje>> {
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const [items, total] = await Promise.all([
+        tx.trip.findMany({
+          orderBy: { departureAt: 'desc' },
+          skip: saltar(filters),
+          take: filters.pageSize,
+          include: {
+            carrier: { select: { id: true, name: true } },
+            origin: { select: { id: true, code: true } },
+            destination: { select: { id: true, code: true } },
+            _count: { select: { manifests: true } },
+          },
+        }),
+        tx.trip.count(),
+      ]);
+
+      return { items, total, page: filters.page, pageSize: filters.pageSize };
+    });
   }
 
   createTrip(tenantId: string, dto: CreateTripDto) {

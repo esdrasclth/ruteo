@@ -2,10 +2,11 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileDown, Upload } from "lucide-react";
+import { FileDown, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, getSession, ImportResult } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -85,19 +86,14 @@ export default function ImportShipmentsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/shipments">
-            <ArrowLeft className="size-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-semibold">Importar envíos (CSV)</h1>
-          <p className="text-sm text-muted-foreground">
-            Crea envíos en lote desde un archivo CSV con encabezado
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Envíos", href: "/shipments" },
+          { label: "Importar" },
+        ]}
+        title="Importar envíos (CSV)"
+        description="Crea envíos en lote desde un archivo CSV con encabezado. La carga valida fila por fila y devuelve los errores con su número de línea."
+      />
 
       <Card>
         <CardContent className="flex flex-col gap-4 pt-6">

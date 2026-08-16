@@ -7,13 +7,16 @@ import {
   api,
   ApiError,
   Carrier,
+  Paginated,
   Trip,
   TripStatus,
   Warehouse,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { Paginacion } from "@/components/paginacion";
 import { TRIP_STATUS_LABELS } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -88,10 +91,12 @@ export default function TripsPage() {
   const [form, setForm] = useState(VACIO);
   const [busy, setBusy] = useState(false);
 
-  const { datos, recargar: cargar } = useApi<Trip[]>("/warehouses/trips", {
-    mensajeDeError: "Error cargando viajes",
-  });
-  const viajes = datos ?? null;
+  const [page, setPage] = useState(1);
+  const { datos, recargar: cargar } = useApi<Paginated<Trip>>(
+    `/warehouses/trips?page=${page}&pageSize=20`,
+    { mensajeDeError: "Error cargando viajes", keepPreviousData: true },
+  );
+  const viajes = datos?.items ?? null;
 
   // Los catálogos no bloquean la lista y avisan en silencio: si fallan, el
   // formulario queda con menos opciones pero los viajes se siguen viendo.
@@ -168,18 +173,20 @@ export default function TripsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Viajes</h1>
-        <Button onClick={() => setAbierto(true)}>
-          <Plus className="size-4" />
-          Nuevo viaje
-        </Button>
-      </div>
+      <PageHeader
+        title="Viajes"
+        actions={
+          <Button onClick={() => setAbierto(true)}>
+            <Plus className="size-4" />
+            Nuevo viaje
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {viajes ? `${viajes.length} viaje(s)` : "Cargando…"}
+            {datos ? `${datos.total} viaje(s)` : "Cargando…"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -269,6 +276,16 @@ export default function TripsPage() {
           )}
         </CardContent>
       </Card>
+
+      {datos ? (
+        <Paginacion
+          page={datos.page}
+          pageSize={datos.pageSize}
+          total={datos.total}
+          onPage={setPage}
+          etiqueta="viajes"
+        />
+      ) : null}
 
       <Dialog open={abierto} onOpenChange={setAbierto}>
         <DialogContent>

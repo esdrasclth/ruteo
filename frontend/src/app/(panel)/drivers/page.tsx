@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Plus, Trash2 , Route as RouteIcon } from "lucide-react";
+import { Plus, Trash2, Users, Route as RouteIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -18,6 +18,9 @@ import {
   driverStatusBadgeClass,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmar } from "@/components/confirmar";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -48,6 +51,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DriversPage() {
+  const confirmar = useConfirmar();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -111,7 +115,17 @@ export default function DriversPage() {
   }
 
   async function onDelete(driver: Driver) {
-    if (!window.confirm(`¿Eliminar al driver "${driver.name}"?`)) return;
+    if (
+      !(await confirmar({
+        titulo: `¿Eliminar a ${driver.name}?`,
+        descripcion:
+          "Dejará de poder asignarse a rutas. Las entregas que ya hizo se conservan.",
+        accion: "Eliminar",
+        peligro: true,
+      }))
+    ) {
+      return;
+    }
     try {
       await api(`/drivers/${driver.id}`, { method: "DELETE" });
       toast.success("Driver eliminado");
@@ -125,13 +139,10 @@ export default function DriversPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Drivers</h1>
-          <p className="text-sm text-muted-foreground">
-            {drivers ? `${drivers.length} en la flota` : "Cargando…"}
-          </p>
-        </div>
+      <PageHeader
+        title="Repartidores"
+        description={drivers ? `${drivers.length} en la flota` : "Cargando…"}
+        actions={
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -209,7 +220,8 @@ export default function DriversPage() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       <Card className="overflow-hidden py-0">
         <CardContent className="p-0">
@@ -220,9 +232,17 @@ export default function DriversPage() {
               ))}
             </div>
           ) : drivers.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              Aún no hay drivers. Crea el primero.
-            </p>
+            <EmptyState
+              icon={Users}
+              title="Sin repartidores"
+              description="Sin repartidores no se pueden crear rutas: son a quien se le asignan las paradas."
+              action={
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <Plus className="size-4" />
+                  Nuevo repartidor
+                </Button>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

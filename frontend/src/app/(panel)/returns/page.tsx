@@ -19,6 +19,7 @@ import {
   RETURN_STATUS_LABELS,
 } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,13 +101,10 @@ export default function ReturnsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Devoluciones</h1>
-        <p className="text-sm text-muted-foreground">
-          Mercancía que vuelve. El envío conserva su número de rastreo: una
-          devolución no crea un envío nuevo.
-        </p>
-      </div>
+      <PageHeader
+        title="Devoluciones"
+        description="Mercancía que vuelve. El envío conserva su número de rastreo: una devolución no crea un envío nuevo."
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
@@ -174,7 +172,6 @@ export default function ReturnsPage() {
               No hay devoluciones con este filtro.
             </p>
           ) : (
-            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -277,7 +274,6 @@ export default function ReturnsPage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

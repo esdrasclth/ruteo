@@ -27,6 +27,7 @@ import { QueryUsersDto } from './dto/query-users.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { coincideSinTildes, patronDe } from '../../common/sql/sin-tildes';
 
 const PUBLIC_SELECT = {
   id: true,
@@ -233,19 +234,21 @@ export class UsersService {
   // Paginado: la lista del equipo incluye a los usuarios ligados a clientes y
   // repartidores, así que en una empresa con muchos de ellos deja de ser corta.
   list(tenantId: string, query: QueryUsersDto) {
+    const busqueda = query.search?.trim();
     const where: Prisma.UserWhereInput = {
       ...(query.role ? { role: query.role } : {}),
       ...(query.status ? { status: query.status } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { email: { contains: query.search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
     };
     return this.prisma.withTenant(tenantId, async (tx) => {
+      if (busqueda) {
+        // Sin tildes, como el resto del panel: buscar «Rodriguez» tiene que
+        // encontrar a «Rodríguez». Ver `sin-tildes.ts`.
+        const filas = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id
+            FROM users
+           WHERE ${coincideSinTildes(['name', 'email'], patronDe(busqueda))}`;
+        where.id = { in: filas.map((f) => f.id) };
+      }
       const [total, items] = await Promise.all([
         tx.user.count({ where }),
         tx.user.findMany({

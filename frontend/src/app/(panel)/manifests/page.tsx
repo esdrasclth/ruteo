@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ClipboardList, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, ManifestRow, Paginated } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -11,6 +11,8 @@ import {
   manifestStatusBadgeClass,
 } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -66,13 +68,15 @@ export default function ManifestsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Manifiestos</h1>
-        <Button onClick={() => setAbrir(true)}>
-          <Plus className="size-4" />
-          Nuevo manifiesto
-        </Button>
-      </div>
+      <PageHeader
+        title="Manifiestos"
+        actions={
+          <Button onClick={() => setAbrir(true)}>
+            <Plus className="size-4" />
+            Nuevo manifiesto
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -84,10 +88,16 @@ export default function ManifestsPage() {
           {!datos ? (
             <Skeleton className="h-40 w-full" />
           ) : datos.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Todavía no hay manifiestos. Uno agrupa las guías que viajan juntas
-              en un mismo vuelo, y es contra él que se cotea lo que llega.
-            </p>
+            <EmptyState
+              icon={ClipboardList}
+              title="Sin manifiestos"
+              description="Un manifiesto agrupa las guías que viajan juntas en un mismo vuelo, y es contra él que se coteja lo que llega."
+              action={
+                <Button size="sm" onClick={() => setAbrir(true)}>
+                  Crear el primero
+                </Button>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

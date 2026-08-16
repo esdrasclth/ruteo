@@ -293,7 +293,6 @@ export function Cargos({
             el flete y los extras se añaden aquí.
           </p>
         ) : (
-          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -367,7 +366,6 @@ export function Cargos({
                 ))}
               </TableBody>
             </Table>
-          </div>
         )}
       </CardContent>
 
