@@ -84,6 +84,15 @@ enum ShipmentEventType {
   CHARGE_COLLECTED
   EXCEPTION_OPENED
   EXCEPTION_RESOLVED
+  /// Posventa. Van en el historial del envio y no solo en la tabla del reclamo
+  /// porque la pregunta que se hace de verdad es «que paso con este bulto», y
+  /// responderla obligaria a mirar en cinco sitios distintos.
+  CLAIM_OPENED
+  /// Aprobado o rechazado: el desenlace va en el `metadata`.
+  CLAIM_RESOLVED
+  RETURN_STARTED
+  RETURN_COMPLETED
+  REFUND_ISSUED
   /// Nota a mano del operador. Es la valvula de escape: lo que pasa de verdad y
   /// no encaja en ningun tipo acaba escrito en algun sitio, y mejor aqui que en
   /// un WhatsApp.
@@ -544,6 +553,11 @@ enum TenantModule {
   MANIFESTS
   /// Excepciones: faltantes, sobrantes, daños, retenciones.
   EXCEPTIONS
+  /// Posventa: reclamos, devoluciones y reembolsos. Módulo propio y no dentro
+  /// de EXCEPTIONS porque son bandejas de dueños distintos —una la trabaja la
+  /// bodega y la otra atención al cliente—, y una empresa pequeña puede querer
+  /// la primera sin la segunda.
+  AFTERSALES
 }
 
 /// Excepción al conjunto de módulos que trae el plan.
@@ -645,6 +659,11 @@ model Tenant {
   idempotencyKeys IdempotencyKey[]
   credentialTokens CredentialToken[]
   moduleOverrides  TenantModuleOverride[]
+  claims           Claim[]
+  claimFiles       ClaimFile[]
+  exceptionFiles   ExceptionFile[]
+  returns          Return[]
+  refunds          Refund[]
 
   @@map("tenants")
 }
@@ -664,11 +683,17 @@ model User {
   emailVerified    Boolean    @default(false) @map("email_verified")
   role             Role       @default(OPERATOR)
   status           UserStatus @default(ACTIVE)
+  /// Foto de perfil. Apunta al `FileObject`, no a una URL: las URLs de este
+  /// sistema se firman al leer y caducan en minutos, así que guardar una aquí
+  /// sería guardar un pase muerto. `SetNull` porque quedarse sin foto no puede
+  /// llevarse por delante al usuario.
+  avatarFileId     String?    @map("avatar_file_id") @db.Uuid
   refreshTokenHash String?    @map("refresh_token_hash")
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  avatar   FileObject? @relation("AvatarDeUsuario", fields: [avatarFileId], references: [id], onDelete: SetNull)
   driver   Driver?
   customer Customer?
   credentialTokens CredentialToken[]
@@ -731,6 +756,7 @@ model Customer {
   lockers   Locker[]
   shipments Shipment[]
   addresses CustomerAddress[]
+  claims    Claim[]
 
   @@index([tenantId])
   @@map("customers")
@@ -864,6 +890,8 @@ model Shipment {
   exceptions    Exception[]
   documents     Document[]
   charges       Charge[]
+  claims        Claim[]
+  devolucion    Return?
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -1063,6 +1091,7 @@ model LockerPackage {
   warehouse Warehouse?  @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   photos    PackagePhoto[]
   exceptions Exception[]
+  claims     Claim[]
 
   @@index([tenantId])
   @@index([lockerId])
@@ -1097,6 +1126,7 @@ model Warehouse {
   tripsFrom Trip[]         @relation("BodegaOrigen")
   tripsTo   Trip[]         @relation("BodegaDestino")
   shipmentsForPickup Shipment[] @relation("EnvioSucursalDeEntrega")
+  returns   Return[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1251,6 +1281,8 @@ model Exception {
   shipment Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
   package  LockerPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
   manifest Manifest?      @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  files    ExceptionFile[]
+  claims   Claim[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -1303,6 +1335,7 @@ model Charge {
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  claims   Claim[]
 
   @@index([tenantId])
   @@index([shipmentId])
@@ -1339,6 +1372,9 @@ model FileObject {
   packagePhotos PackagePhoto[]
   facturaDe     LockerPackage[] @relation("FacturaDePaquete")
   documents     Document[]
+  claimFiles    ClaimFile[]
+  exceptionFiles ExceptionFile[]
+  avatarDe      User[]          @relation("AvatarDeUsuario")
 
   @@index([tenantId])
   @@map("file_objects")
@@ -1741,6 +1777,7 @@ model Payment {
   shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
   driver   Driver?   @relation(fields: [collectedByDriverId], references: [id], onDelete: SetNull)
   charges  Charge[]
+  refunds  Refund[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -1771,7 +1808,11 @@ model ApiKey {
   /// Sin alcances la llave no abre nada. El valor por defecto es la lista
   /// vacía, no «todo», para que una llave creada por un camino que todavía no
   /// los pide nazca inútil en vez de omnipotente.
-  scopes     ApiScope[]
+  ///
+  /// El `@default([])` está escrito aquí y no sólo en el SQL de la migración:
+  /// sin él el modelo y la base discrepan, y el siguiente `migrate diff` genera
+  /// un `DROP DEFAULT` que se lleva por delante justo esa garantía.
+  scopes     ApiScope[] @default([])
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -1912,4 +1953,274 @@ model IdempotencyKey {
   @@index([tenantId])
   @@index([expiresAt])
   @@map("idempotency_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 6 — Posventa
+//
+// Va al final del plan a propósito: un reclamo se resuelve con la evidencia que
+// las fases anteriores dejaron —fotos de la recepción, intentos de entrega con
+// motivo tipificado, cargos separados por naturaleza—. Sin eso, «se dañó»
+// contra «llegó así» es la palabra de uno contra la del otro.
+// ---------------------------------------------------------------------------
+
+enum ClaimType {
+  /// Llegó roto. La evidencia suele estar ya en las fotos de la recepción.
+  DAMAGED
+  /// No aparece. Distinto de MISSING_ITEM: aquí no hay bulto.
+  LOST
+  /// El bulto llegó pero le falta contenido.
+  MISSING_ITEM
+  /// Le cobraron de más, o algo que no correspondía.
+  WRONG_CHARGE
+  OTHER
+}
+
+/// El ciclo de un reclamo, que NO es el de una excepción.
+///
+/// Una excepción se resuelve arreglando algo; un reclamo se decide. Por eso hay
+/// dos finales distintos con dinero de por medio (`APPROVED` -> `SETTLED`) y uno
+/// sin él (`REJECTED`), en vez de un `RESOLVED` que no distingue quién tenía
+/// razón. Sin esa separación no se puede responder cuánto cuesta la posventa.
+enum ClaimStatus {
+  OPEN
+  INVESTIGATING
+  /// Se le da la razón. Todavía no se ha pagado nada.
+  APPROVED
+  REJECTED
+  /// Aprobado Y saldado: se emitió el reembolso.
+  SETTLED
+}
+
+enum ReturnDestination {
+  /// Se queda en una sucursal propia esperando a que lo retiren.
+  BRANCH
+  /// Vuelve a quien lo envió.
+  SENDER
+  /// Vuelve al comercio donde se compró. Es lo normal en compras de USA.
+  VENDOR
+  /// Nadie lo reclamó y se dispone de él. No es un fracaso administrativo: es
+  /// una salida que hay que poder contar.
+  ABANDONED
+}
+
+/// Por qué vuelve. Tipificado y no texto libre por lo mismo que los motivos de
+/// entrega fallida de la fase 5: sin valores cerrados no se puede saber si lo
+/// que devuelve la gente es un problema de direcciones o de precio.
+enum ReturnReason {
+  /// Se agotaron los intentos de entrega.
+  UNDELIVERABLE
+  /// El destinatario no lo quiso.
+  REFUSED
+  /// Nadie lo retiró de la sucursal en el plazo.
+  UNCLAIMED
+  /// No pagó los cargos, así que no se entrega.
+  UNPAID
+  /// Aduana no lo dejó entrar.
+  CUSTOMS_REJECTED
+  DAMAGED
+  OTHER
+}
+
+enum ReturnStatus {
+  /// Decidido pero el bulto sigue donde estaba.
+  PENDING
+  IN_TRANSIT
+  /// Llegó a su destino: entregado al remitente, en el estante de la sucursal
+  /// o dispuesto si era abandono.
+  COMPLETED
+  /// Se decidió devolver y luego no: el cliente apareció y lo retiró.
+  CANCELLED
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+/// Reclamo del cliente. Entidad propia y no un tipo de `Exception` porque el
+/// actor y el desenlace son otros: una excepción la abre la bodega y se cierra
+/// arreglando algo; un reclamo lo abre el cliente y se cierra con dinero o con
+/// un no razonado. Mezclarlos deja lo interno a un campo de ser visible fuera.
+model Claim {
+  id       String      @id @default(uuid()) @db.Uuid
+  tenantId String      @map("tenant_id") @db.Uuid
+  /// Código visible del reclamo (`REC-XXXXXX`), para poder decirlo por
+  /// teléfono. Aleatorio y no correlativo, como el resto de códigos del
+  /// sistema: un correlativo necesita una secuencia por empresa, y además le
+  /// dice a cualquier cliente cuántos reclamos lleva el courier este mes.
+  number   String
+  type     ClaimType
+  status   ClaimStatus @default(OPEN)
+
+  shipmentId String  @map("shipment_id") @db.Uuid
+  packageId  String? @map("package_id") @db.Uuid
+  /// Quién reclama. Opcional porque un reclamo puede entrar por teléfono antes
+  /// de saber a qué ficha corresponde.
+  customerId String? @map("customer_id") @db.Uuid
+  /// De qué excepción salió, si salió de una. Es el puente entre la bandeja
+  /// interna y la del cliente: la bodega detecta el daño, el cliente reclama.
+  exceptionId String? @map("exception_id") @db.Uuid
+  /// El cargo que se discute. Solo tiene sentido en WRONG_CHARGE.
+  chargeId    String? @map("charge_id") @db.Uuid
+
+  description String
+  /// Lo que pide. Puede no pedir cifra —«que me digan dónde está»—.
+  claimedAmount  Decimal? @map("claimed_amount") @db.Decimal(12, 2)
+  /// Lo que se le concede. Se guarda aparte de lo reclamado a propósito: la
+  /// diferencia entre ambos es la única forma de saber si la política de
+  /// posventa está calibrada o si se regatea caso por caso.
+  approvedAmount Decimal? @map("approved_amount") @db.Decimal(12, 2)
+  currency       String   @default("USD")
+
+  openedByUserId   String?   @map("opened_by_user_id") @db.Uuid
+  assignedToUserId String?   @map("assigned_to_user_id") @db.Uuid
+  resolvedByUserId String?   @map("resolved_by_user_id") @db.Uuid
+  /// Por qué se decidió lo que se decidió. Obligatorio al cerrar, lo comprueba
+  /// el servicio: un rechazo sin motivo escrito es el que vuelve por teléfono.
+  resolution       String?
+  resolvedAt       DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment  Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  package   LockerPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  customer  Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  exception Exception?     @relation(fields: [exceptionId], references: [id], onDelete: SetNull)
+  charge    Charge?        @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  files     ClaimFile[]
+  refunds   Refund[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([shipmentId])
+  @@index([customerId])
+  @@map("claims")
+}
+
+/// Evidencia del reclamo. Tabla puente y no una columna de archivo porque un
+/// reclamo llega con varias fotos, y con una sola columna la segunda obliga a
+/// elegir cuál se conserva.
+model ClaimFile {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  claimId      String   @map("claim_id") @db.Uuid
+  fileId       String   @map("file_id") @db.Uuid
+  /// Quién la aportó: el cliente que reclama o la empresa que se defiende. La
+  /// misma foto significa lo contrario según quién la trajo.
+  fromCustomer Boolean  @default(false) @map("from_customer")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim  Claim      @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  file   FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([claimId])
+  @@map("claim_files")
+}
+
+/// Evidencia de una excepción. Lo dejó pendiente la fase 2 —«el cotejo no tiene
+/// evidencia adjunta»— y su sitio es aquí porque es lo mismo que necesita un
+/// reclamo: sin la foto del bulto roto, la diferencia del cotejo es una cifra
+/// que nadie puede discutir después.
+model ExceptionFile {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  exceptionId String   @map("exception_id") @db.Uuid
+  fileId      String   @map("file_id") @db.Uuid
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exception Exception  @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  file      FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([exceptionId])
+  @@map("exception_files")
+}
+
+/// Devolución. Cuelga del envío original y no crea uno inverso: «abandonado» y
+/// «a sucursal» no son una entrega, así que un envío nuevo quedaría vacío en la
+/// mitad de los destinos, y el cliente perdería el número con el que ya venía
+/// rastreando.
+///
+/// Una por envío (`@unique`): un bulto vuelve una vez. Si vuelve a salir y a
+/// volver, es la misma devolución reabierta y no dos.
+model Return {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  shipmentId  String            @unique @map("shipment_id") @db.Uuid
+  destination ReturnDestination
+  reason      ReturnReason
+  status      ReturnStatus      @default(PENDING)
+
+  /// A qué sucursal vuelve. Solo con destino BRANCH; el servicio lo exige.
+  warehouseId String? @map("warehouse_id") @db.Uuid
+
+  notes String?
+  /// Cuántos intentos de entrega hubo antes de rendirse. Se copia al crear la
+  /// devolución en vez de contarse al leer: es la cifra que justifica la
+  /// decisión, y contarla después la haría cambiar con los datos.
+  attemptsBefore Int? @map("attempts_before")
+
+  decidedByUserId String?   @map("decided_by_user_id") @db.Uuid
+  completedAt     DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment  Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("returns")
+}
+
+/// Devolver dinero YA COBRADO. Lo dejó pendiente la fase 4, que lo separó de
+/// anular: `ChargeStatus.VOID` cubre el cargo que nunca debió emitirse —no hubo
+/// movimiento de caja— y esto cubre el que se cobró bien y hay que devolver.
+///
+/// Entidad propia y no un `Payment` de importe negativo: los negativos se
+/// cuelan en todas las sumas de analítica y convierten «cuánto se cobró» en
+/// «cuánto se cobró neto» sin que nadie lo haya pedido. Aquí el dinero que
+/// entra y el que sale son dos tablas, y cada pregunta tiene su respuesta.
+model Refund {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  /// El pago que se devuelve, entero o en parte.
+  paymentId String       @map("payment_id") @db.Uuid
+  /// El reclamo que lo motivó, si lo hubo: un reembolso también puede salir de
+  /// una devolución sin reclamo de por medio.
+  claimId   String?      @map("claim_id") @db.Uuid
+  status    RefundStatus @default(PENDING)
+
+  amount    Decimal        @db.Decimal(12, 2)
+  currency  String         @default("HNL")
+  method    PaymentMethod?
+  reason    String
+  reference String?
+
+  issuedByUserId String?   @map("issued_by_user_id") @db.Uuid
+  completedAt    DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  claim   Claim?  @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([paymentId])
+  @@map("refunds")
 }

@@ -1,0 +1,11 @@
+-- El modulo activable de posventa.
+--
+-- Va en su propia migracion y no en la de las tablas porque Postgres no deja
+-- USAR un valor de enum en la misma transaccion en que se anade, y el catalogo
+-- de modulos de un plan si lo usa al leer.
+--
+-- Ninguna empresa lo estrena activado: `MODULOS_POR_PLAN` lo da a PRO y
+-- ENTERPRISE, y quien tenga un plan menor lo vera apagado hasta que lo
+-- contrate. No hace falta relleno: los modulos efectivos se calculan al leer a
+-- partir del plan mas las excepciones de `tenant_module_overrides`.
+ALTER TYPE "TenantModule" ADD VALUE 'AFTERSALES';

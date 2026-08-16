@@ -9,6 +9,7 @@ export interface DatosDeEmpresa {
   taxId?: string;
   billingEmail?: string;
   billingAddress?: string;
+  volumetricDivisor?: number;
 }
 
 /** Una empresa donde existe un correo. Ver `candidatosPorCorreo`. */
@@ -81,6 +82,7 @@ export class TenantsService {
           taxId: true,
           billingEmail: true,
           billingAddress: true,
+          volumetricDivisor: true,
           subscription: {
             select: { status: true, currentPeriodEnd: true, plan: true },
           },

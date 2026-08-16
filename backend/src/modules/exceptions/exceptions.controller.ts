@@ -18,6 +18,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantAccessGuard } from '../../common/guards/tenant-access.guard';
+import { AddExceptionFileDto } from './dto/add-exception-file.dto';
 import {
   CreateExceptionDto,
   UpdateExceptionDto,
@@ -72,5 +73,26 @@ export class ExceptionsController {
     @Body() dto: UpdateExceptionDto,
   ) {
     return this.exceptions.update(user.tenantId, id, dto);
+  }
+
+  // OPERATOR incluido por lo mismo que en el alta: quien tiene el bulto roto
+  // delante es quien le hace la foto.
+  @Post(':id/archivos')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
+  addFile(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddExceptionFileDto,
+  ) {
+    return this.exceptions.addFile(user.tenantId, id, dto);
+  }
+
+  @Get(':id/archivos')
+  @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.SUPPORT)
+  listFiles(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.exceptions.listFiles(user.tenantId, id);
   }
 }

@@ -54,6 +54,15 @@ export const CATEGORIAS = {
   RECLAMOS: 'reclamos',
   /** Logotipo y demás material de marca de la empresa. */
   MARCA: 'marca',
+  /**
+   * Foto de perfil de una persona del equipo.
+   *
+   * El `propietarioId` es el id del usuario, así que cada uno tiene su carpeta
+   * y reemplazar la foto no pisa la de nadie. Se firma sólo para uno mismo —ver
+   * `UsersService`—, que es lo que hace que no exista la pregunta de si puedes
+   * escribir en la carpeta de otro.
+   */
+  AVATARES: 'avatares',
 } as const;
 
 export type Categoria = (typeof CATEGORIAS)[keyof typeof CATEGORIAS];

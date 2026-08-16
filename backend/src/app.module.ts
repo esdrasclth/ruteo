@@ -11,6 +11,9 @@ import { FilesModule } from './modules/files/files.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { ManifestsModule } from './modules/manifests/manifests.module';
 import { ExceptionsModule } from './modules/exceptions/exceptions.module';
+import { ClaimsModule } from './modules/claims/claims.module';
+import { ReturnsModule } from './modules/returns/returns.module';
+import { RefundsModule } from './modules/refunds/refunds.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -51,6 +54,9 @@ import { SearchModule } from './modules/search/search.module';
     WarehousesModule,
     ManifestsModule,
     ExceptionsModule,
+    ClaimsModule,
+    ReturnsModule,
+    RefundsModule,
     QueueModule,
     TenantsModule,
     AuthModule,

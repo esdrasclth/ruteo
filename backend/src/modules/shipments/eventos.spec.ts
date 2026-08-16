@@ -93,10 +93,20 @@ describe('VISIBILIDAD_POR_DEFECTO', () => {
       .filter(([, v]) => v === EventVisibility.PUBLIC)
       .map(([t]) => t)
       .sort();
+    // La lista se escribe entera y a mano a proposito: hacer publico un tipo
+    // nuevo tiene que obligar a pasar por aqui. Los cinco de posventa entraron
+    // con la fase 6 y son publicos porque el cliente es parte de esos hechos
+    // —abrio el reclamo, su paquete volvio, le devolvieron dinero—, al reves
+    // que las excepciones, que son diagnostico interno.
     expect(publicos).toEqual([
       'CHARGE_COLLECTED',
+      'CLAIM_OPENED',
+      'CLAIM_RESOLVED',
       'CUSTOMS_ASSESSED',
       'CUSTOMS_CLEARED',
+      'REFUND_ISSUED',
+      'RETURN_COMPLETED',
+      'RETURN_STARTED',
       'STATUS_CHANGED',
     ]);
   });

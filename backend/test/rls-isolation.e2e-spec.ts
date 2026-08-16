@@ -139,6 +139,24 @@ describe('Aislamiento multi-tenant en la base de datos (RLS)', () => {
         idDe: (t) => t.auditLogId,
         find: (tx, id) => tx.auditLog.findUnique({ where: { id } }),
       },
+      // Posventa. `claims` guarda la disputa de un cliente con su courier y
+      // `refunds` a quién se le devolvió dinero: es de lo más sensible que hay
+      // en la base, así que su aislamiento se comprueba como el del resto.
+      {
+        entidad: 'claims',
+        idDe: (t) => t.claimId,
+        find: (tx, id) => tx.claim.findUnique({ where: { id } }),
+      },
+      {
+        entidad: 'returns',
+        idDe: (t) => t.returnId,
+        find: (tx, id) => tx.return.findUnique({ where: { id } }),
+      },
+      {
+        entidad: 'refunds',
+        idDe: (t) => t.refundId,
+        find: (tx, id) => tx.refund.findUnique({ where: { id } }),
+      },
     ];
 
     it.each(lookups)(

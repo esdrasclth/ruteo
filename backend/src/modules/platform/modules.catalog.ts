@@ -54,6 +54,11 @@ export const MODULOS: ModuloInfo[] = [
     label: 'Integraciones (API)',
     grupo: 'Administración',
   },
+  {
+    key: TenantModule.AFTERSALES,
+    label: 'Posventa (reclamos y devoluciones)',
+    grupo: 'Operación',
+  },
 ];
 
 const T = TenantModule;
@@ -91,6 +96,10 @@ export const MODULOS_POR_PLAN: Record<Plan, TenantModule[]> = {
     // manifiesta y quien cotea. En un plan sin casilleros no hay qué manifestar.
     T.MANIFESTS,
     T.EXCEPTIONS,
+    // La posventa entra en PRO y no antes: reclamar exige la evidencia que
+    // generan casilleros, aduana y cargos, y sin esos módulos un reclamo se
+    // resuelve a ojo. Ofrecerlo en STARTER sería vender una bandeja vacía.
+    T.AFTERSALES,
   ],
   [Plan.ENTERPRISE]: MODULOS.map((m) => m.key),
 };

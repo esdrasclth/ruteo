@@ -48,6 +48,19 @@ export const VISIBILIDAD_POR_DEFECTO: Record<
   [ShipmentEventType.EXCEPTION_OPENED]: EventVisibility.INTERNAL,
   [ShipmentEventType.EXCEPTION_RESOLVED]: EventVisibility.INTERNAL,
   [ShipmentEventType.NOTE]: EventVisibility.INTERNAL,
+  // Posventa. Aquí el criterio de arriba se aplica al revés que con las
+  // excepciones, y no por inconsistencia: un reclamo lo abre el propio cliente,
+  // así que ocultárselo sería esconderle lo que él mismo escribió. Es
+  // exactamente lo que estaría preguntando por teléfono —«¿en qué va mi
+  // reclamo?»— y la razón por la que llamaría si no lo ve.
+  [ShipmentEventType.CLAIM_OPENED]: EventVisibility.PUBLIC,
+  [ShipmentEventType.CLAIM_RESOLVED]: EventVisibility.PUBLIC,
+  // La devolución cambia dónde está su paquete: si no la ve, lo sigue
+  // esperando en casa.
+  [ShipmentEventType.RETURN_STARTED]: EventVisibility.PUBLIC,
+  [ShipmentEventType.RETURN_COMPLETED]: EventVisibility.PUBLIC,
+  // Su dinero de vuelta. Igual que el cobro, que ya es público.
+  [ShipmentEventType.REFUND_ISSUED]: EventVisibility.PUBLIC,
 };
 
 export interface EventoNuevo {

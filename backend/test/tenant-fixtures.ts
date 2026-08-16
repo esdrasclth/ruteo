@@ -1,7 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import {
   LegMode,
+  ClaimType,
   NotificationChannel,
+  ReturnDestination,
+  ReturnReason,
   Plan,
   PrismaClient,
   Role,
@@ -163,6 +166,9 @@ export interface SeededTenant {
   subscriptionId: string;
   notificationId: string;
   auditLogId: string;
+  claimId: string;
+  returnId: string;
+  refundId: string;
 }
 
 // Siembra un tenant con una fila en cada tabla tenant-scoped relevante, de modo
@@ -336,6 +342,41 @@ export async function seedTenant(
       },
     });
 
+    // Posventa (fase 6). Se siembra aquí y no en su propia utilidad porque la
+    // prueba estructural de RLS enumera tablas explícitamente: una tabla nueva
+    // con `tenant_id` que no tenga fila aquí no la cubre nadie, y la migración
+    // podría olvidarse la política sin que fallara ningún test.
+    const claim = await tx.claim.create({
+      data: {
+        tenantId,
+        number: `REC-${label.slice(0, 6).toUpperCase()}`,
+        type: ClaimType.DAMAGED,
+        shipmentId: shipment.id,
+        customerId: customer.id,
+        description: `Reclamo de prueba de ${label}`,
+        claimedAmount: 100,
+      },
+    });
+
+    const devolucion = await tx.return.create({
+      data: {
+        tenantId,
+        shipmentId: shipment.id,
+        destination: ReturnDestination.SENDER,
+        reason: ReturnReason.REFUSED,
+      },
+    });
+
+    const refund = await tx.refund.create({
+      data: {
+        tenantId,
+        paymentId: payment.id,
+        claimId: claim.id,
+        amount: 50,
+        reason: `Reembolso de prueba de ${label}`,
+      },
+    });
+
     return {
       tenantId,
       slug,
@@ -358,6 +399,9 @@ export async function seedTenant(
       subscriptionId: subscription.id,
       notificationId: notification.id,
       auditLogId: auditLog.id,
+      claimId: claim.id,
+      returnId: devolucion.id,
+      refundId: refund.id,
     };
   });
 }

@@ -1,11 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -67,4 +70,24 @@ export class UpdateTenantDto {
   @IsString()
   @MaxLength(300)
   billingAddress?: string;
+
+  /**
+   * Divisor del peso volumetrico: `largo x ancho x alto (cm) / divisor`.
+   *
+   * Hasta ahora solo se cambiaba por base de datos —lo dejo anotado la fase 1
+   * como pendiente— asi que negociar un divisor con un cliente exigia un
+   * `UPDATE` a mano. Es un numero que cambia por acuerdo comercial: 5000 es lo
+   * habitual en carga aerea y 6000 lo usan algunos couriers.
+   *
+   * El minimo NO es 1: un divisor pequenisimo multiplica el peso cobrable por
+   * mil y convierte cada envio en una factura absurda. 1000 es holgado y sigue
+   * atajando el cero y los negativos, que ademas dividirian por cero.
+   */
+  @ApiPropertyOptional({ example: 5000, minimum: 1000, maximum: 10000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1000)
+  @Max(10000)
+  volumetricDivisor?: number;
 }

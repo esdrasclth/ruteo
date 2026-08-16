@@ -10,6 +10,9 @@ import { Prisma, Role, UserStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CATEGORIAS, prefijoDe } from '../../storage/claves';
+import { StorageService } from '../../storage/storage.service';
+import { FilesService } from '../files/files.service';
 import { CredentialsService } from '../auth/credentials.service';
 import {
   nombreDeUsuario,
@@ -17,10 +20,12 @@ import {
 } from '../auth/zitadel/zitadel.service';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { AuditService } from '../audit/audit.service';
+import { AvatarUploadUrlDto, FijarAvatarDto } from './dto/avatar.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const PUBLIC_SELECT = {
@@ -34,6 +39,18 @@ const PUBLIC_SELECT = {
   updatedAt: true,
 } satisfies Prisma.UserSelect;
 
+/**
+ * Lo mismo, mas el avatar. Va APARTE de `PUBLIC_SELECT` a proposito: ese lo
+ * usan tambien el listado del equipo y las altas, y la clave del bucket no
+ * puede salir en ninguna respuesta —es la ruta real del objeto—. Aqui sale
+ * porque `me()` la cambia por una URL firmada antes de responder.
+ */
+const SELECT_CON_AVATAR = {
+  ...PUBLIC_SELECT,
+  avatarFileId: true,
+  avatar: { select: { key: true } },
+} satisfies Prisma.UserSelect;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -41,6 +58,8 @@ export class UsersService {
     private readonly audit: AuditService,
     private readonly zitadel: ZitadelService,
     private readonly credenciales: CredentialsService,
+    private readonly storage: StorageService,
+    private readonly files: FilesService,
   ) {}
 
   // El nombre de usuario en ZITADEL lleva el slug del tenant delante, así que
@@ -53,13 +72,162 @@ export class UsersService {
     return t.slug;
   }
 
-  me(tenantId: string, userId: string) {
-    return this.prisma.withTenant(tenantId, (tx) =>
+  async me(tenantId: string, userId: string) {
+    const usuario = await this.prisma.withTenant(tenantId, (tx) =>
       tx.user.findUniqueOrThrow({
         where: { id: userId },
-        select: PUBLIC_SELECT,
+        select: SELECT_CON_AVATAR,
       }),
     );
+    return this.conAvatar(tenantId, usuario);
+  }
+
+  /**
+   * Cambia la clave del avatar por una URL firmada y la quita del resultado.
+   *
+   * La clave no sale nunca hacia fuera: es la ruta real dentro del bucket, y
+   * publicarla convierte cada respuesta en un mapa de dónde está todo. Lo que
+   * viaja es una URL que caduca en minutos.
+   *
+   * Que no se pueda firmar no rompe la respuesta —te quedas sin foto, no sin
+   * perfil—: es la misma regla que en las galerías de bultos y reclamos.
+   */
+  private async conAvatar<
+    T extends { avatar?: { key: string } | null; avatarFileId?: string | null },
+  >(tenantId: string, usuario: T) {
+    const { avatar, ...resto } = usuario;
+    return {
+      ...resto,
+      avatarUrl: avatar
+        ? await this.storage
+            .firmarDescarga(avatar.key, tenantId)
+            .catch(() => null)
+        : null,
+    };
+  }
+
+  /**
+   * Permiso para subir una foto de perfil.
+   *
+   * El `propietarioId` es SIEMPRE el usuario de la sesión, nunca algo que venga
+   * en el cuerpo. Por eso esto no pasa por `FilesService.urlDeSubida` —que
+   * acepta un propietario y comprueba que exista—: aquí no hay nada que
+   * comprobar porque no hay forma de pedir la carpeta de otra persona.
+   */
+  urlDeSubidaDeAvatar(
+    tenantId: string,
+    userId: string,
+    dto: AvatarUploadUrlDto,
+  ) {
+    return this.storage.firmarSubida({
+      tenantId,
+      categoria: CATEGORIAS.AVATARES,
+      propietarioId: userId,
+      nombreOriginal: dto.nombreOriginal,
+      contentType: dto.contentType,
+      sizeBytes: dto.sizeBytes,
+    });
+  }
+
+  /**
+   * Fija la foto ya subida.
+   *
+   * Comprueba que la clave sea de la carpeta de ESTE usuario antes de nada. Sin
+   * eso, alguien podría pasar la clave de un documento de aduana y dejarlo
+   * apuntado como su avatar, y la URL firmada se la serviría el sistema tan
+   * contento: sería una forma de leer archivos ajenos con la excusa de una foto.
+   *
+   * La foto anterior se borra —fila y objeto—. Sin esto, cada cambio de foto
+   * deja un objeto pagado en el bucket que nada referencia y nadie va a borrar.
+   */
+  async fijarAvatar(tenantId: string, userId: string, dto: FijarAvatarDto) {
+    const prefijoPropio = prefijoDe(tenantId, CATEGORIAS.AVATARES, userId);
+    if (!dto.clave.startsWith(prefijoPropio)) {
+      throw new BadRequestException('Esa foto no es tuya.');
+    }
+
+    const archivo = await this.files.confirmar(tenantId, userId, {
+      clave: dto.clave,
+      nombreOriginal: dto.nombreOriginal,
+    });
+
+    const anterior = await this.prisma.withTenant(tenantId, async (tx) => {
+      const actual = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { avatarFileId: true, avatar: { select: { key: true } } },
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: { avatarFileId: archivo.id },
+      });
+      return actual;
+    });
+
+    await this.borrarAvatarViejo(tenantId, anterior, archivo.id);
+    return this.me(tenantId, userId);
+  }
+
+  async quitarAvatar(tenantId: string, userId: string) {
+    const anterior = await this.prisma.withTenant(tenantId, async (tx) => {
+      const actual = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { avatarFileId: true, avatar: { select: { key: true } } },
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: { avatarFileId: null },
+      });
+      return actual;
+    });
+
+    await this.borrarAvatarViejo(tenantId, anterior, null);
+    return this.me(tenantId, userId);
+  }
+
+  /**
+   * Se hace DESPUÉS de desapuntar la columna y sin bloquear la respuesta.
+   *
+   * El orden importa: si se borrara primero y fallara el `update`, el usuario
+   * se quedaría apuntando a un objeto que ya no existe y su avatar sería un
+   * error permanente. Al revés, lo peor que pasa es un objeto huérfano.
+   */
+  private async borrarAvatarViejo(
+    tenantId: string,
+    anterior: { avatarFileId: string | null; avatar: { key: string } | null },
+    nuevoId: string | null,
+  ) {
+    if (!anterior.avatarFileId || anterior.avatarFileId === nuevoId) return;
+    try {
+      if (anterior.avatar) {
+        await this.storage.borrar(anterior.avatar.key, tenantId);
+      }
+      await this.prisma.withTenant(tenantId, (tx) =>
+        tx.fileObject.delete({ where: { id: anterior.avatarFileId! } }),
+      );
+    } catch {
+      // Un huérfano en el bucket no puede impedir que alguien cambie su foto.
+    }
+  }
+
+  /**
+   * Editar los propios datos.
+   *
+   * Escribe campo por campo desde `UpdateMeDto` en vez de esparcir el DTO
+   * entero: si mañana alguien le añade una propiedad a ese DTO, aquí no entra
+   * sola. Es el mismo tipo de descuido que dejaría a cualquiera cambiándose el
+   * rol, y no quiero que dependa de acordarse.
+   */
+  async actualizarme(tenantId: string, userId: string, dto: UpdateMeDto) {
+    await this.prisma.withTenant(tenantId, (tx) =>
+      tx.user.update({
+        where: { id: userId },
+        data: { name: dto.name },
+        select: { id: true },
+      }),
+    );
+    // Devuelve lo mismo que `me()`, con la foto incluida: si respondiera sin
+    // ella, la pantalla de perfil la perderia al guardar el nombre.
+    return this.me(tenantId, userId);
   }
 
   // Paginado: la lista del equipo incluye a los usuarios ligados a clientes y
