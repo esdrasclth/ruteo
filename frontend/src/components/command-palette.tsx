@@ -12,7 +12,8 @@ import {
   Search,
   Users,
 } from "lucide-react";
-import { api, ApiError, SearchHit, SearchResults } from "@/lib/api";
+import { SearchHit, SearchResults } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { cn } from "@/lib/utils";
 
 type Seccion = {
@@ -31,6 +32,14 @@ const SECCIONES: Seccion[] = [
 
 const MIN_CARACTERES = 2;
 
+/**
+ * El buscador se DESMONTA al cerrarse, y por eso ya no hace falta vaciarlo.
+ *
+ * Antes el componente seguía montado con un `if (!open) return null` dentro, y
+ * el estado sobrevivía: había que limpiarlo desde un `useEffect` que hacía tres
+ * `setState` seguidos —lo que marcaba `react-hooks/set-state-in-effect`—. Este
+ * envoltorio corta el árbol de verdad, y React se lleva el estado con él.
+ */
 export function CommandPalette({
   open,
   onOpenChange,
@@ -38,12 +47,51 @@ export function CommandPalette({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  if (!open) return null;
+  return <Paleta onOpenChange={onOpenChange} />;
+}
+
+function Paleta({
+  onOpenChange,
+}: {
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [resultados, setResultados] = useState<SearchResults | null>(null);
-  const [cargando, setCargando] = useState(false);
   const [activo, setActivo] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Cada búsqueda nueva vuelve la selección al primer resultado. Ajustado
+  // durante el render y no desde un efecto, que es la forma que documenta React
+  // para «reiniciar estado cuando cambian los datos»; ver `usePagina`.
+  const [buscadoAntes, setBuscadoAntes] = useState("");
+
+  // Debounce: el buscador dispara una consulta por tecla si no se espera. El
+  // `setState` vive dentro del temporizador, no en el cuerpo del efecto, que es
+  // lo que separa «sincronizar con algo de fuera» —legítimo— de un render en
+  // cascada.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(q.trim()), 220);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // Por debajo del mínimo la clave es nula y no se pide nada. Y como la clave
+  // ES el término, buscar dos veces lo mismo —volver a abrir el buscador y
+  // repetir la guía— sale de la caché sin ir a la red.
+  //
+  // De paso desaparece el descarte manual de respuestas fuera de orden: SWR
+  // solo entrega la respuesta de la clave vigente.
+  const { datos: resultados, cargando } = useApi<SearchResults>(
+    debounced.length < MIN_CARACTERES
+      ? null
+      : `/search?q=${encodeURIComponent(debounced)}`,
+    { silencioso: true, keepPreviousData: true },
+  );
+
+  if (buscadoAntes !== debounced) {
+    setBuscadoAntes(debounced);
+    setActivo(0);
+  }
 
   // Lista plana en el orden en que se pinta, para que las flechas recorran
   // todas las secciones como una sola lista.
@@ -52,42 +100,9 @@ export function CommandPalette({
     : [];
 
   useEffect(() => {
-    if (!open) {
-      setQ("");
-      setResultados(null);
-      setActivo(0);
-      return;
-    }
     const t = setTimeout(() => inputRef.current?.focus(), 30);
     return () => clearTimeout(t);
-  }, [open]);
-
-  // Debounce: el buscador dispara una consulta por tecla si no se espera.
-  useEffect(() => {
-    if (!open) return;
-    const termino = q.trim();
-    if (termino.length < MIN_CARACTERES) {
-      setResultados(null);
-      setCargando(false);
-      return;
-    }
-    setCargando(true);
-    const t = setTimeout(async () => {
-      try {
-        const r = await api<SearchResults>(
-          `/search?q=${encodeURIComponent(termino)}`,
-        );
-        // Descarta respuestas viejas que llegan fuera de orden.
-        setResultados((prev) => (r.query === termino ? r : prev));
-        setActivo(0);
-      } catch (err) {
-        if (!(err instanceof ApiError)) throw err;
-      } finally {
-        setCargando(false);
-      }
-    }, 220);
-    return () => clearTimeout(t);
-  }, [q, open]);
+  }, []);
 
   const irA = useCallback(
     (hit: SearchHit) => {
@@ -114,8 +129,6 @@ export function CommandPalette({
       irA(planos[activo]);
     }
   }
-
-  if (!open) return null;
 
   const termino = q.trim();
   let indiceGlobal = -1;

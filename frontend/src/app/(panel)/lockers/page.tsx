@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Locker } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { LOCKER_STATUS_LABELS } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,24 +42,16 @@ const EMPTY_FORM = {
 
 export default function LockersPage() {
   const router = useRouter();
-  const [lockers, setLockers] = useState<Locker[] | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const load = useCallback(async () => {
-    try {
-      setLockers(await api<Locker[]>("/lockers"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando casilleros",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos } = useApi<Locker[]>("/lockers", {
+    mensajeDeError: "Error cargando casilleros",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const lockers = datos ?? null;
 
   function set(field: keyof typeof EMPTY_FORM) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>

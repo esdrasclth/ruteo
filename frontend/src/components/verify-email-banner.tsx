@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { MailWarning, X } from "lucide-react";
-import { api, CurrentUser } from "@/lib/api";
+import { CurrentUser } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Button } from "@/components/ui/button";
 import { VerifyEmailDialog } from "@/components/verify-email-dialog";
 
@@ -20,21 +21,17 @@ export function VerifyEmailBanner() {
   // Consulta su propio estado en vez de leer la sesión guardada: esa sesión se
   // escribe al entrar y no se refresca, así que tras verificar seguiría
   // diciendo que falta hasta el siguiente inicio de sesión.
-  const [email, setEmail] = useState<string | null>(null);
+  //
+  // Es la MISMA clave que usa el armazón del panel para el avatar, así que las
+  // dos se sirven de una sola petición. La banda no sabe que el armazón
+  // existe: lo único que comparten es la ruta.
+  const { datos: yo, recargar } = useApi<CurrentUser>("/users/me", {
+    silencioso: true,
+  });
   const [oculto, setOculto] = useState(false);
   const [abierto, setAbierto] = useState(false);
 
-  useEffect(() => {
-    let vivo = true;
-    api<CurrentUser>("/users/me")
-      .then((me) => {
-        if (vivo && me.emailVerified === false) setEmail(me.email);
-      })
-      .catch(() => undefined);
-    return () => {
-      vivo = false;
-    };
-  }, []);
+  const email = yo?.emailVerified === false ? yo.email : null;
 
   if (!email || oculto) return null;
 
@@ -79,7 +76,9 @@ export function VerifyEmailBanner() {
         email={email}
         open={abierto}
         onOpenChange={setAbierto}
-        onVerificado={() => setEmail(null)}
+        // Se vuelve a pedir en vez de apagar la banda a mano: la clave es
+        // compartida, así que el armazón se entera del mismo cambio.
+        onVerificado={() => void recargar()}
       />
     </>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ShieldAlert, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
@@ -9,34 +9,41 @@ import {
   PlatformAdmin,
   platformApi,
 } from "@/lib/platform-api";
+import { usePlatformApi } from "@/lib/use-platform-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function AdminsPage() {
-  const [items, setItems] = useState<PlatformAdmin[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [yo, setYo] = useState<string | null>(null);
 
-  useEffect(() => {
-    setYo(getPlatformSession()?.email ?? null);
-    platformApi<PlatformAdmin[]>("/admins")
-      .then(setItems)
-      .catch((e) =>
-        setError(e instanceof ApiError ? e.message : "No se pudo cargar"),
-      );
-  }, []);
+  const {
+    datos,
+    error: fallo,
+    recargar,
+  } = usePlatformApi<PlatformAdmin[]>("/admins", { silencioso: true });
+
+  const items = datos ?? null;
+  const error = fallo
+    ? fallo instanceof ApiError
+      ? fallo.message
+      : "No se pudo cargar"
+    : null;
+
+  // La sesión de plataforma vive en el navegador y no cambia mientras dure la
+  // pantalla; leerla en el render evita el `setState` en efecto que había.
+  const yo = getPlatformSession()?.email ?? null;
 
   async function cambiar(a: PlatformAdmin) {
     setGuardando(true);
     const nuevo = a.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
     try {
-      setItems(
-        await platformApi<PlatformAdmin[]>(`/admins/${a.id}/status`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: nuevo }),
-        }),
+      // El PATCH devuelve la lista entera: se escribe en la caché sin volver a
+      // pedirla.
+      const lista = await platformApi<PlatformAdmin[]>(
+        `/admins/${a.id}/status`,
+        { method: "PATCH", body: JSON.stringify({ status: nuevo }) },
       );
+      await recargar(lista, { revalidate: false });
       toast.success(
         nuevo === "ACTIVE" ? "Cuenta reactivada" : "Cuenta desactivada",
       );

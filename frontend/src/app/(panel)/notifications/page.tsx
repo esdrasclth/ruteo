@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Bell, Send, X } from "lucide-react";
@@ -12,6 +12,7 @@ import {
   NotificationRow,
   NotificationStatus,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_STATUS_LABELS,
@@ -82,31 +83,27 @@ function NotificationsContent() {
   // Llega desde el detalle de un envío: "ver los avisos de este envío".
   const shipmentId = searchParams.get("shipmentId");
 
-  const [rows, setRows] = useState<NotificationRow[] | null>(null);
   const [status, setStatus] = useState<string>(TODOS);
   const [channel, setChannel] = useState<string>(TODOS);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (status !== TODOS) params.set("status", status);
-    if (channel !== TODOS) params.set("channel", channel);
-    if (shipmentId) params.set("shipmentId", shipmentId);
-    const qs = params.toString();
-    try {
-      setRows(await api<NotificationRow[]>(`/notifications${qs ? `?${qs}` : ""}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando notificaciones",
-      );
-    }
-  }, [status, channel, shipmentId]);
+  // La consulta se arma en el render porque ES la clave de caché.
+  const params = new URLSearchParams();
+  if (status !== TODOS) params.set("status", status);
+  if (channel !== TODOS) params.set("channel", channel);
+  if (shipmentId) params.set("shipmentId", shipmentId);
+  const qs = params.toString();
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos, recargar: load } = useApi<NotificationRow[]>(
+    `/notifications${qs ? `?${qs}` : ""}`,
+    {
+      mensajeDeError: "Error cargando notificaciones",
+      keepPreviousData: true,
+    },
+  );
+  const rows = datos ?? null;
 
   async function onSend(e: FormEvent) {
     e.preventDefault();

@@ -1,4 +1,5 @@
 import { API_URL, ApiError } from "@/lib/api";
+import { avisarSesionCambiada } from "@/lib/eventos";
 
 // Cliente del panel de plataforma.
 //
@@ -7,16 +8,24 @@ import { API_URL, ApiError } from "@/lib/api";
 // —peor— un fallo de código podría mandar el token de plataforma a un endpoint
 // de empresa o al revés. Aquí ni siquiera comparten el objeto de sesión.
 
-const PLATFORM_SESSION_KEY = "ruteo.platform.session";
+export const PLATFORM_SESSION_KEY = "ruteo.platform.session";
 
 export interface PlatformSession {
   accessToken: string;
   email: string;
 }
 
-export function getPlatformSession(): PlatformSession | null {
+/**
+ * La sesión en crudo. `usePlatformSesion` la necesita como CADENA: ver la
+ * explicación en `getSessionRaw` de `api.ts` —un objeto reparseado en cada
+ * lectura deja a `useSyncExternalStore` repintando para siempre.
+ */
+export function getPlatformSessionRaw(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(PLATFORM_SESSION_KEY);
+  return window.localStorage.getItem(PLATFORM_SESSION_KEY);
+}
+
+export function parsePlatformSession(raw: string | null): PlatformSession | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as PlatformSession;
@@ -25,12 +34,18 @@ export function getPlatformSession(): PlatformSession | null {
   }
 }
 
+export function getPlatformSession(): PlatformSession | null {
+  return parsePlatformSession(getPlatformSessionRaw());
+}
+
 export function setPlatformSession(s: PlatformSession) {
   window.localStorage.setItem(PLATFORM_SESSION_KEY, JSON.stringify(s));
+  avisarSesionCambiada();
 }
 
 export function clearPlatformSession() {
   window.localStorage.removeItem(PLATFORM_SESSION_KEY);
+  avisarSesionCambiada();
 }
 
 export async function platformApi<T>(

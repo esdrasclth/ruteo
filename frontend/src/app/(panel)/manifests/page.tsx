@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, ManifestRow, Paginated } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   MANIFEST_STATUS_LABELS,
   manifestStatusBadgeClass,
@@ -32,26 +33,17 @@ import {
 } from "@/components/ui/table";
 
 export default function ManifestsPage() {
-  const [datos, setDatos] = useState<Paginated<ManifestRow> | null>(null);
   const [abrir, setAbrir] = useState(false);
   const [numero, setNumero] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const cargar = useCallback(async () => {
-    try {
-      setDatos(
-        await api<Paginated<ManifestRow>>("/manifests?page=1&pageSize=50"),
-      );
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando manifiestos",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const { datos: respuesta, recargar: cargar } = useApi<Paginated<ManifestRow>>(
+    "/manifests?page=1&pageSize=50",
+    { mensajeDeError: "Error cargando manifiestos" },
+  );
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const datos = respuesta ?? null;
 
   async function crear(e: FormEvent) {
     e.preventDefault();

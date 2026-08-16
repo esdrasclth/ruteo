@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -15,9 +15,8 @@ import {
 } from "lucide-react";
 import {
   clearPlatformSession,
-  getPlatformSession,
-  PlatformSession,
 } from "@/lib/platform-api";
+import { usePlatformSesion } from "@/lib/use-sesion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -35,26 +34,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // imposible: el layout la mandaría al login en bucle.
   const esLogin = pathname === "/admin/login";
 
-  // La sesión se relee en cada cambio de ruta, no solo al montar. Con un
-  // `useState` inicializado una vez, al entrar desde /admin/login el layout ya
-  // estaba montado con `null` y rebotaba al login en bucle: el inicializador no
-  // se vuelve a ejecutar. Mismo patrón que `(panel)/layout.tsx`.
-  const [session, setSession] = useState<PlatformSession | null>(null);
-  const [comprobado, setComprobado] = useState(false);
+  // La sesión es una fuente externa a la que este componente se suscribe, así
+  // que entrar desde /admin/login la ve en el acto sin releerla a mano en cada
+  // cambio de ruta. Era eso lo que arreglaba el efecto de antes —el layout ya
+  // estaba montado con `null` y rebotaba al login en bucle—, y ahora sale de
+  // cómo se lee el dato, no de repetir la lectura. Mismo patrón que
+  // `(panel)/layout.tsx`.
+  const { sesion: session, resuelto: comprobado } = usePlatformSesion();
 
   useEffect(() => {
-    if (esLogin) {
-      setComprobado(true);
-      return;
-    }
-    const s = getPlatformSession();
-    if (!s) {
-      router.replace("/admin/login");
-      return;
-    }
-    setSession(s);
-    setComprobado(true);
-  }, [router, esLogin, pathname]);
+    if (esLogin || !comprobado) return;
+    if (!session) router.replace("/admin/login");
+  }, [router, esLogin, comprobado, session]);
 
   if (esLogin) return <>{children}</>;
   if (!comprobado || !session) return null;

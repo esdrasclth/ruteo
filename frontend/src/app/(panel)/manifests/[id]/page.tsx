@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, use, useCallback, useEffect, useState } from "react";
+import { FormEvent, use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
   Shipment,
   Trip,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   EXCEPTION_SEVERITY_LABELS,
   EXCEPTION_TYPE_LABELS,
@@ -62,7 +63,6 @@ export default function ManifestDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [m, setM] = useState<ManifestDetail | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [agregando, setAgregando] = useState(false);
@@ -77,19 +77,12 @@ export default function ManifestDetailPage({
     Record<string, { pieces: string; weight: string }>
   >({});
 
-  const cargar = useCallback(async () => {
-    try {
-      setM(await api<ManifestDetail>(`/manifests/${id}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando el manifiesto",
-      );
-    }
-  }, [id]);
-
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const { datos, recargar: cargar } = useApi<ManifestDetail>(`/manifests/${id}`, {
+    mensajeDeError: "Error cargando el manifiesto",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const m = datos ?? null;
 
   useEffect(() => {
     // Los viajes no bloquean la pantalla: si fallan, el manifiesto se ve igual y

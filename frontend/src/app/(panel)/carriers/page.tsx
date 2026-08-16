@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Carrier, CarrierType } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { CARRIER_TYPE_LABELS } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,24 +45,16 @@ const EMPTY_FORM = {
 };
 
 export default function CarriersPage() {
-  const [carriers, setCarriers] = useState<Carrier[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const load = useCallback(async () => {
-    try {
-      setCarriers(await api<Carrier[]>("/carriers"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando transportistas",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos, recargar: load } = useApi<Carrier[]>("/carriers", {
+    mensajeDeError: "Error cargando transportistas",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const carriers = datos ?? null;
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();

@@ -45,12 +45,15 @@ export function ChangePasswordDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      {/* Botón normal, no fantasma con colores del sidebar.
+          Vivía en el pie de la barra lateral, así que se pintaba con
+          `text-sidebar-foreground` —blanco— y al mudarse a la pantalla de
+          perfil, sobre una tarjeta blanca, desapareció: quedaba el texto de
+          alrededor y un hueco donde debía estar el botón. Es lo que pasa
+          cuando un componente lleva encima los colores del sitio donde estaba
+          en vez de los suyos. */}
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2 w-full justify-start gap-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-        >
+        <Button variant="outline" size="sm" className="gap-2">
           <KeyRound className="size-4" />
           Cambiar contraseña
         </Button>

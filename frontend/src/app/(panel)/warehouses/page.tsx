@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Pencil, Plus, Warehouse as WarehouseIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Warehouse, WarehouseType } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,26 +87,18 @@ const VACIO = {
 };
 
 export default function WarehousesPage() {
-  const [bodegas, setBodegas] = useState<Warehouse[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [abierto, setAbierto] = useState(false);
   /** Null = alta. Con valor = edición de esa bodega. */
   const [editando, setEditando] = useState<Warehouse | null>(null);
   const [form, setForm] = useState(VACIO);
 
-  const cargar = useCallback(async () => {
-    try {
-      setBodegas(await api<Warehouse[]>("/warehouses"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando bodegas",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const { datos, recargar: cargar } = useApi<Warehouse[]>("/warehouses", {
+    mensajeDeError: "Error cargando bodegas",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const bodegas = datos ?? null;
 
   function abrirAlta() {
     setEditando(null);

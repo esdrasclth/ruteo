@@ -1,6 +1,12 @@
 import type {
   ApiScope,
   CarrierType,
+  ClaimStatus,
+  ClaimType,
+  RefundStatus,
+  ReturnDestination,
+  ReturnReason,
+  ReturnStatus,
   ChargeConcept,
   ChargeKind,
   ChargeStatus,
@@ -435,3 +441,79 @@ export function chargeStatusBadgeClass(status: ChargeStatus): string {
       return "bg-destructive/10 text-destructive border border-destructive/30";
   }
 }
+
+// ---- Fase 6: posventa ----
+
+export const CLAIM_TYPE_LABELS: Record<ClaimType, string> = {
+  DAMAGED: "Dañado",
+  LOST: "Perdido",
+  MISSING_ITEM: "Falta contenido",
+  WRONG_CHARGE: "Cobro indebido",
+  OTHER: "Otro",
+};
+
+export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
+  OPEN: "Abierto",
+  INVESTIGATING: "En revisión",
+  APPROVED: "Aprobado",
+  REJECTED: "Rechazado",
+  SETTLED: "Liquidado",
+};
+
+/**
+ * El color dice quién tiene la pelota, no si la noticia es buena.
+ *
+ * `APPROVED` va en ámbar y no en verde a propósito: aprobado significa que hay
+ * dinero pendiente de salir, o sea trabajo sin terminar. El verde se reserva
+ * para `SETTLED`, que es cuando de verdad se cerró.
+ */
+export const CLAIM_STATUS_CLASSES: Record<ClaimStatus, string> = {
+  OPEN: "bg-destructive/10 text-destructive",
+  INVESTIGATING: "bg-blue-500/10 text-blue-700",
+  APPROVED: "bg-amber-500/10 text-amber-700",
+  REJECTED: "bg-muted text-muted-foreground",
+  SETTLED: "bg-primary/10 text-primary",
+};
+
+export const RETURN_DESTINATION_LABELS: Record<ReturnDestination, string> = {
+  BRANCH: "A sucursal",
+  SENDER: "Al remitente",
+  VENDOR: "Al vendedor",
+  ABANDONED: "Abandonado",
+};
+
+export const RETURN_REASON_LABELS: Record<ReturnReason, string> = {
+  UNDELIVERABLE: "No se pudo entregar",
+  REFUSED: "Rechazado por el destinatario",
+  UNCLAIMED: "Nadie lo retiró",
+  UNPAID: "Cargos sin pagar",
+  CUSTOMS_REJECTED: "Rechazado en aduana",
+  DAMAGED: "Dañado",
+  OTHER: "Otro",
+};
+
+export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
+  PENDING: "Pendiente",
+  IN_TRANSIT: "En camino",
+  COMPLETED: "Completada",
+  CANCELLED: "Cancelada",
+};
+
+export const RETURN_STATUS_CLASSES: Record<ReturnStatus, string> = {
+  PENDING: "bg-amber-500/10 text-amber-700",
+  IN_TRANSIT: "bg-blue-500/10 text-blue-700",
+  COMPLETED: "bg-primary/10 text-primary",
+  CANCELLED: "bg-muted text-muted-foreground",
+};
+
+export const REFUND_STATUS_LABELS: Record<RefundStatus, string> = {
+  PENDING: "Emitido",
+  COMPLETED: "Pagado",
+  FAILED: "Falló",
+};
+
+export const REFUND_STATUS_CLASSES: Record<RefundStatus, string> = {
+  PENDING: "bg-amber-500/10 text-amber-700",
+  COMPLETED: "bg-primary/10 text-primary",
+  FAILED: "bg-destructive/10 text-destructive",
+};

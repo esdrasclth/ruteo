@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, use, useCallback, useEffect, useState } from "react";
+import { FormEvent, use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Customer, CustomerDetail } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { STATUS_LABELS, TYPE_LABELS } from "@/lib/shipment-status";
 import {
   LOCKER_STATUS_LABELS,
@@ -45,7 +46,6 @@ export default function CustomerDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -56,19 +56,12 @@ export default function CustomerDetailPage({
     notes: "",
   });
 
-  const load = useCallback(async () => {
-    try {
-      setCustomer(await api<CustomerDetail>(`/customers/${id}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando el cliente",
-      );
-    }
-  }, [id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos, recargar: load } = useApi<CustomerDetail>(`/customers/${id}`, {
+    mensajeDeError: "Error cargando el cliente",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const customer = datos ?? null;
 
   function openEdit() {
     if (!customer) return;

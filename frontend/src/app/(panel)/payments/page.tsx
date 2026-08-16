@@ -15,6 +15,8 @@ import {
   PaymentMethod,
   PaymentSummaryRow,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
+import { usePagina } from "@/lib/use-pagina";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -74,13 +76,13 @@ function PaymentsContent() {
   const searchParams = useSearchParams();
   // Llega desde el detalle de un envio: "ver los cobros de este envio".
   const shipmentId = searchParams.get("shipmentId");
-  const [data, setData] = useState<Paginated<Payment> | null>(null);
-  const [summary, setSummary] = useState<PaymentSummaryRow[] | null>(null);
   const [cargos, setCargos] = useState<ChargesResumen | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [status, setStatus] = useState("ALL");
   const [type, setType] = useState("ALL");
-  const [page, setPage] = useState(1);
+  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin
+  // explicar por qué; `usePagina` vuelve al principio sin pasar por un efecto.
+  const [page, setPage] = usePagina(`${status}|${type}|${shipmentId}`);
   const [busy, setBusy] = useState(false);
 
   const [collecting, setCollecting] = useState<Payment | null>(null);
@@ -88,37 +90,34 @@ function PaymentsContent() {
   const [reference, setReference] = useState("");
   const [driverId, setDriverId] = useState<string>("NONE");
 
+  // La consulta se arma en el render porque ES la clave de caché.
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+  });
+  if (status !== "ALL") params.set("status", status);
+  if (type !== "ALL") params.set("type", type);
+  if (shipmentId) params.set("shipmentId", shipmentId);
+
+  // Dos consultas separadas y no un `Promise.all`: el resumen NO depende de los
+  // filtros, así que con su propia clave sobrevive a cada cambio de página en
+  // vez de volver a pedirse con la lista.
+  const lista = useApi<Paginated<Payment>>(`/payments?${params}`, {
+    mensajeDeError: "Error cargando pagos",
+    keepPreviousData: true,
+  });
+  const resumen = useApi<PaymentSummaryRow[]>("/payments/summary", {
+    mensajeDeError: "Error cargando pagos",
+  });
+
+  const data = lista.datos ?? null;
+  const summary = resumen.datos ?? null;
+
+  const { recargar: recargarLista } = lista;
+  const { recargar: recargarResumen } = resumen;
   const load = useCallback(async () => {
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(PAGE_SIZE),
-    });
-    if (status !== "ALL") params.set("status", status);
-    if (type !== "ALL") params.set("type", type);
-    if (shipmentId) params.set("shipmentId", shipmentId);
-    try {
-      const [list, sum] = await Promise.all([
-        api<Paginated<Payment>>(`/payments?${params}`),
-        api<PaymentSummaryRow[]>("/payments/summary"),
-      ]);
-      setData(list);
-      setSummary(sum);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando pagos",
-      );
-    }
-  }, [page, status, type, shipmentId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin explicar
-  // por qué; se vuelve al principio.
-  useEffect(() => {
-    setPage(1);
-  }, [status, type, shipmentId]);
+    await Promise.all([recargarLista(), recargarResumen()]);
+  }, [recargarLista, recargarResumen]);
 
   const payments = data?.items ?? null;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;

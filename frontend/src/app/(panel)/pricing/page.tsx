@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { Calculator, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Rate, RateQuote, Zone } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,8 +61,6 @@ const EMPTY_RATE = {
 const num = (v: string) => (v.trim() === "" ? undefined : Number(v));
 
 export default function PricingPage() {
-  const [zones, setZones] = useState<Zone[] | null>(null);
-  const [rates, setRates] = useState<Rate[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [zoneOpen, setZoneOpen] = useState(false);
@@ -79,26 +78,18 @@ export default function PricingPage() {
   });
   const [quote, setQuote] = useState<RateQuote | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [z, r] = await Promise.all([
-        api<Zone[]>("/zones"),
-        api<Rate[]>("/rates"),
-      ]);
-      setZones(z);
-      setRates(r);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError
-          ? err.message
-          : "Error cargando zonas y tarifas",
-      );
-    }
-  }, []);
+  const mensajeDeError = "Error cargando zonas y tarifas";
+  const consultaZonas = useApi<Zone[]>("/zones", { mensajeDeError });
+  const consultaTarifas = useApi<Rate[]>("/rates", { mensajeDeError });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const zones = consultaZonas.datos ?? null;
+  const rates = consultaTarifas.datos ?? null;
+
+  const { recargar: recargarZonas } = consultaZonas;
+  const { recargar: recargarTarifas } = consultaTarifas;
+  const load = useCallback(async () => {
+    await Promise.all([recargarZonas(), recargarTarifas()]);
+  }, [recargarZonas, recargarTarifas]);
 
   const zoneName = (id: string | null) =>
     id ? (zones?.find((z) => z.id === id)?.name ?? "—") : "General";

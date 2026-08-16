@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -14,6 +14,7 @@ import {
   ShipmentType,
   Warehouse,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { TYPE_LABELS } from "@/lib/shipment-status";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,9 +42,6 @@ export default function NewShipmentPage() {
   const [deliveryWarehouseId, setDeliveryWarehouseId] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [addressId, setAddressId] = useState("");
-  const [clientes, setClientes] = useState<Customer[]>([]);
-  const [sucursales, setSucursales] = useState<Warehouse[]>([]);
-  const [direcciones, setDirecciones] = useState<CustomerAddress[]>([]);
   const [form, setForm] = useState({
     recipientName: "",
     recipientPhone: "",
@@ -62,28 +60,31 @@ export default function NewShipmentPage() {
       setForm((f) => ({ ...f, [field]: e.target.value }));
   }
 
-  // Clientes y sucursales se cargan una vez. Las sucursales se filtran por
-  // `allowsPickup`: ofrecer una bodega de tránsito como punto de retiro manda al
-  // cliente a un portón donde no hay mostrador, y el backend lo rechaza igual.
-  useEffect(() => {
-    api<Customer[]>("/customers")
-      .then(setClientes)
-      .catch(() => setClientes([]));
-    api<Warehouse[]>("/warehouses")
-      .then((todas) => setSucursales(todas.filter((w) => w.allowsPickup)))
-      .catch(() => setSucursales([]));
-  }, []);
+  // Clientes y sucursales, cada uno con su clave: las comparten con las
+  // pantallas de Clientes y de Bodegas, así que venir de cualquiera de ellas a
+  // dar de alta un envío no vuelve a pedirlas.
+  //
+  // Las sucursales se filtran por `allowsPickup`: ofrecer una bodega de tránsito
+  // como punto de retiro manda al cliente a un portón donde no hay mostrador, y
+  // el backend lo rechaza igual.
+  const { datos: datosClientes } = useApi<Customer[]>("/customers", {
+    silencioso: true,
+  });
+  const { datos: bodegas } = useApi<Warehouse[]>("/warehouses", {
+    silencioso: true,
+  });
 
-  // Las direcciones dependen del cliente elegido, así que se piden al cambiarlo.
-  useEffect(() => {
-    if (!customerId) {
-      setDirecciones([]);
-      return;
-    }
-    api<CustomerAddress[]>(`/customers/${customerId}/addresses`)
-      .then(setDirecciones)
-      .catch(() => setDirecciones([]));
-  }, [customerId]);
+  const clientes = datosClientes ?? [];
+  const sucursales = bodegas?.filter((w) => w.allowsPickup) ?? [];
+
+  // Las direcciones dependen del cliente elegido: sin cliente no hay clave y no
+  // se pide nada, y al cambiarlo la clave cambia sola. Es lo que hacía el
+  // efecto, sin el `setDirecciones([])` de limpieza.
+  const { datos: datosDirecciones } = useApi<CustomerAddress[]>(
+    customerId ? `/customers/${customerId}/addresses` : null,
+    { silencioso: true },
+  );
+  const direcciones = datosDirecciones ?? [];
 
   /**
    * Al elegir una dirección guardada se rellena el destino visible.

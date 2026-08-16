@@ -1,209 +1,56 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  Scale,
-  Warehouse,
-  ClipboardList,
-  TriangleAlert,
-  Archive,
-  Bell,
-  CreditCard,
-  DollarSign,
-  Contact,
-  KeyRound,
-  LayoutDashboard,
-  LogOut,
-  Package,
-  PackageCheck,
-  Plane,
-  Receipt,
-  Route as RouteIcon,
-  ScrollText,
-  Search,
-  Users,
-  UserCog,
-} from "lucide-react";
-import { api, clearSession, getSession, Role, Session } from "@/lib/api";
+import { LogOut, Search } from "lucide-react";
+import { api, clearSession, CurrentUser } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
+import { useSesion } from "@/lib/use-sesion";
 import { ROLE_LABELS } from "@/lib/logistics";
-import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/avatar";
+import { EVENTO_PERFIL } from "@/lib/eventos";
 import { Button } from "@/components/ui/button";
 import {
   CommandPalette,
   useCommandPalette,
 } from "@/components/command-palette";
 import { VerifyEmailBanner } from "@/components/verify-email-banner";
-import { ChangePasswordDialog } from "./change-password-dialog";
-
-type NavItem = {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  roles?: Role[];
-};
-
-type NavGroup = { label: string | null; items: NavItem[] };
-
-// Agrupado por cómo se trabaja, no por módulo técnico: una lista plana de 15
-// entradas obliga a leerlas todas cada vez para encontrar una.
-//
-// `roles` refleja lo que permite el backend, entrada por entrada. No es el
-// control de acceso —ese lo hace `RolesGuard`, y el NAV se puede saltar
-// tecleando la URL—: es no ofrecer una pantalla que va a responder 403. Antes
-// solo Equipo y Auditoría lo declaraban, así que un CUSTOMER veía el panel
-// entero; ahora que el backend deniega por defecto, ofrecerlo todo sería
-// enseñar quince pantallas rotas.
-const OFICINA: Role[] = ["OWNER", "ADMIN", "OPERATOR"];
-const OFICINA_Y_SOPORTE: Role[] = [...OFICINA, "SUPPORT"];
-const JEFES: Role[] = ["OWNER", "ADMIN"];
-
-const NAV: NavGroup[] = [
-  {
-    label: null,
-    items: [
-      // Una sola entrada. Hubo dos —«Dashboard» y «Tablero»— y era un error:
-      // son la misma palabra en dos idiomas, así que el menú obligaba a
-      // adivinar cuál abrir, y encima enseñaban cifras distintas de lo que
-      // parecía lo mismo porque una filtraba por rango de fechas y la otra no.
-      // Ahora es una pantalla con dos mitades: «Ahora» y «En el período».
-      {
-        href: "/dashboard",
-        label: "Inicio",
-        icon: LayoutDashboard,
-        roles: OFICINA,
-      },
-    ],
-  },
-  {
-    label: "Operación",
-    items: [
-      {
-        href: "/shipments",
-        label: "Envíos",
-        icon: Package,
-        roles: [...OFICINA_Y_SOPORTE, "DRIVER", "MERCHANT"],
-      },
-      {
-        href: "/routes",
-        label: "Rutas",
-        icon: RouteIcon,
-        roles: [...OFICINA, "DRIVER"],
-      },
-      { href: "/drivers", label: "Repartidores", icon: Users, roles: OFICINA },
-      {
-        href: "/intake",
-        label: "Recepción",
-        icon: PackageCheck,
-        roles: OFICINA,
-      },
-      {
-        href: "/lockers",
-        label: "Casilleros",
-        icon: Archive,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/warehouses",
-        label: "Bodegas",
-        icon: Warehouse,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/carriers",
-        label: "Transportistas",
-        icon: Plane,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/trips",
-        label: "Viajes",
-        icon: Plane,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/manifests",
-        label: "Manifiestos",
-        icon: ClipboardList,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/exceptions",
-        label: "Excepciones",
-        icon: TriangleAlert,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/customs",
-        label: "Reglas de aduana",
-        icon: Scale,
-        roles: JEFES,
-      },
-    ],
-  },
-  {
-    label: "Comercial",
-    items: [
-      {
-        href: "/customers",
-        label: "Clientes",
-        icon: Contact,
-        roles: OFICINA_Y_SOPORTE,
-      },
-      {
-        href: "/pricing",
-        label: "Zonas y tarifas",
-        icon: DollarSign,
-        roles: OFICINA,
-      },
-      {
-        href: "/payments",
-        label: "Pagos",
-        icon: CreditCard,
-        roles: OFICINA,
-      },
-      { href: "/billing", label: "Facturación", icon: Receipt, roles: JEFES },
-    ],
-  },
-  {
-    label: "Administración",
-    items: [
-      {
-        href: "/notifications",
-        label: "Notificaciones",
-        icon: Bell,
-        roles: OFICINA,
-      },
-      { href: "/team", label: "Equipo", icon: UserCog, roles: JEFES },
-      { href: "/audit", label: "Auditoría", icon: ScrollText, roles: JEFES },
-      {
-        href: "/integrations",
-        label: "Integraciones",
-        icon: KeyRound,
-        roles: JEFES,
-      },
-    ],
-  },
-];
+// El menú vive aparte desde que se pliega: es estado, y tenerlo aquí mezclaba
+// la navegación con el armazón de la página, que no tiene nada que ver.
+import { hayAlgoVisible, PanelNav } from "./nav";
 
 export default function PanelLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [session, setSessionState] = useState<Session | null>(null);
-  const [ready, setReady] = useState(false);
+  const { sesion: session, resuelto: ready } = useSesion();
+  // La foto no cabe en la sesión guardada: su URL viene firmada y caduca en
+  // minutos, así que hay que pedirla al servidor y no leerla de `localStorage`.
+  //
+  // `VerifyEmailBanner` pide esta MISMA ruta. Antes eran dos peticiones en cada
+  // carga del panel, y el comentario que había aquí las daba por buenas
+  // ("una llamada barata"). Ya no: al compartir clave con `useApi`, SWR las
+  // sirve de una sola petición, y las dos pantallas siguen siendo
+  // independientes —que era la objeción a unificarlas— porque ninguna sabe de
+  // la otra. Verificar el correo invalida la clave y las dos se enteran.
+  const { datos: yo, recargar: recargarPerfil } = useApi<CurrentUser>(
+    session ? "/users/me" : null,
+    { silencioso: true },
+  );
   const { open: paletteOpen, setOpen: setPaletteOpen } = useCommandPalette();
 
   useEffect(() => {
-    const s = getSession();
-    if (!s) {
-      router.replace("/login");
-      return;
-    }
-    setSessionState(s);
-    setReady(true);
-  }, [router]);
+    if (ready && !session) router.replace("/login");
+  }, [ready, session, router]);
+
+  useEffect(() => {
+    // El menú NO se vuelve a montar al navegar, así que sin escuchar esto la
+    // foto recién cambiada seguiría siendo la vieja hasta recargar la página.
+    const alCambiar = () => void recargarPerfil();
+    window.addEventListener(EVENTO_PERFIL, alCambiar);
+    return () => window.removeEventListener(EVENTO_PERFIL, alCambiar);
+  }, [recargarPerfil]);
 
   async function onLogout() {
     try {
@@ -217,13 +64,10 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
   if (!ready || !session) return null;
 
-  const visible = (item: NavItem) =>
-    !item.roles || item.roles.includes(session.role);
-
   // Hoy solo le pasa a CUSTOMER, que no tiene ninguna pantalla del panel. Sin
   // esto vería la barra lateral vacía y un área en blanco, sin forma de saber
   // si es un fallo o si le falta un permiso.
-  if (!NAV.some((grupo) => grupo.items.some(visible))) {
+  if (!hayAlgoVisible(session.role)) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="max-w-md text-center">
@@ -279,64 +123,34 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           </span>
         </div>
 
-        {/* `overscroll-contain` es lo que quita el comportamiento raro: sin él,
-            al llegar al final del menú la rueda seguía y arrastraba el panel de
-            al lado, así que mover el menú movía la pantalla entera.
-            `overflow-y-auto` se queda porque no scrollea cuando cabe, y con 20
-            entradas + cabecera + pie no cabe por debajo de ~1060px de alto: sin
-            él, en un portátil normal quedarían fuera de alcance las últimas
-            entradas y el botón de cerrar sesión. */}
-        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-2 pb-1">
-          {NAV.map((grupo) => {
-            const items = grupo.items.filter(visible);
-            if (items.length === 0) return null;
-            return (
-              <div key={grupo.label ?? "principal"} className="flex flex-col gap-0.5">
-                {grupo.label ? (
-                  <p className="px-3 pb-0.5 pt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/35">
-                    {grupo.label}
-                  </p>
-                ) : null}
-                {items.map(({ href, label, icon: Icon }) => {
-                  const activo = pathname.startsWith(href);
-                  return (
-                    <Link
-                      key={href}
-                      href={href}
-                      aria-current={activo ? "page" : undefined}
-                      className={cn(
-                        // `py-1.5` y no `py-2`: son 4px por entrada y con 20
-                        // entradas eso es lo que decide si el menú cabe en un
-                        // portátil o hay que scrollearlo para llegar al final.
-                        "group flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-all",
-                        activo
-                          ? "glass-active text-sidebar-foreground"
-                          : "text-sidebar-foreground/65 hover:bg-white/5 hover:text-sidebar-foreground",
-                      )}
-                    >
-                      <Icon
-                        className={cn(
-                          "size-4 shrink-0 transition-colors",
-                          activo
-                            ? "text-sidebar-foreground"
-                            : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80",
-                        )}
-                      />
-                      {label}
-                    </Link>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </nav>
+        <PanelNav role={session.role} pathname={pathname} />
 
         <div className="border-t border-sidebar-border px-3 py-2 text-xs">
-          <p className="truncate font-medium">{session.name || session.email}</p>
-          <p className="truncate text-sidebar-foreground/60">
-            {ROLE_LABELS[session.role]}
-          </p>
-          <ChangePasswordDialog />
+          {/* El bloque del usuario ES el enlace a su perfil. Es donde la gente
+              va a buscar sus datos —el sitio donde ya está su nombre— y así no
+              hace falta una entrada más en la navegación, que es lo que se
+              acaba de adelgazar. El cambio de contraseña se fue a esa pantalla:
+              aquí abajo, pegado a «Cerrar sesión», no lo encontraba nadie. */}
+          <Link
+            href="/perfil"
+            className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1 transition-colors hover:bg-white/5"
+          >
+            <Avatar
+              url={yo?.avatarUrl ?? null}
+              nombre={yo?.name ?? session.name}
+              correo={yo?.email ?? session.email}
+              size={32}
+              className="bg-white/10 text-sidebar-foreground"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">
+                {yo?.name || session.name || session.email}
+              </span>
+              <span className="block truncate text-sidebar-foreground/60">
+                {ROLE_LABELS[session.role]} · Ver mi perfil
+              </span>
+            </span>
+          </Link>
           <Button
             variant="ghost"
             size="sm"

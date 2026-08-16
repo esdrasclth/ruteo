@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,7 @@ import {
   PlanDefinition,
   Subscription,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   SUBSCRIPTION_STATUS_LABELS,
   subscriptionStatusBadgeClass,
@@ -24,41 +25,39 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DatosFiscales } from "./datos-fiscales";
+import { DatosFiscales } from "@/components/datos-fiscales";
 
 export default function BillingPage() {
-  const [plans, setPlans] = useState<PlanDefinition[] | null>(null);
-  const [usage, setUsage] = useState<BillingUsage | null>(null);
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const [p, u] = await Promise.all([
-        api<PlanDefinition[]>("/billing/plans"),
-        api<BillingUsage>("/billing/usage"),
-      ]);
-      setPlans(p);
-      setUsage(u);
-      try {
-        setSubscription(await api<Subscription>("/billing/subscription"));
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) setSubscription(null);
-        else throw err;
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando facturación",
-      );
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
+  const mensajeDeError = "Error cargando facturación";
+  // Tres claves y no un `Promise.all`: el catálogo de planes es el mismo para
+  // toda la instalación y no cambia entre visitas, mientras que el consumo sí.
+  // Separados, volver a esta pantalla solo vuelve a pedir lo que envejece.
+  const planes = useApi<PlanDefinition[]>("/billing/plans", { mensajeDeError });
+  const consumo = useApi<BillingUsage>("/billing/usage", { mensajeDeError });
+  // Sin suscripción responde 404, y eso es el estado normal de quien está en el
+  // plan gratuito, no un fallo.
+  const suscripcion = useApi<Subscription | null>("/billing/subscription", {
+    nuloSi404: true,
+    mensajeDeError,
+  });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const plans = planes.datos ?? null;
+  const usage = consumo.datos ?? null;
+  const subscription = suscripcion.datos ?? null;
+  const loaded = !planes.cargando && !consumo.cargando && !suscripcion.cargando;
+
+  const { recargar: recargarPlanes } = planes;
+  const { recargar: recargarConsumo } = consumo;
+  const { recargar: recargarSuscripcion } = suscripcion;
+  const load = useCallback(async () => {
+    await Promise.all([
+      recargarPlanes(),
+      recargarConsumo(),
+      recargarSuscripcion(),
+    ]);
+  }, [recargarPlanes, recargarConsumo, recargarSuscripcion]);
 
   async function onSubscribe(plan: Plan) {
     setBusy(true);
@@ -288,7 +287,10 @@ export default function BillingPage() {
       </div>
 
       {/* Debajo de los planes a propósito: es el dato que hace falta para
-          contratar uno, así que se encuentra justo cuando se busca. */}
+          contratar uno, así que se encuentra justo cuando se busca.
+          El MISMO componente sale también en «Mi empresa», que es donde lo
+          busca quien no viene a contratar nada. Es uno solo y no una copia:
+          dos formularios sobre los mismos campos se separan al primer cambio. */}
       <DatosFiscales />
     </div>
   );

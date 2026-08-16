@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { Camera, Check, PackageCheck, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import {
   PackageCategory,
   PackageCondition,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   PACKAGE_STATUS_LABELS,
   packageStatusBadgeClass,
@@ -79,7 +80,6 @@ const CATEGORIAS: { valor: PackageCategory; etiqueta: string }[] = [
 ];
 
 export default function IntakePage() {
-  const [lockers, setLockers] = useState<Locker[] | null>(null);
   const [lockerQuery, setLockerQuery] = useState("");
   const [selected, setSelected] = useState<Locker | null>(null);
   const [form, setForm] = useState(EMPTY);
@@ -102,40 +102,35 @@ export default function IntakePage() {
     };
   }, [form.lengthCm, form.widthCm, form.heightCm, form.weightKg]);
 
-  const [pending, setPending] = useState<LockerPackageWithLocker[] | null>(null);
-  const [recent, setRecent] = useState<LockerPackageWithLocker[] | null>(null);
   const [pendingQuery, setPendingQuery] = useState("");
   const [fotosDe, setFotosDe] = useState<LockerPackageWithLocker | null>(null);
 
-  const loadLockers = useCallback(async () => {
-    try {
-      setLockers(await api<Locker[]>("/lockers"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando casilleros",
-      );
-    }
-  }, []);
+  // Misma clave que la pantalla de Casilleros: la recepción es lo primero que
+  // se abre por la mañana y el listado ya suele estar en caché.
+  const { datos: datosLockers } = useApi<Locker[]>(
+    "/lockers",
+    { mensajeDeError: "Error cargando casilleros" },
+  );
+  const lockers = datosLockers ?? null;
 
+  const mensajeDeError = "Error cargando recibos";
+  const prealertados = useApi<LockerPackageWithLocker[]>(
+    "/lockers/packages?status=PRE_ALERTED",
+    { mensajeDeError },
+  );
+  const recibidos = useApi<LockerPackageWithLocker[]>(
+    "/lockers/packages?status=RECEIVED",
+    { mensajeDeError },
+  );
+
+  const pending = prealertados.datos ?? null;
+  const recent = recibidos.datos ?? null;
+
+  const { recargar: recargarPrealertados } = prealertados;
+  const { recargar: recargarRecibidos } = recibidos;
   const loadFeeds = useCallback(async () => {
-    try {
-      const [p, r] = await Promise.all([
-        api<LockerPackageWithLocker[]>("/lockers/packages?status=PRE_ALERTED"),
-        api<LockerPackageWithLocker[]>("/lockers/packages?status=RECEIVED"),
-      ]);
-      setPending(p);
-      setRecent(r);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando recibos",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    loadLockers();
-    loadFeeds();
-  }, [loadLockers, loadFeeds]);
+    await Promise.all([recargarPrealertados(), recargarRecibidos()]);
+  }, [recargarPrealertados, recargarRecibidos]);
 
   const lockerMatches = useMemo(() => {
     if (!lockers) return [];

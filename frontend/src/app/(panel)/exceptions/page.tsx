@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,7 @@ import {
   Paginated,
   ResumenExcepciones,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   EXCEPTION_SEVERITY_LABELS,
   EXCEPTION_STATUS_LABELS,
@@ -48,32 +49,31 @@ import {
  * de ayer no quede debajo de una diferencia de peso de hoy.
  */
 export default function ExceptionsPage() {
-  const [datos, setDatos] = useState<Paginated<ExceptionRow> | null>(null);
-  const [resumen, setResumen] = useState<ResumenExcepciones | null>(null);
   const [filtro, setFiltro] = useState<ExceptionStatus | "TODAS">("OPEN");
   const [cerrando, setCerrando] = useState<ExceptionRow | null>(null);
   const [resolucion, setResolucion] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const cargar = useCallback(async () => {
-    try {
-      const q = filtro === "TODAS" ? "" : `&status=${filtro}`;
-      const [lista, res] = await Promise.all([
-        api<Paginated<ExceptionRow>>(`/exceptions?page=1&pageSize=50${q}`),
-        api<ResumenExcepciones>("/exceptions/resumen"),
-      ]);
-      setDatos(lista);
-      setResumen(res);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando excepciones",
-      );
-    }
-  }, [filtro]);
+  const q = filtro === "TODAS" ? "" : `&status=${filtro}`;
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const lista = useApi<Paginated<ExceptionRow>>(
+    `/exceptions?page=1&pageSize=50${q}`,
+    { mensajeDeError: "Error cargando excepciones", keepPreviousData: true },
+  );
+  // El resumen NO depende del filtro: con su propia clave se pide una vez y
+  // sobrevive a los cambios de pestaña, en vez de volver a pedirse con la lista.
+  const res = useApi<ResumenExcepciones>("/exceptions/resumen", {
+    mensajeDeError: "Error cargando excepciones",
+  });
+
+  const datos = lista.datos ?? null;
+  const resumen = res.datos ?? null;
+
+  const { recargar: recargarLista } = lista;
+  const { recargar: recargarResumen } = res;
+  const cargar = useCallback(async () => {
+    await Promise.all([recargarLista(), recargarResumen()]);
+  }, [recargarLista, recargarResumen]);
 
   async function cambiarEstado(fila: ExceptionRow, status: ExceptionStatus) {
     // Cerrar exige explicar cómo se resolvió —lo impone el backend— así que se

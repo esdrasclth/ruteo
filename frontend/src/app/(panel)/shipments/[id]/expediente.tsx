@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { BadgeCheck, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, DocumentType, ShipmentDocument } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,26 +38,21 @@ function etiquetaTipo(t: DocumentType) {
 }
 
 export function Expediente({ shipmentId }: { shipmentId: string }) {
-  const [docs, setDocs] = useState<ShipmentDocument[] | null>(null);
   const [tipo, setTipo] = useState<DocumentType>("COMMERCIAL_INVOICE");
   const [busy, setBusy] = useState(false);
 
-  const cargar = useCallback(async () => {
-    try {
-      setDocs(
-        await api<ShipmentDocument[]>(`/customs/${shipmentId}/documents`),
-      );
-    } catch (err) {
-      setDocs([]);
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando documentos",
-      );
-    }
-  }, [shipmentId]);
+  const {
+    datos,
+    error,
+    recargar: cargar,
+  } = useApi<ShipmentDocument[]>(`/customs/${shipmentId}/documents`, {
+    mensajeDeError: "Error cargando documentos",
+  });
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  // Si falló, se enseña el expediente vacío y no un esqueleto eterno: el aviso
+  // ya dijo lo que pasó, y quien viene a SUBIR un documento tiene que poder
+  // hacerlo aunque la lista no haya cargado.
+  const docs = datos ?? (error ? [] : null);
 
   async function adjuntar(fileId: string) {
     setBusy(true);

@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
 import Link from "next/link";
-import { toast } from "sonner";
-import { api, ApiError, AuditLog, Paginated } from "@/lib/api";
+import { AuditLog, Paginated } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   AUDIT_ACTION_LABELS,
   AUDIT_ENTITY_LABELS,
@@ -72,30 +72,23 @@ function resumenMetadata(metadata: Record<string, unknown> | null): string {
 }
 
 export default function AuditPage() {
-  const [data, setData] = useState<Paginated<AuditLog> | null>(null);
   const [action, setAction] = useState<string>(TODOS);
   const [entityType, setEntityType] = useState<string>(TODOS);
   const [page, setPage] = useState(1);
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(PAGE_SIZE),
-    });
-    if (action !== TODOS) params.set("action", action);
-    if (entityType !== TODOS) params.set("entityType", entityType);
-    try {
-      setData(await api<Paginated<AuditLog>>(`/audit?${params.toString()}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando la auditoría",
-      );
-    }
-  }, [action, entityType, page]);
+  // La consulta se arma en el render porque ES la clave de caché.
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+  });
+  if (action !== TODOS) params.set("action", action);
+  if (entityType !== TODOS) params.set("entityType", entityType);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos } = useApi<Paginated<AuditLog>>(`/audit?${params.toString()}`, {
+    mensajeDeError: "Error cargando la auditoría",
+    keepPreviousData: true,
+  });
+  const data = datos ?? null;
 
   // Cambiar un filtro debe devolver a la primera página: si no, se puede quedar
   // en una página que ya no existe con el filtro nuevo.

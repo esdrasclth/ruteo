@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { Check, Copy, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,7 @@ import {
   WebhookEndpoint,
   WebhookEndpointCreated,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { API_SCOPE_LABELS, API_SCOPES } from "@/lib/logistics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,8 +82,6 @@ function SecretReveal({ value, label }: { value: string; label: string }) {
 }
 
 export default function IntegrationsPage() {
-  const [keys, setKeys] = useState<ApiKey[] | null>(null);
-  const [webhooks, setWebhooks] = useState<WebhookEndpoint[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [keyOpen, setKeyOpen] = useState(false);
@@ -101,24 +100,18 @@ export default function IntegrationsPage() {
     null,
   );
 
-  const load = useCallback(async () => {
-    try {
-      const [k, w] = await Promise.all([
-        api<ApiKey[]>("/api-keys"),
-        api<WebhookEndpoint[]>("/webhooks"),
-      ]);
-      setKeys(k);
-      setWebhooks(w);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando integraciones",
-      );
-    }
-  }, []);
+  const mensajeDeError = "Error cargando integraciones";
+  const llaves = useApi<ApiKey[]>("/api-keys", { mensajeDeError });
+  const ganchos = useApi<WebhookEndpoint[]>("/webhooks", { mensajeDeError });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const keys = llaves.datos ?? null;
+  const webhooks = ganchos.datos ?? null;
+
+  const { recargar: recargarLlaves } = llaves;
+  const { recargar: recargarGanchos } = ganchos;
+  const load = useCallback(async () => {
+    await Promise.all([recargarLlaves(), recargarGanchos()]);
+  }, [recargarLlaves, recargarGanchos]);
 
   async function onCreateKey(e: FormEvent) {
     e.preventDefault();

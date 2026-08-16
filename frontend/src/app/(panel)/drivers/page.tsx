@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Plus, Trash2 , Route as RouteIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   DriverStatus,
   VehicleType,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   DRIVER_STATUS_LABELS,
   VEHICLE_LABELS,
@@ -47,7 +48,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DriversPage() {
-  const [drivers, setDrivers] = useState<Driver[] | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -57,19 +57,12 @@ export default function DriversPage() {
     vehiclePlate: "",
   });
 
-  const load = useCallback(async () => {
-    try {
-      setDrivers(await api<Driver[]>("/drivers"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando drivers",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos, recargar: load } = useApi<Driver[]>("/drivers", {
+    mensajeDeError: "Error cargando drivers",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const drivers = datos ?? null;
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();

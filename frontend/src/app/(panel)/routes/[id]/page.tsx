@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, use, useCallback, useEffect, useState } from "react";
+import { FormEvent, use, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -22,6 +22,7 @@ import {
   RouteStop,
   Shipment,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { STATUS_LABELS, statusBadgeClass } from "@/lib/shipment-status";
 import {
   ROUTE_NEXT_STATUSES,
@@ -73,8 +74,6 @@ export default function RouteDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [route, setRoute] = useState<RouteDetail | null>(null);
-  const [carretera, setCarretera] = useState<RoadRoute | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -93,26 +92,20 @@ export default function RouteDetailPage({
   const [fotoEntrega, setFotoEntrega] = useState<string | null>(null);
   const [fotoFallo, setFotoFallo] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setRoute(await api<RouteDetail>(`/routes/${id}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando la ruta",
-      );
-    }
-    // El trazado por carretera va aparte y sin bloquear: la ruta se muestra
-    // igual aunque OSRM esté apagado, solo que con líneas rectas.
-    try {
-      setCarretera(await api<RoadRoute | null>(`/routing/route/${id}`));
-    } catch {
-      setCarretera(null);
-    }
-  }, [id]);
+  const { datos: datosRuta, recargar: load } = useApi<RouteDetail>(
+    `/routes/${id}`,
+    { mensajeDeError: "Error cargando la ruta" },
+  );
+  const route = datosRuta ?? null;
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // El trazado por carretera va aparte y sin bloquear: la ruta se muestra igual
+  // aunque OSRM esté apagado, solo que con líneas rectas. Con su propia clave,
+  // además, no se vuelve a pedir cada vez que se cierra una parada.
+  const { datos: datosCarretera } = useApi<RoadRoute | null>(
+    `/routing/route/${id}`,
+    { silencioso: true },
+  );
+  const carretera = datosCarretera ?? null;
 
   async function openAddStop() {
     setAddOpen(true);

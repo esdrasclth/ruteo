@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   api,
@@ -9,6 +9,7 @@ import {
   PackagePhoto,
   PackagePhotoType,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,28 +47,24 @@ interface Props {
 }
 
 export function FotosDelBulto({ paquete, onClose }: Props) {
-  const [fotos, setFotos] = useState<PackagePhoto[] | null>(null);
   const [tipo, setTipo] = useState<PackagePhotoType>("EXTERIOR");
 
-  const cargar = useCallback(async (lockerId: string, packageId: string) => {
-    setFotos(null);
-    try {
-      setFotos(
-        await api<PackagePhoto[]>(
-          `/lockers/${lockerId}/packages/${packageId}/photos`,
-        ),
-      );
-    } catch (err) {
-      setFotos([]);
-      toast.error(
-        err instanceof ApiError ? err.message : "No se pudieron cargar",
-      );
-    }
-  }, []);
+  // Sin bulto no hay clave y no se pide nada: es lo que hacía el `if (paquete)`
+  // del efecto, y de paso el cambio de bulto cambia la clave, así que ya no
+  // hace falta vaciar la lista a mano para que no se vean las fotos del
+  // anterior.
+  const { datos, error, recargar } = useApi<PackagePhoto[]>(
+    paquete
+      ? `/lockers/${paquete.lockerId}/packages/${paquete.id}/photos`
+      : null,
+    { mensajeDeError: "No se pudieron cargar" },
+  );
 
-  useEffect(() => {
-    if (paquete) void cargar(paquete.lockerId, paquete.id);
-  }, [paquete, cargar]);
+  // Si falló se enseña vacío, no un esqueleto eterno: quien viene a SUBIR una
+  // foto tiene que poder hacerlo aunque la lista no haya cargado.
+  const fotos = datos ?? (error ? [] : null);
+
+  const cargar = () => void recargar();
 
   async function adjuntar(fileId: string) {
     if (!paquete) return;
@@ -77,7 +74,7 @@ export function FotosDelBulto({ paquete, onClose }: Props) {
         body: JSON.stringify({ fileId, type: tipo }),
       });
       toast.success("Foto adjuntada");
-      await cargar(paquete.lockerId, paquete.id);
+      cargar();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "No se pudo adjuntar",

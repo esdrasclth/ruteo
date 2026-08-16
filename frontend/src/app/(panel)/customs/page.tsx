@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Plus, Scale } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, CustomsCategory, CustomsRule } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,24 +97,16 @@ const VACIO = {
 };
 
 export default function CustomsRulesPage() {
-  const [reglas, setReglas] = useState<CustomsRule[] | null>(null);
   const [abierto, setAbierto] = useState(false);
   const [form, setForm] = useState(VACIO);
   const [busy, setBusy] = useState(false);
 
-  const cargar = useCallback(async () => {
-    try {
-      setReglas(await api<CustomsRule[]>("/customs/rules"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando las reglas",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const { datos, recargar: cargar } = useApi<CustomsRule[]>("/customs/rules", {
+    mensajeDeError: "Error cargando las reglas",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const reglas = datos ?? null;
 
   async function crear(e: FormEvent) {
     e.preventDefault();

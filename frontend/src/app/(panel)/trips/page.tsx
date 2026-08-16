@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Plane, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,7 @@ import {
   TripStatus,
   Warehouse,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { TRIP_STATUS_LABELS } from "@/lib/fase2";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,40 +84,29 @@ const VACIO = {
 };
 
 export default function TripsPage() {
-  const [viajes, setViajes] = useState<Trip[] | null>(null);
-  const [bodegas, setBodegas] = useState<Warehouse[]>([]);
-  const [transportistas, setTransportistas] = useState<Carrier[]>([]);
   const [abierto, setAbierto] = useState(false);
   const [form, setForm] = useState(VACIO);
   const [busy, setBusy] = useState(false);
 
-  const cargar = useCallback(async () => {
-    try {
-      setViajes(await api<Trip[]>("/warehouses/trips"));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando viajes",
-      );
-    }
-    // Los catálogos no bloquean la lista: si fallan, el formulario queda con
-    // menos opciones pero los viajes se siguen viendo.
-    try {
-      setBodegas((await api<Warehouse[]>("/warehouses")).filter((b) => b.active));
-    } catch {
-      setBodegas([]);
-    }
-    try {
-      setTransportistas(
-        (await api<Carrier[]>("/carriers")).filter((c) => c.active),
-      );
-    } catch {
-      setTransportistas([]);
-    }
-  }, []);
+  const { datos, recargar: cargar } = useApi<Trip[]>("/warehouses/trips", {
+    mensajeDeError: "Error cargando viajes",
+  });
+  const viajes = datos ?? null;
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  // Los catálogos no bloquean la lista y avisan en silencio: si fallan, el
+  // formulario queda con menos opciones pero los viajes se siguen viendo.
+  //
+  // Cada uno con su clave, que además comparten con las pantallas de Bodegas y
+  // de Transportistas: quien viene de una de ellas no las vuelve a pedir.
+  const { datos: todasLasBodegas } = useApi<Warehouse[]>("/warehouses", {
+    silencioso: true,
+  });
+  const { datos: todosLosTransportistas } = useApi<Carrier[]>("/carriers", {
+    silencioso: true,
+  });
+
+  const bodegas = todasLasBodegas?.filter((b) => b.active) ?? [];
+  const transportistas = todosLosTransportistas?.filter((c) => c.active) ?? [];
 
   async function crear(e: FormEvent) {
     e.preventDefault();

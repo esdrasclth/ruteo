@@ -374,4 +374,33 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
+
+  /* Barra de scroll fina y translúcida, para contenedores que a veces
+     desbordan y no queremos que lo anuncien.
+
+     El menú lateral no la tenía y usaba la del sistema: sobre el azul oscuro
+     del panel, la barra de Windows se ve como una franja gris clara pegada al
+     borde, más contrastada que cualquier cosa del menú, y es lo primero que
+     mira el ojo. Aquí el pulgar sale del propio color del texto del panel, así
+     que pertenece al diseño en vez de asomarse por debajo.
+
+     Se deja `overlay`/ancho fino y NO `scrollbar-width: none`: esconderla del
+     todo deja al usuario sin saber que hay más abajo, que es peor que verla. */
+  .scroll-sutil {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+  .scroll-sutil::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scroll-sutil::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-sutil::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+  }
+  .scroll-sutil:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.24);
+  }
 }

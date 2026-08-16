@@ -1,18 +1,16 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Plus, Search, Upload, X } from "lucide-react";
-import { toast } from "sonner";
 import {
-  api,
-  ApiError,
   Paginated,
   Shipment,
   ShipmentStatus,
   ShipmentType,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   STATUS_LABELS,
   TYPE_LABELS,
@@ -64,7 +62,6 @@ function ShipmentsContent() {
   // que no enlazar: parece que la lista está mal, no que falte el filtro.
   const typeInicial = searchParams.get("type") ?? ALL;
 
-  const [data, setData] = useState<Paginated<Shipment> | null>(null);
   const [status, setStatus] = useState<string>(statusInicial);
   const [type, setType] = useState<string>(typeInicial);
   const [search, setSearch] = useState("");
@@ -80,26 +77,27 @@ function ShipmentsContent() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(PAGE_SIZE),
-    });
-    if (status !== ALL) params.set("status", status);
-    if (type !== ALL) params.set("type", type);
-    if (busqueda) params.set("search", busqueda);
-    try {
-      setData(await api<Paginated<Shipment>>(`/shipments?${params}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando envíos",
-      );
-    }
-  }, [page, status, type, busqueda]);
+  // La consulta se arma en el render, no dentro de la carga: ES la clave de
+  // caché. Dos visitas con los mismos filtros son la misma clave, así que
+  // volver a esta pantalla pinta al instante lo que ya se había traído.
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+  });
+  if (status !== ALL) params.set("status", status);
+  if (type !== ALL) params.set("type", type);
+  if (busqueda) params.set("search", busqueda);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos } = useApi<Paginated<Shipment>>(
+    `/shipments?${params}`,
+    {
+      mensajeDeError: "Error cargando envíos",
+      // Al pasar de página la tabla no se vacía: se queda la anterior mientras
+      // llega la siguiente. Antes parpadeaba a esqueleto en cada clic.
+      keepPreviousData: true,
+    },
+  );
+  const data = datos ?? null;
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 

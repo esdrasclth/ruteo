@@ -1,3 +1,5 @@
+import { avisarSesionCambiada } from "./eventos";
+
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api";
 
@@ -37,11 +39,23 @@ export interface EmpresaDeAcceso {
   url: string;
 }
 
-const SESSION_KEY = "ruteo.session";
+export const SESSION_KEY = "ruteo.session";
 
-export function getSession(): Session | null {
+/**
+ * La sesión en crudo, sin parsear.
+ *
+ * La expone `useSesion`, que la necesita como CADENA y no como objeto:
+ * `useSyncExternalStore` compara lo que devuelve su lectura entre renders, y
+ * un `JSON.parse` da un objeto nuevo cada vez —igual en contenido, distinto en
+ * identidad—, lo que deja a React repintando para siempre. Una cadena se
+ * compara por valor y el bucle no existe.
+ */
+export function getSessionRaw(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(SESSION_KEY);
+  return window.localStorage.getItem(SESSION_KEY);
+}
+
+export function parseSession(raw: string | null): Session | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as Session;
@@ -50,12 +64,18 @@ export function getSession(): Session | null {
   }
 }
 
+export function getSession(): Session | null {
+  return parseSession(getSessionRaw());
+}
+
 export function setSession(session: Session) {
   window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  avisarSesionCambiada();
 }
 
 export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
+  avisarSesionCambiada();
 }
 
 export class ApiError extends Error {
@@ -723,6 +743,13 @@ export interface CurrentUser {
   createdAt: string;
   updatedAt: string;
   emailVerified?: boolean;
+  /**
+   * Foto de perfil, ya firmada y con caducidad de minutos.
+   *
+   * Es una URL de un solo uso práctico: NO se guarda en la sesión ni en ningún
+   * sitio: se pide con `/users/me` cada vez que hace falta pintarla.
+   */
+  avatarUrl?: string | null;
 }
 
 export interface CustomsRecord {
@@ -877,6 +904,7 @@ export interface TenantProfile {
   taxId: string | null;
   billingEmail: string | null;
   billingAddress: string | null;
+  volumetricDivisor: number;
   subscription: {
     status: SubscriptionStatus;
     currentPeriodEnd: string;
@@ -1238,6 +1266,125 @@ export interface ExceptionRow {
 export interface ResumenExcepciones {
   abiertas: number;
   porSeveridad: Partial<Record<ExceptionSeverity, number>>;
+}
+
+/** Evidencia adjunta. La URL viene firmada y caduca en minutos. */
+export interface ArchivoAdjunto {
+  id: string;
+  notes: string | null;
+  createdAt: string;
+  originalName: string | null;
+  url: string | null;
+}
+
+// ---- Fase 6: posventa ----
+
+export type ClaimType =
+  | "DAMAGED"
+  | "LOST"
+  | "MISSING_ITEM"
+  | "WRONG_CHARGE"
+  | "OTHER";
+
+export type ClaimStatus =
+  | "OPEN"
+  | "INVESTIGATING"
+  | "APPROVED"
+  | "REJECTED"
+  | "SETTLED";
+
+export interface Claim {
+  id: string;
+  number: string;
+  type: ClaimType;
+  status: ClaimStatus;
+  description: string;
+  claimedAmount: string | null;
+  approvedAmount: string | null;
+  currency: string;
+  resolution: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  shipmentId: string;
+  shipment?: {
+    id: string;
+    trackingNumber: string;
+    status: ShipmentStatus;
+  } | null;
+  customer?: { id: string; name: string; email: string | null } | null;
+  exception?: { id: string; type: ExceptionType } | null;
+  charge?: { id: string; concept: string; amount: string } | null;
+  refunds?: { id: string; amount: string; status: RefundStatus }[];
+}
+
+export interface ClaimFile extends ArchivoAdjunto {
+  fromCustomer: boolean;
+}
+
+export interface ResumenReclamos {
+  abiertos: number;
+  porEstado: Partial<Record<ClaimStatus, number>>;
+  reclamadoAbierto: string;
+}
+
+export type ReturnDestination = "BRANCH" | "SENDER" | "VENDOR" | "ABANDONED";
+
+export type ReturnReason =
+  | "UNDELIVERABLE"
+  | "REFUSED"
+  | "UNCLAIMED"
+  | "UNPAID"
+  | "CUSTOMS_REJECTED"
+  | "DAMAGED"
+  | "OTHER";
+
+export type ReturnStatus = "PENDING" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
+
+export interface Devolucion {
+  id: string;
+  destination: ReturnDestination;
+  reason: ReturnReason;
+  status: ReturnStatus;
+  notes: string | null;
+  attemptsBefore: number | null;
+  completedAt: string | null;
+  createdAt: string;
+  shipmentId: string;
+  shipment?: {
+    id: string;
+    trackingNumber: string;
+    status: ShipmentStatus;
+    recipientName: string;
+  } | null;
+  warehouse?: { id: string; name: string; code: string } | null;
+}
+
+export interface ResumenDevoluciones {
+  abiertas: number;
+  porMotivo: Partial<Record<ReturnReason, number>>;
+  porDestino: Partial<Record<ReturnDestination, number>>;
+}
+
+export type RefundStatus = "PENDING" | "COMPLETED" | "FAILED";
+
+export interface Refund {
+  id: string;
+  status: RefundStatus;
+  amount: string;
+  currency: string;
+  method: PaymentMethod | null;
+  reason: string;
+  reference: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  payment?: {
+    id: string;
+    type: PaymentType;
+    amount: string;
+    currency: string;
+    shipmentId: string | null;
+  } | null;
+  claim?: { id: string; number: string; type: ClaimType } | null;
 }
 
 // ---- Fase 3: reglas aduaneras y expediente documental ----

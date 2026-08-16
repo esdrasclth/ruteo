@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, use, useCallback, useEffect, useState } from "react";
+import { FormEvent, use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Boxes, PackagePlus } from "lucide-react";
@@ -12,6 +12,7 @@ import {
   LockerPackage,
   Shipment,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   LOCKER_STATUS_LABELS,
   PACKAGE_STATUS_LABELS,
@@ -59,7 +60,6 @@ export default function LockerDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const [locker, setLocker] = useState<LockerDetail | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [preOpen, setPreOpen] = useState(false);
@@ -73,19 +73,12 @@ export default function LockerDetailPage({
     destinationLabel: "",
   });
 
-  const load = useCallback(async () => {
-    try {
-      setLocker(await api<LockerDetail>(`/lockers/${id}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando el casillero",
-      );
-    }
-  }, [id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { datos, recargar: load } = useApi<LockerDetail>(`/lockers/${id}`, {
+    mensajeDeError: "Error cargando el casillero",
+  });
+  // `?? null` para no cambiar el resto de la pantalla: antes esto era
+  // `T | null` y `useApi` entrega `T | undefined`.
+  const locker = datos ?? null;
 
   async function onPreAlert(e: FormEvent) {
     e.preventDefault();

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   api,
@@ -11,6 +11,7 @@ import {
   ChargesDeEnvio,
   PaymentMethod,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   CHARGE_CONCEPT_LABELS,
   CHARGE_KIND_LABELS,
@@ -96,7 +97,6 @@ export function Cargos({
   /** El cobro toca los pagos del envío, que el detalle muestra más arriba. */
   onCobrado?: () => void;
 }) {
-  const [datos, setDatos] = useState<ChargesDeEnvio | null>(null);
   const [busy, setBusy] = useState(false);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
 
@@ -115,23 +115,28 @@ export function Cargos({
   const [anulando, setAnulando] = useState<Charge | null>(null);
   const [motivo, setMotivo] = useState("");
 
-  const cargar = useCallback(async () => {
-    try {
-      const r = await api<ChargesDeEnvio>(`/charges/envio/${shipmentId}`);
-      setDatos(r);
-      // Se limpia la selección tras recargar: mantener marcado un cargo que
-      // acaba de cobrarse invitaría a cobrarlo dos veces.
-      setSeleccion(new Set());
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando cargos",
-      );
-    }
-  }, [shipmentId]);
+  const { datos, error, recargar } = useApi<ChargesDeEnvio>(
+    `/charges/envio/${shipmentId}`,
+    {
+      mensajeDeError: "Error cargando cargos",
+      // Un 403 aquí significa «esta empresa no contrató el módulo de cobros»,
+      // no que algo se rompiera. Mismo criterio que en `Posventa`: un aviso
+      // rojo en cada envío que se abre, por una función que ni siquiera
+      // compraron, es ruido que enseña a ignorar los avisos que sí importan.
+      silencioso: (e) => e.status === 403,
+    },
+  );
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  // Y sin módulo tampoco se dibuja la tarjeta. Antes se quedaba en esqueleto
+  // para siempre, que es peor que no estar: parece que algo sigue cargando.
+  const sinModulo = error?.status === 403;
+
+  const cargar = useCallback(async () => {
+    await recargar();
+    // Se limpia la selección tras recargar: mantener marcado un cargo que
+    // acaba de cobrarse invitaría a cobrarlo dos veces.
+    setSeleccion(new Set());
+  }, [recargar]);
 
   const totalSeleccionado = useMemo(
     () =>
@@ -226,6 +231,7 @@ export function Cargos({
     }
   }
 
+  if (sinModulo) return null;
   if (!datos) return <Skeleton className="h-40 w-full rounded-2xl" />;
 
   const moneda = datos.moneda;

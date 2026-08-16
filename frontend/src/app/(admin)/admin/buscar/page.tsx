@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api";
-import { Busqueda, platformApi } from "@/lib/platform-api";
+import { Busqueda } from "@/lib/platform-api";
+import { usePlatformApi } from "@/lib/use-platform-api";
 import { Card, CardContent } from "@/components/ui/card";
 
 function EmpresaRef({ t }: { t: { id: string; name: string; slug: string } }) {
@@ -23,18 +24,21 @@ function EmpresaRef({ t }: { t: { id: string; name: string; slug: string } }) {
 
 function Resultados() {
   const q = useSearchParams().get("q") ?? "";
-  const [r, setR] = useState<Busqueda | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (q.trim().length < 3) return;
-    setError(null);
-    platformApi<Busqueda>(`/buscar?q=${encodeURIComponent(q)}`)
-      .then(setR)
-      .catch((e) =>
-        setError(e instanceof ApiError ? e.message : "No se pudo buscar"),
-      );
-  }, [q]);
+  // Clave nula por debajo de tres caracteres: es lo que hacía el `return`
+  // temprano del efecto, pero además la búsqueda queda cacheada por término,
+  // así que volver atrás en el navegador la muestra al instante.
+  const { datos, error: fallo } = usePlatformApi<Busqueda>(
+    q.trim().length < 3 ? null : `/buscar?q=${encodeURIComponent(q)}`,
+    { silencioso: true, keepPreviousData: true },
+  );
+
+  const r = datos ?? null;
+  const error = fallo
+    ? fallo instanceof ApiError
+      ? fallo.message
+      : "No se pudo buscar"
+    : null;
 
   const vacio =
     r &&

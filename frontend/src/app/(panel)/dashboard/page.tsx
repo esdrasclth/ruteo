@@ -1,17 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Bell, DollarSign, Package, TrendingUp } from "lucide-react";
+import { useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import {
-  api,
-  ApiError,
   DriversAnalytics,
   Overview,
   PaymentsAnalytics,
   ShipmentsAnalytics,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   PAYMENT_STATUS_LABELS,
   PAYMENT_TYPE_LABELS,
@@ -20,7 +17,6 @@ import {
 import { TYPE_LABELS } from "@/lib/shipment-status";
 import { Ahora } from "./ahora";
 import { Badge } from "@/components/ui/badge";
-import { Cifra } from "@/components/cifra";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { DailyChart } from "@/components/daily-chart";
@@ -39,50 +35,90 @@ const RANGOS = [
   { dias: 90, label: "Últimos 90 días" },
 ];
 
-// El KPI que vivía aquí se mudó a `@/components/cifra` y ahora lo comparten las
-// dos mitades de la pantalla. Tenerlo suelto en este archivo es lo que dejó que
-// la mitad de arriba se dibujara distinta sin que nadie lo notara al escribirla.
+/**
+ * Cifra del período: número, etiqueta y nota, sin tarjeta alrededor.
+ *
+ * Es deliberadamente MÁS DÉBIL que la franja de atención de arriba. La versión
+ * anterior usaba la misma tarjeta de vidrio que el resto de la pantalla, y el
+ * efecto era que «128 envíos en 30 días» —un dato que se consulta— pesaba lo
+ * mismo que «2 excepciones sin asignar», que es trabajo sin hacer. La jerarquía
+ * de esta pantalla es esa y no otra: primero lo que hay que atender, después lo
+ * que hay que saber.
+ */
+function CifraPeriodo({
+  etiqueta,
+  valor,
+  nota,
+  href,
+}: {
+  etiqueta: string;
+  valor: number | string;
+  nota?: string;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group -mx-2 flex flex-col rounded-lg px-2 py-1 transition-colors hover:bg-primary/5"
+    >
+      <span className="text-2xl font-semibold tabular-nums text-primary">
+        {valor}
+      </span>
+      <span className="text-xs leading-tight text-foreground/70">
+        {etiqueta}
+      </span>
+      {nota ? (
+        <span className="text-xs leading-tight text-muted-foreground">
+          {nota}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
 
 export default function DashboardPage() {
   const [dias, setDias] = useState("30");
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [shipments, setShipments] = useState<ShipmentsAnalytics | null>(null);
-  const [payments, setPayments] = useState<PaymentsAnalytics | null>(null);
-  const [drivers, setDrivers] = useState<DriversAnalytics | null>(null);
-  const [recargando, setRecargando] = useState(false);
 
-  const load = useCallback(async () => {
-    const desde = new Date();
-    desde.setDate(desde.getDate() - Number(dias));
-    const qs = `?from=${desde.toISOString()}`;
+  // **El inicio se trunca a la hora en punto, y no es un detalle.**
+  //
+  // La consulta ES la clave de caché, y `new Date()` a milisegundos daría una
+  // clave distinta en cada render: cuatro peticiones nuevas por cada repintado,
+  // en bucle. Truncando, la clave es la misma durante toda la hora, así que
+  // volver al inicio pinta al instante y refresca por detrás.
+  //
+  // Sobre un rango de treinta días, mover el corte hasta sesenta minutos no
+  // cambia ninguna cifra que alguien vaya a mirar.
+  const desde = new Date();
+  desde.setDate(desde.getDate() - Number(dias));
+  desde.setMinutes(0, 0, 0);
+  const qs = `?from=${desde.toISOString()}`;
 
-    // No se limpia el estado: al cambiar de rango se mantiene el render previo
-    // atenuado (ver `recargando`). Vaciarlo devolvía la pantalla al skeleton y
-    // el layout saltaba entero en cada cambio de filtro.
-    setRecargando(true);
-    try {
-      const [o, s, p, d] = await Promise.all([
-        api<Overview>(`/analytics/overview${qs}`),
-        api<ShipmentsAnalytics>(`/analytics/shipments${qs}`),
-        api<PaymentsAnalytics>(`/analytics/payments${qs}`),
-        api<DriversAnalytics>(`/analytics/drivers${qs}`),
-      ]);
-      setOverview(o);
-      setShipments(s);
-      setPayments(p);
-      setDrivers(d);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando analítica",
-      );
-    } finally {
-      setRecargando(false);
-    }
-  }, [dias]);
+  const mensajeDeError = "Error cargando analítica";
+  // `keepPreviousData` es lo que antes hacía «no limpiar el estado»: al cambiar
+  // de rango se mantiene el render anterior atenuado en vez de volver al
+  // esqueleto y hacer saltar el layout entero.
+  const opciones = { mensajeDeError, keepPreviousData: true };
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const resumen = useApi<Overview>(`/analytics/overview${qs}`, opciones);
+  const envios = useApi<ShipmentsAnalytics>(`/analytics/shipments${qs}`, opciones);
+  const cobros = useApi<PaymentsAnalytics>(`/analytics/payments${qs}`, opciones);
+  const repartidores = useApi<DriversAnalytics>(
+    `/analytics/drivers${qs}`,
+    opciones,
+  );
+
+  const overview = resumen.datos ?? null;
+  const shipments = envios.datos ?? null;
+  const payments = cobros.datos ?? null;
+  const drivers = repartidores.datos ?? null;
+
+  // Atenuar mientras se refresca por detrás, que es justo lo que `refrescando`
+  // significa: hay datos en pantalla y viene una versión nueva.
+  const recargando =
+    resumen.refrescando ||
+    envios.refrescando ||
+    cobros.refrescando ||
+    repartidores.refrescando;
 
   // El skeleton cubre SOLO la mitad del período. Antes cortaba la pantalla
   // entera, y ahora eso escondería la mitad «Ahora» —que ya tiene sus datos y
@@ -141,186 +177,185 @@ export default function DashboardPage() {
       </div>
 
       {!periodoListo ? (
-        <div className="flex flex-col gap-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-32 rounded-2xl" />
-            ))}
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Skeleton className="h-64 rounded-2xl lg:col-span-2" />
-            <Skeleton className="h-64 rounded-2xl" />
-          </div>
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-72 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
         </div>
       ) : (
       // El atenuado al cambiar de rango envuelve SOLO esta mitad: la de arriba
       // no se recarga, así que oscurecerla sugeriría que también está cambiando.
       <div
         className={cn(
-          "flex flex-col gap-6 transition-opacity duration-200",
+          "flex flex-col gap-4 transition-opacity duration-200",
           recargando && "opacity-60",
         )}
       >
-      {/* Misma rejilla que los grupos de cifras de arriba (`GrupoCifras`), para
-          que las columnas caigan en el mismo sitio al hacer scroll. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Cifra
-          etiqueta="Envíos"
-          valor={overview.shipments.total}
-          nota={`${overview.shipments.delivered} entregados`}
-          icono={Package}
-          href="/shipments"
-        />
-        <Cifra
-          etiqueta="Tasa de entrega"
-          valor={`${(overview.shipments.deliveryRate * 100).toFixed(1)}%`}
-          nota={`${overview.shipments.failed} intentos fallidos`}
-          icono={TrendingUp}
-          href="/shipments?status=DELIVERED"
-        />
-        <Cifra
-          etiqueta="COD cobrado"
-          valor={overview.cod.collected}
-          nota={`Pendiente: ${overview.cod.pending} · Remitido: ${overview.cod.remitted}`}
-          icono={DollarSign}
-          href="/payments"
-        />
-        <Cifra
-          etiqueta="Notificaciones"
-          valor={overview.notifications.sent}
-          nota={`${overview.notifications.failed} fallidas`}
-          icono={Bell}
-          href="/notifications"
-        />
-      </div>
+        {/* Las cuatro cifras del período iban en cuatro tarjetas de vidrio del
+            mismo tamaño que las de arriba. Aquí van como una fila de texto
+            dentro del bloque de la gráfica, y no por ahorrar espacio: la
+            franja de atención tiene que ser lo más fuerte de la pantalla, y
+            cuatro tarjetas grandes compitiendo con ella la apagaban. Estas
+            cifras se consultan, no se atienden. */}
+        <section className="glass-panel rounded-2xl p-5 sm:p-6">
+          {/* Rejilla y no una fila pegada a la izquierda: en un panel de 1200px
+              cuatro cifras amontonadas en el primer cuarto dejan el resto en
+              blanco, y el bloque parece grande sin serlo. */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <CifraPeriodo
+              etiqueta="Envíos"
+              valor={overview.shipments.total}
+              nota={`${overview.shipments.delivered} entregados`}
+              href="/shipments"
+            />
+            <CifraPeriodo
+              etiqueta="Tasa de entrega"
+              valor={`${(overview.shipments.deliveryRate * 100).toFixed(1)}%`}
+              nota={`${overview.shipments.failed} fallidos`}
+              href="/shipments?status=DELIVERED"
+            />
+            <CifraPeriodo
+              etiqueta="COD cobrado"
+              valor={overview.cod.collected}
+              nota={`${overview.cod.pending} pendiente`}
+              href="/payments"
+            />
+            <CifraPeriodo
+              etiqueta="Notificaciones"
+              valor={overview.notifications.sent}
+              nota={
+                overview.notifications.failed > 0
+                  ? `${overview.notifications.failed} fallidas`
+                  : undefined
+              }
+              href="/notifications"
+            />
+          </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="glass-panel rounded-2xl p-6 lg:col-span-2">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-primary">
+          <div className="mt-6 border-t pt-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h3 className="text-sm font-semibold text-foreground/75">
                 Envíos por día
               </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {totalRango} en el período · máximo {maxDaily} en un día
               </p>
             </div>
+            <div className="mt-4">
+              {shipments.daily.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Sin envíos en el rango.
+                </p>
+              ) : (
+                <DailyChart data={shipments.daily} label="envíos" />
+              )}
+            </div>
           </div>
-          <div className="mt-4">
-            {shipments.daily.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Sin envíos en el rango.
+        </section>
+
+        {/* Los tres desgloses eran tres tarjetas de vidrio sueltas. El dato no
+            sobra —nadie más lo da— pero cada uno son dos o tres líneas, y tres
+            tarjetas para eso es envoltorio con más peso que el contenido. En
+            tres columnas de un mismo bloque se leen igual y pesan una tercera
+            parte. */}
+        <section className="glass-card rounded-2xl p-5 sm:p-6">
+          <h3 className="text-sm font-semibold text-foreground/75">
+            Desglose del período
+          </h3>
+          <div className="mt-4 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Por tipo
               </p>
-            ) : (
-              <DailyChart data={shipments.daily} label="envíos" />
-            )}
-          </div>
-        </div>
-
-        {/* Aquí había además un desglose «Por estado» del rango. Se quitó al
-            fusionar las dos pantallas: la mitad «Ahora» ya cuenta los envíos por
-            estado, y en vivo. Tener los dos hacía que la misma pregunta —cuántos
-            hay en cada estado— tuviera dos respuestas distintas en la misma
-            pantalla, porque ésta filtraba por fecha de creación y la otra no. El
-            desglose por TIPO sí se queda: es del período y no lo da nadie más. */}
-        <div className="glass-card rounded-2xl p-6">
-          <h3 className="text-base font-semibold text-primary">Por tipo</h3>
-          <div className="mt-4 flex flex-col gap-2">
-            {shipments.byType.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin datos.</p>
-            ) : (
-              shipments.byType.map((row) => (
-                <Link
-                  key={row.type}
-                  href={`/shipments?type=${row.type}`}
-                  className="-mx-2 flex items-center justify-between rounded-lg px-2 py-1 text-sm transition-colors hover:bg-primary/5"
-                >
-                  <span className="text-foreground/80">
-                    {TYPE_LABELS[row.type] ?? row.type}
-                  </span>
-                  <span className="font-semibold text-primary">
-                    {row.count}
-                  </span>
-                </Link>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="glass-card rounded-2xl p-6">
-          <h3 className="text-base font-semibold text-primary">
-            Pagos por tipo y estado
-          </h3>
-          {payments.breakdown.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Sin pagos en el rango.
-            </p>
-          ) : (
-            <div className="mt-4 flex flex-col gap-2">
-              {payments.breakdown.map((row) => (
-                <div
-                  key={`${row.type}-${row.status}`}
-                  className="flex items-center justify-between gap-3 text-sm"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="text-foreground/80">
-                      {PAYMENT_TYPE_LABELS[row.type]}
-                    </span>
-                    <Badge className={paymentStatusBadgeClass(row.status)}>
-                      {PAYMENT_STATUS_LABELS[row.status]}
-                    </Badge>
-                  </span>
-                  <span className="flex items-baseline gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {row.count}
-                    </span>
-                    <span className="font-semibold text-primary">
-                      {row.amount}
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="glass-card rounded-2xl p-6">
-          <h3 className="text-base font-semibold text-primary">
-            COD por repartidor
-          </h3>
-          {drivers.drivers.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Ningún repartidor registró cobros en el rango. El COD que se cobra
-              solo al marcar entregado no queda asignado a nadie.
-            </p>
-          ) : (
-            <div className="mt-4 flex flex-col gap-2">
-              {[...drivers.drivers]
-                .sort((a, b) => Number(b.codAmount) - Number(a.codAmount))
-                .map((row) => (
-                  <div
-                    key={row.driverId ?? "sin-driver"}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <span className="text-foreground/80">
-                      {row.name ?? "Sin nombre"}
-                    </span>
-                    <span className="flex items-baseline gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {row.codCount} cobro{row.codCount === 1 ? "" : "s"}
+              <div className="mt-2 flex flex-col gap-1.5">
+                {shipments.byType.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Sin datos.</p>
+                ) : (
+                  shipments.byType.map((row) => (
+                    <Link
+                      key={row.type}
+                      href={`/shipments?type=${row.type}`}
+                      className="-mx-2 flex items-center justify-between rounded-lg px-2 py-0.5 text-sm transition-colors hover:bg-primary/5"
+                    >
+                      <span className="text-foreground/80">
+                        {TYPE_LABELS[row.type] ?? row.type}
                       </span>
-                      <span className="font-semibold text-primary">
-                        {row.codAmount}
+                      <span className="font-semibold tabular-nums text-primary">
+                        {row.count}
                       </span>
-                    </span>
-                  </div>
-                ))}
+                    </Link>
+                  ))
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Pagos
+              </p>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {payments.breakdown.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Sin pagos en el rango.
+                  </p>
+                ) : (
+                  payments.breakdown.map((row) => (
+                    <div
+                      key={`${row.type}-${row.status}`}
+                      className="flex items-center justify-between gap-2 text-sm"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-foreground/80">
+                          {PAYMENT_TYPE_LABELS[row.type]}
+                        </span>
+                        <Badge
+                          className={cn(
+                            "shrink-0 px-1.5 py-0 text-[10px]",
+                            paymentStatusBadgeClass(row.status),
+                          )}
+                        >
+                          {PAYMENT_STATUS_LABELS[row.status]}
+                        </Badge>
+                      </span>
+                      <span className="shrink-0 font-semibold tabular-nums text-primary">
+                        {row.amount}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                COD por repartidor
+              </p>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {drivers.drivers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nadie registró cobros. El COD que se cobra solo al marcar
+                    entregado no queda asignado a un repartidor.
+                  </p>
+                ) : (
+                  [...drivers.drivers]
+                    .sort((a, b) => Number(b.codAmount) - Number(a.codAmount))
+                    .map((row) => (
+                      <div
+                        key={row.driverId ?? "sin-driver"}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span className="truncate text-foreground/80">
+                          {row.name ?? "Sin nombre"}
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums text-primary">
+                          {row.codAmount}
+                        </span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
       )}
     </div>

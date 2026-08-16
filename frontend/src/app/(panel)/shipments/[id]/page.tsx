@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, use, useCallback, useEffect, useState } from "react";
+import { FormEvent, use, useState } from "react";
 import {
   Archive,
   Bell,
@@ -22,6 +22,7 @@ import {
   ShipmentDetail,
   ShipmentStatus,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   STATUS_LABELS,
   TYPE_LABELS,
@@ -60,6 +61,7 @@ import { Cargos } from "./cargos";
 import { Expediente } from "./expediente";
 import { Historial } from "./historial";
 import { Intentos } from "./intentos";
+import { Posventa } from "./posventa";
 import { Textarea } from "@/components/ui/textarea";
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -193,50 +195,38 @@ function ContextoDelEnvio({ shipment }: { shipment: ShipmentDetail }) {
   );
 }
 
-function CustomsCard({
+/**
+ * El formulario de liquidación, aparte de la tarjeta y con `key`.
+ *
+ * Antes vivía dentro de `CustomsCard` y se sincronizaba con la respuesta desde
+ * un `useEffect` que hacía `setForm`. Eso tenía dos problemas: era un render en
+ * cascada por cada carga, y —más grave— pisaba lo que el usuario estuviera
+ * tecleando en cuanto llegara una revalidación.
+ *
+ * Sacándolo a su propio componente, el estado inicial se lee de las props y la
+ * `key` de quien lo monta decide cuándo empezar de cero. Es la forma que
+ * recomienda React para «reiniciar el estado cuando cambian los datos», y aquí
+ * además deja el formulario a salvo de los refrescos en segundo plano.
+ */
+function FormularioAduana({
   shipmentId,
+  record,
   declaredValue,
+  alGuardar,
 }: {
   shipmentId: string;
+  record: CustomsRecord | null;
   declaredValue: string | null;
+  alGuardar: () => void;
 }) {
-  const [record, setRecord] = useState<CustomsRecord | null>(null);
-  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    declaredValue: declaredValue ?? "",
+    declaredValue: record?.declaredValue ?? declaredValue ?? "",
     dutyRate: "0.15",
     taxRate: "0.15",
     handlingFee: "10",
-    notes: "",
+    notes: record?.notes ?? "",
   });
-
-  const load = useCallback(async () => {
-    try {
-      setRecord(await api<CustomsRecord>(`/customs/${shipmentId}`));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setRecord(null);
-      else
-        toast.error(
-          err instanceof ApiError ? err.message : "Error cargando aduana",
-        );
-    } finally {
-      setLoaded(true);
-    }
-  }, [shipmentId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!record) return;
-    setForm((f) => ({
-      ...f,
-      declaredValue: record.declaredValue ?? f.declaredValue,
-      notes: record.notes ?? "",
-    }));
-  }, [record]);
 
   async function onUpsert(e: FormEvent) {
     e.preventDefault();
@@ -255,7 +245,7 @@ function CustomsCard({
         }),
       });
       toast.success("Cálculo de aduana guardado");
-      await load();
+      alGuardar();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "No se pudo guardar aduana",
@@ -270,17 +260,125 @@ function CustomsCard({
     try {
       await api(`/customs/${shipmentId}/clear`, { method: "PATCH" });
       toast.success("Envío liberado de aduana");
-      await load();
+      alGuardar();
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "No se pudo liberar",
-      );
+      toast.error(err instanceof ApiError ? err.message : "No se pudo liberar");
     } finally {
       setBusy(false);
     }
   }
 
-  if (!loaded) return null;
+  return (
+    <form
+      onSubmit={onUpsert}
+      className="flex flex-wrap items-end gap-3 border-t pt-4"
+    >
+      <div className="grid gap-1">
+        <Label htmlFor="cDeclared" className="text-xs">
+          Valor (USD)
+        </Label>
+        <Input
+          id="cDeclared"
+          type="number"
+          step="any"
+          min="0"
+          className="w-28"
+          value={form.declaredValue}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, declaredValue: e.target.value }))
+          }
+        />
+      </div>
+      <div className="grid gap-1">
+        <Label htmlFor="cDuty" className="text-xs">
+          Arancel (0-1)
+        </Label>
+        <Input
+          id="cDuty"
+          type="number"
+          step="any"
+          min="0"
+          max="1"
+          className="w-24"
+          value={form.dutyRate}
+          onChange={(e) => setForm((f) => ({ ...f, dutyRate: e.target.value }))}
+        />
+      </div>
+      <div className="grid gap-1">
+        <Label htmlFor="cTax" className="text-xs">
+          ISV (0-1)
+        </Label>
+        <Input
+          id="cTax"
+          type="number"
+          step="any"
+          min="0"
+          max="1"
+          className="w-24"
+          value={form.taxRate}
+          onChange={(e) => setForm((f) => ({ ...f, taxRate: e.target.value }))}
+        />
+      </div>
+      <div className="grid gap-1">
+        <Label htmlFor="cHandling" className="text-xs">
+          Manejo (USD)
+        </Label>
+        <Input
+          id="cHandling"
+          type="number"
+          step="any"
+          min="0"
+          className="w-24"
+          value={form.handlingFee}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, handlingFee: e.target.value }))
+          }
+        />
+      </div>
+      <div className="grid min-w-40 flex-1 gap-1">
+        <Label htmlFor="cNotes" className="text-xs">
+          Notas
+        </Label>
+        <Input
+          id="cNotes"
+          maxLength={500}
+          value={form.notes}
+          onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" variant="outline" disabled={busy}>
+          {record ? "Recalcular" : "Calcular"}
+        </Button>
+        {record ? (
+          <Button type="button" onClick={onClear} disabled={busy}>
+            Liberar
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+function CustomsCard({
+  shipmentId,
+  declaredValue,
+}: {
+  shipmentId: string;
+  declaredValue: string | null;
+}) {
+  // Un envío sin liquidación todavía responde 404, y eso no es un fallo: es el
+  // estado normal de cualquier envío recién creado.
+  const {
+    datos: record,
+    cargando,
+    recargar,
+  } = useApi<CustomsRecord | null>(`/customs/${shipmentId}`, {
+    nuloSi404: true,
+    mensajeDeError: "Error cargando aduana",
+  });
+
+  if (cargando) return null;
 
   return (
     <Card>
@@ -349,100 +447,16 @@ function CustomsCard({
             Liberado el {new Date(record.clearedAt).toLocaleString("es-HN")}
           </p>
         ) : (
-          <form
-            onSubmit={onUpsert}
-            className="flex flex-wrap items-end gap-3 border-t pt-4"
-          >
-            <div className="grid gap-1">
-              <Label htmlFor="cDeclared" className="text-xs">
-                Valor (USD)
-              </Label>
-              <Input
-                id="cDeclared"
-                type="number"
-                step="any"
-                min="0"
-                className="w-28"
-                value={form.declaredValue}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, declaredValue: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="cDuty" className="text-xs">
-                Arancel (0-1)
-              </Label>
-              <Input
-                id="cDuty"
-                type="number"
-                step="any"
-                min="0"
-                max="1"
-                className="w-24"
-                value={form.dutyRate}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, dutyRate: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="cTax" className="text-xs">
-                ISV (0-1)
-              </Label>
-              <Input
-                id="cTax"
-                type="number"
-                step="any"
-                min="0"
-                max="1"
-                className="w-24"
-                value={form.taxRate}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, taxRate: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="cHandling" className="text-xs">
-                Manejo (USD)
-              </Label>
-              <Input
-                id="cHandling"
-                type="number"
-                step="any"
-                min="0"
-                className="w-24"
-                value={form.handlingFee}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, handlingFee: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid min-w-40 flex-1 gap-1">
-              <Label htmlFor="cNotes" className="text-xs">
-                Notas
-              </Label>
-              <Input
-                id="cNotes"
-                maxLength={500}
-                value={form.notes}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, notes: e.target.value }))
-                }
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button type="submit" variant="outline" disabled={busy}>
-                {record ? "Recalcular" : "Calcular"}
-              </Button>
-              {record ? (
-                <Button type="button" onClick={onClear} disabled={busy}>
-                  Liberar
-                </Button>
-              ) : null}
-            </div>
-          </form>
+          // La `key` es lo que decide cuándo el formulario vuelve a empezar:
+          // mientras la liquidación sea la misma, lo tecleado se respeta aunque
+          // llegue una revalidación por detrás.
+          <FormularioAduana
+            key={record?.id ?? "nuevo"}
+            shipmentId={shipmentId}
+            record={record ?? null}
+            declaredValue={declaredValue}
+            alGuardar={() => void recargar()}
+          />
         )}
       </CardContent>
     </Card>
@@ -455,24 +469,20 @@ export default function ShipmentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [shipment, setShipment] = useState<ShipmentDetail | null>(null);
+  // Volver a este envío ya no lo pide entero otra vez: se pinta lo que hay en
+  // caché al instante y se refresca por detrás. La misma clave la comparten los
+  // hijos que también necesitan el envío, así que montan sin pedir de nuevo.
+  const {
+    datos: shipment,
+    recargar,
+  } = useApi<ShipmentDetail>(`/shipments/${id}`, {
+    mensajeDeError: "Error cargando el envío",
+  });
   const [nextStatus, setNextStatus] = useState<string>("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setShipment(await api<ShipmentDetail>(`/shipments/${id}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando el envío",
-      );
-    }
-  }, [id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const load = () => void recargar();
 
   async function onTransition() {
     if (!shipment || !nextStatus) return;
@@ -490,7 +500,7 @@ export default function ShipmentDetailPage({
       );
       setNextStatus("");
       setNote("");
-      await load();
+      await recargar();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "No se pudo cambiar el estado",
@@ -682,6 +692,15 @@ export default function ShipmentDetailPage({
           primero que busca es cuántas veces se fue y qué pasó cada vez, no la
           lista completa de cambios de estado. */}
       <Intentos intentos={shipment.deliveryAttempts} />
+
+      {/* Después de los intentos y antes del historial: la posventa es la
+          consecuencia de lo que se ve arriba —se falló tres veces, por eso
+          vuelve; llegó roto, por eso reclama— y leerla en ese orden es lo que
+          evita tener que reconstruir la historia al revés. */}
+      <Posventa
+        shipmentId={shipment.id}
+        trackingNumber={shipment.trackingNumber}
+      />
 
       <Historial shipment={shipment} onCambio={load} />
     </div>

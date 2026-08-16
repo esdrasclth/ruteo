@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { KeyRound, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -14,6 +14,7 @@ import {
   TeamUser,
   UserStatus,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import {
   ASSIGNABLE_ROLES,
   ROLE_LABELS,
@@ -63,17 +64,12 @@ const emptyForm = {
 };
 
 export default function TeamPage() {
-  const [data, setData] = useState<Paginated<TeamUser> | null>(null);
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [resetTarget, setResetTarget] = useState<TeamUser | null>(null);
   const [newPassword, setNewPassword] = useState("");
-  const [linkables, setLinkables] = useState<{
-    drivers: Driver[];
-    customers: CustomerListItem[];
-  } | null>(null);
 
   const session = getSession();
   const myId = session?.userId;
@@ -82,48 +78,40 @@ export default function TeamPage() {
     ? ["OWNER", ...ASSIGNABLE_ROLES]
     : ASSIGNABLE_ROLES;
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(PAGE_SIZE),
-    });
-    try {
-      setData(await api<Paginated<TeamUser>>(`/users?${params}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando el equipo",
-      );
-    }
-  }, [page]);
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+  });
+
+  const { datos, recargar: load } = useApi<Paginated<TeamUser>>(
+    `/users?${params}`,
+    { mensajeDeError: "Error cargando el equipo", keepPreviousData: true },
+  );
+  const data = datos ?? null;
 
   const users = data?.items ?? null;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
-  const loadLinkables = useCallback(async () => {
-    try {
-      const [drivers, customers] = await Promise.all([
-        api<Driver[]>("/drivers"),
-        api<CustomerListItem[]>("/customers"),
-      ]);
-      // Only records without an account can be linked to a new user.
-      setLinkables({
-        drivers: drivers.filter((d) => !d.userId),
-        customers: customers.filter((c) => !c.userId),
-      });
-    } catch {
-      setLinkables({ drivers: [], customers: [] });
-    }
-  }, []);
+  // Los catálogos para enlazar cuenta solo se piden cuando el diálogo se abre:
+  // la clave es `null` mientras esté cerrado, y con clave nula SWR no pide
+  // nada. Es lo que antes hacía el `if (open && !linkables)` del efecto, pero
+  // sin efecto y compartiendo caché con las pantallas de repartidores y
+  // clientes, que piden estas mismas dos rutas.
+  const { datos: repartidores, recargar: recargarRepartidores } = useApi<
+    Driver[]
+  >(open ? "/drivers" : null, { silencioso: true });
+  const { datos: clientes, recargar: recargarClientes } = useApi<
+    CustomerListItem[]
+  >(open ? "/customers" : null, { silencioso: true });
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (open && !linkables) {
-      loadLinkables();
-    }
-  }, [open, linkables, loadLinkables]);
+  // Solo se puede enlazar lo que todavía no tiene cuenta.
+  const linkables =
+    repartidores && clientes
+      ? {
+          drivers: repartidores.filter((d) => !d.userId),
+          customers: clientes.filter((c) => !c.userId),
+        }
+      : null;
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -142,7 +130,9 @@ export default function TeamPage() {
       toast.success("Usuario creado");
       setOpen(false);
       setForm(emptyForm);
-      await Promise.all([load(), loadLinkables()]);
+      // El repartidor o cliente recién enlazado ya tiene cuenta, así que sale
+      // de los catálogos: hay que volver a pedirlos, no solo la lista.
+      await Promise.all([load(), recargarRepartidores(), recargarClientes()]);
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "No se pudo crear el usuario",

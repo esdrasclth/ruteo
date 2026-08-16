@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -13,6 +13,8 @@ import {
   RouteStatus,
   RouteSummary,
 } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
+import { usePagina } from "@/lib/use-pagina";
 import {
   ROUTE_STATUS_LABELS,
   routeStatusBadgeClass,
@@ -69,39 +71,28 @@ function RoutesContent() {
   const searchParams = useSearchParams();
   // Llega desde el listado de repartidores: "ver las rutas de este repartidor".
   const driverId = searchParams.get("driverId");
-  const [data, setData] = useState<Paginated<RouteSummary> | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [status, setStatus] = useState<string>(ALL);
-  const [page, setPage] = useState(1);
+  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin
+  // explicar por qué; `usePagina` vuelve al principio sin pasar por un efecto.
+  const [page, setPage] = usePagina(`${status}|${driverId}`);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ driverId: "", scheduledDate: todayISO() });
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(PAGE_SIZE),
-    });
-    if (status !== ALL) params.set("status", status);
-    if (driverId) params.set("driverId", driverId);
-    try {
-      setData(await api<Paginated<RouteSummary>>(`/routes?${params}`));
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando rutas",
-      );
-    }
-  }, [page, status, driverId]);
+  // La consulta se arma en el render porque ES la clave de caché.
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+  });
+  if (status !== ALL) params.set("status", status);
+  if (driverId) params.set("driverId", driverId);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin explicar
-  // por qué; se vuelve al principio.
-  useEffect(() => {
-    setPage(1);
-  }, [status, driverId]);
+  const { datos } = useApi<Paginated<RouteSummary>>(
+    `/routes?${params}`,
+    { mensajeDeError: "Error cargando rutas", keepPreviousData: true },
+  );
+  const data = datos ?? null;
 
   const routes = data?.items ?? null;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;

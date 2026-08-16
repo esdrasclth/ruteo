@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { AlertTriangle, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, TenantProfile } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,37 +25,48 @@ import { Skeleton } from "@/components/ui/skeleton";
  * obsoleto sin que nadie se entere.
  */
 export function DatosFiscales() {
-  const [perfil, setPerfil] = useState<TenantProfile | null>(null);
-  const [guardando, setGuardando] = useState(false);
-  const [form, setForm] = useState({
-    legalName: "",
-    taxId: "",
-    billingEmail: "",
-    billingAddress: "",
-    phone: "",
+  // Misma clave que usa la pantalla de Empresa, que además renderiza esta
+  // tarjeta: antes eran DOS peticiones idénticas a `/tenants/me` en cada
+  // visita, una por cada componente. Ahora es una.
+  const { datos: perfil, recargar } = useApi<TenantProfile>("/tenants/me", {
+    mensajeDeError: "Error cargando la ficha",
   });
 
-  const cargar = useCallback(async () => {
-    try {
-      const p = await api<TenantProfile>("/tenants/me");
-      setPerfil(p);
-      setForm({
-        legalName: p.legalName ?? "",
-        taxId: p.taxId ?? "",
-        billingEmail: p.billingEmail ?? "",
-        billingAddress: p.billingAddress ?? "",
-        phone: p.phone ?? "",
-      });
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Error cargando la ficha",
-      );
-    }
-  }, []);
+  if (!perfil) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Datos fiscales</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-32 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  // La `key` reinicia el formulario cuando la ficha cambia de verdad. Antes se
+  // rellenaba desde un `useEffect`, y eso tenía un fallo silencioso: una
+  // revalidación en segundo plano pisaba lo que el usuario estuviera
+  // escribiendo.
+  return <FichaFiscal key={perfil.id} perfil={perfil} recargar={recargar} />;
+}
+
+function FichaFiscal({
+  perfil,
+  recargar,
+}: {
+  perfil: TenantProfile;
+  recargar: (datos?: TenantProfile) => void;
+}) {
+  const [guardando, setGuardando] = useState(false);
+  const [form, setForm] = useState({
+    legalName: perfil.legalName ?? "",
+    taxId: perfil.taxId ?? "",
+    billingEmail: perfil.billingEmail ?? "",
+    billingAddress: perfil.billingAddress ?? "",
+    phone: perfil.phone ?? "",
+  });
 
   async function guardar(e: FormEvent) {
     e.preventDefault();
@@ -75,7 +87,10 @@ export function DatosFiscales() {
           ),
         ),
       });
-      setPerfil(actualizado);
+      // Se escribe la respuesta en la caché en vez de volver a pedirla: el
+      // PATCH ya devolvió la ficha actualizada. Y como la clave es compartida,
+      // la pantalla de Empresa ve el cambio sin pedir nada.
+      recargar(actualizado);
       toast.success("Datos de facturación guardados");
     } catch (err) {
       toast.error(
@@ -84,19 +99,6 @@ export function DatosFiscales() {
     } finally {
       setGuardando(false);
     }
-  }
-
-  if (!perfil) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Datos fiscales</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-32 w-full" />
-        </CardContent>
-      </Card>
-    );
   }
 
   return (
