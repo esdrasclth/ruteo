@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { DailyChart } from "@/components/daily-chart";
+import { Medidor } from "@/components/medidor";
+import { comoDinero, Numero } from "@/components/numero";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -36,7 +38,7 @@ const RANGOS = [
 ];
 
 /**
- * Cifra del período: número, etiqueta y nota, sin tarjeta alrededor.
+ * Cifra del período: número, etiqueta, nota y un medidor de un píxel de alto.
  *
  * Es deliberadamente MÁS DÉBIL que la franja de atención de arriba. La versión
  * anterior usaba la misma tarjeta de vidrio que el resto de la pantalla, y el
@@ -44,26 +46,42 @@ const RANGOS = [
  * mismo que «2 excepciones sin asignar», que es trabajo sin hacer. La jerarquía
  * de esta pantalla es esa y no otra: primero lo que hay que atender, después lo
  * que hay que saber.
+ *
+ * **El medidor no rompe esa regla, y por eso mide 1px y no 6.** Las cuatro
+ * cifras son todas partes de un total —entregados de los envíos, cobrado de lo
+ * que se debía— y esa proporción no estaba dibujada en ningún sitio: había que
+ * dividir dos números de memoria. Una barra fina la enseña sin añadir ni una
+ * caja ni un color saturado, que es lo que volvería a subir esta fila al peso
+ * de la franja de arriba.
  */
 function CifraPeriodo({
   etiqueta,
   valor,
+  formato,
   nota,
   href,
+  proporcion,
+  retraso = 0,
 }: {
   etiqueta: string;
-  valor: number | string;
+  valor: number;
+  formato?: (n: number) => string;
   nota?: string;
   href: string;
+  /** De 0 a 1: qué parte del total representa la cifra. */
+  proporcion?: number;
+  retraso?: number;
 }) {
   return (
     <Link
       href={href}
       className="group -mx-2 flex flex-col rounded-lg px-2 py-1 transition-colors hover:bg-primary/5"
     >
-      <span className="text-2xl font-semibold tabular-nums text-primary">
-        {valor}
-      </span>
+      <Numero
+        valor={valor}
+        formato={formato}
+        className="text-2xl font-semibold tabular-nums text-primary"
+      />
       <span className="text-xs leading-tight text-foreground/70">
         {etiqueta}
       </span>
@@ -72,7 +90,41 @@ function CifraPeriodo({
           {nota}
         </span>
       ) : null}
+      {proporcion === undefined ? null : (
+        <Medidor proporcion={proporcion} retraso={retraso} className="mt-2" />
+      )}
     </Link>
+  );
+}
+
+/**
+ * Qué parte de `parte` es del total que forma con `resto`.
+ *
+ * Devuelve `undefined` y no 0 cuando no hay nada: sin envíos en el rango, la
+ * pregunta «qué porcentaje se entregó» no tiene respuesta, y una barra vacía la
+ * respondería con «ninguno». Quien la recibe se salta el medidor entero.
+ */
+function reparto(parte: number, resto: number): number | undefined {
+  const total = parte + resto;
+  if (!Number.isFinite(total) || total <= 0) return undefined;
+  return parte / total;
+}
+
+/** Fila de una lista de desglose: etiqueta, cifra y barra contra el mayor. */
+function FilaDesglose({
+  children,
+  proporcion,
+  retraso,
+}: {
+  children: React.ReactNode;
+  proporcion: number;
+  retraso: number;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      {children}
+      <Medidor proporcion={proporcion} retraso={retraso} />
+    </div>
   );
 }
 
@@ -133,6 +185,30 @@ export default function DashboardPage() {
     ? shipments.daily.reduce((acc, d) => acc + d.count, 0)
     : 0;
 
+  // Cada lista del desglose mide sus barras contra SU propia fila mayor, no
+  // contra un tope común. Son tres magnitudes distintas —envíos, lempiras
+  // cobrados, lempiras por repartidor— y compartir escala haría que la lista de
+  // envíos apareciera como cuatro rayas invisibles al lado de un cobro de miles.
+  // Lo que se compara aquí es dentro de cada lista, nunca entre listas.
+  //
+  // El `1` del suelo evita dividir por cero cuando la lista tiene filas pero
+  // todas valen 0; la lista vacía ni siquiera llega a pintar barras.
+  const topeTipo = periodoListo
+    ? Math.max(1, ...shipments.byType.map((r) => r.count))
+    : 1;
+  const topePago = periodoListo
+    ? Math.max(1, ...payments.breakdown.map((r) => Number(r.amount)))
+    : 1;
+  const repartidoresOrdenados = periodoListo
+    ? [...drivers.drivers].sort(
+        (a, b) => Number(b.codAmount) - Number(a.codAmount),
+      )
+    : [];
+  const topeRepartidor = Math.max(
+    1,
+    ...repartidoresOrdenados.map((r) => Number(r.codAmount)),
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -178,8 +254,8 @@ export default function DashboardPage() {
 
       {!periodoListo ? (
         <div className="flex flex-col gap-4">
-          <Skeleton className="h-72 rounded-2xl" />
-          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="esqueleto-brillo h-72 rounded-2xl" />
+          <Skeleton className="esqueleto-brillo h-40 rounded-2xl" />
         </div>
       ) : (
       // El atenuado al cambiar de rango envuelve SOLO esta mitad: la de arriba
@@ -196,11 +272,21 @@ export default function DashboardPage() {
             franja de atención tiene que ser lo más fuerte de la pantalla, y
             cuatro tarjetas grandes compitiendo con ella la apagaban. Estas
             cifras se consultan, no se atienden. */}
-        <section className="glass-panel rounded-2xl p-5 sm:p-6">
+        <section
+          className="glass-panel aparece rounded-2xl p-5 sm:p-6"
+          style={{ "--retraso": "40ms" } as React.CSSProperties}
+        >
           {/* Rejilla y no una fila pegada a la izquierda: en un panel de 1200px
               cuatro cifras amontonadas en el primer cuarto dejan el resto en
               blanco, y el bloque parece grande sin serlo. */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {/* Sin medidor, y es deliberado: la única proporción que se podría
+                dibujar aquí —entregados sobre el total— ES la tasa de entrega
+                de la casilla de al lado. Dos barras idénticas, una junto a
+                otra, diciendo el mismo 53%. Es el mismo error que ya se corrigió
+                en la mitad de arriba cuando los retenidos en aduana salían dos
+                veces: dos cifras iguales en una pantalla hacen dudar de las
+                dos. Un total no es parte de nada, así que no lleva barra. */}
             <CifraPeriodo
               etiqueta="Envíos"
               valor={overview.shipments.total}
@@ -209,15 +295,31 @@ export default function DashboardPage() {
             />
             <CifraPeriodo
               etiqueta="Tasa de entrega"
-              valor={`${(overview.shipments.deliveryRate * 100).toFixed(1)}%`}
+              valor={overview.shipments.deliveryRate * 100}
+              formato={(n) => `${n.toFixed(1)}%`}
               nota={`${overview.shipments.failed} fallidos`}
+              // La tasa YA es una proporción: aquí el medidor no divide nada,
+              // sólo dibuja el mismo número que hay encima.
+              proporcion={overview.shipments.deliveryRate}
               href="/shipments?status=DELIVERED"
+              retraso={60}
             />
             <CifraPeriodo
               etiqueta="COD cobrado"
-              valor={overview.cod.collected}
-              nota={`${overview.cod.pending} pendiente`}
+              valor={Number(overview.cod.collected)}
+              formato={comoDinero}
+              // Con el mismo formato que la cifra de arriba. Animar el cobrado
+              // obliga a pasarlo por número y a escribirlo con dos decimales;
+              // dejar el pendiente en crudo ponía «17352.00» encima de «38765»,
+              // y dos importes con distinta pinta se leen como dos magnitudes
+              // distintas.
+              nota={`${comoDinero(Number(overview.cod.pending))} pendiente`}
+              proporcion={reparto(
+                Number(overview.cod.collected),
+                Number(overview.cod.pending),
+              )}
               href="/payments"
+              retraso={120}
             />
             <CifraPeriodo
               etiqueta="Notificaciones"
@@ -227,7 +329,12 @@ export default function DashboardPage() {
                   ? `${overview.notifications.failed} fallidas`
                   : undefined
               }
+              proporcion={reparto(
+                overview.notifications.sent,
+                overview.notifications.failed,
+              )}
               href="/notifications"
+              retraso={180}
             />
           </div>
 
@@ -257,7 +364,10 @@ export default function DashboardPage() {
             tarjetas para eso es envoltorio con más peso que el contenido. En
             tres columnas de un mismo bloque se leen igual y pesan una tercera
             parte. */}
-        <section className="glass-card rounded-2xl p-5 sm:p-6">
+        <section
+          className="glass-card aparece rounded-2xl p-5 sm:p-6"
+          style={{ "--retraso": "120ms" } as React.CSSProperties}
+        >
           <h3 className="text-sm font-semibold text-foreground/75">
             Desglose del período
           </h3>
@@ -266,23 +376,29 @@ export default function DashboardPage() {
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Por tipo
               </p>
-              <div className="mt-2 flex flex-col gap-1.5">
+              <div className="mt-2 flex flex-col gap-2.5">
                 {shipments.byType.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sin datos.</p>
                 ) : (
-                  shipments.byType.map((row) => (
-                    <Link
+                  shipments.byType.map((row, i) => (
+                    <FilaDesglose
                       key={row.type}
-                      href={`/shipments?type=${row.type}`}
-                      className="-mx-2 flex items-center justify-between rounded-lg px-2 py-0.5 text-sm transition-colors hover:bg-primary/5"
+                      proporcion={row.count / topeTipo}
+                      retraso={i * 50}
                     >
-                      <span className="text-foreground/80">
-                        {TYPE_LABELS[row.type] ?? row.type}
-                      </span>
-                      <span className="font-semibold tabular-nums text-primary">
-                        {row.count}
-                      </span>
-                    </Link>
+                      <Link
+                        href={`/shipments?type=${row.type}`}
+                        className="-mx-2 flex items-center justify-between rounded-lg px-2 py-0.5 text-sm transition-colors hover:bg-primary/5"
+                      >
+                        <span className="text-foreground/80">
+                          {TYPE_LABELS[row.type] ?? row.type}
+                        </span>
+                        <Numero
+                          valor={row.count}
+                          className="font-semibold tabular-nums text-primary"
+                        />
+                      </Link>
+                    </FilaDesglose>
                   ))
                 )}
               </div>
@@ -292,34 +408,39 @@ export default function DashboardPage() {
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Pagos
               </p>
-              <div className="mt-2 flex flex-col gap-1.5">
+              <div className="mt-2 flex flex-col gap-2.5">
                 {payments.breakdown.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Sin pagos en el rango.
                   </p>
                 ) : (
-                  payments.breakdown.map((row) => (
-                    <div
+                  payments.breakdown.map((row, i) => (
+                    <FilaDesglose
                       key={`${row.type}-${row.status}`}
-                      className="flex items-center justify-between gap-2 text-sm"
+                      proporcion={Number(row.amount) / topePago}
+                      retraso={i * 50}
                     >
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-foreground/80">
-                          {PAYMENT_TYPE_LABELS[row.type]}
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-foreground/80">
+                            {PAYMENT_TYPE_LABELS[row.type]}
+                          </span>
+                          <Badge
+                            className={cn(
+                              "shrink-0 px-1.5 py-0 text-[10px]",
+                              paymentStatusBadgeClass(row.status),
+                            )}
+                          >
+                            {PAYMENT_STATUS_LABELS[row.status]}
+                          </Badge>
                         </span>
-                        <Badge
-                          className={cn(
-                            "shrink-0 px-1.5 py-0 text-[10px]",
-                            paymentStatusBadgeClass(row.status),
-                          )}
-                        >
-                          {PAYMENT_STATUS_LABELS[row.status]}
-                        </Badge>
-                      </span>
-                      <span className="shrink-0 font-semibold tabular-nums text-primary">
-                        {row.amount}
-                      </span>
-                    </div>
+                        <Numero
+                          valor={Number(row.amount)}
+                          formato={comoDinero}
+                          className="shrink-0 font-semibold tabular-nums text-primary"
+                        />
+                      </div>
+                    </FilaDesglose>
                   ))
                 )}
               </div>
@@ -329,28 +450,31 @@ export default function DashboardPage() {
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 COD por repartidor
               </p>
-              <div className="mt-2 flex flex-col gap-1.5">
+              <div className="mt-2 flex flex-col gap-2.5">
                 {drivers.drivers.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Nadie registró cobros. El COD que se cobra solo al marcar
                     entregado no queda asignado a un repartidor.
                   </p>
                 ) : (
-                  [...drivers.drivers]
-                    .sort((a, b) => Number(b.codAmount) - Number(a.codAmount))
-                    .map((row) => (
-                      <div
-                        key={row.driverId ?? "sin-driver"}
-                        className="flex items-center justify-between gap-2 text-sm"
-                      >
+                  repartidoresOrdenados.map((row, i) => (
+                    <FilaDesglose
+                      key={row.driverId ?? "sin-driver"}
+                      proporcion={Number(row.codAmount) / topeRepartidor}
+                      retraso={i * 50}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-sm">
                         <span className="truncate text-foreground/80">
                           {row.name ?? "Sin nombre"}
                         </span>
-                        <span className="shrink-0 font-semibold tabular-nums text-primary">
-                          {row.codAmount}
-                        </span>
+                        <Numero
+                          valor={Number(row.codAmount)}
+                          formato={comoDinero}
+                          className="shrink-0 font-semibold tabular-nums text-primary"
+                        />
                       </div>
-                    ))
+                    </FilaDesglose>
+                  ))
                 )}
               </div>
             </div>

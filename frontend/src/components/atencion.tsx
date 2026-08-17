@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
+import { Numero } from "@/components/numero";
 import { cn } from "@/lib/utils";
 
 export interface Pendiente {
@@ -65,12 +66,19 @@ export function Atencion({
       )}
     >
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive ring-1 ring-destructive/15">
+        {/* El halo late SÓLO aquí, y sólo cuando hay algo. Es el único
+            movimiento que se repite sin parar en toda la pantalla: si lo
+            llevara también alguna cifra del período, dejaría de significar
+            «esto es lo urgente» y pasaría a ser decoración de fondo. Cuando no
+            hay nada pendiente este bloque ni siquiera se dibuja, así que el
+            pulso no puede quedarse latiendo sobre una pantalla en calma. */}
+        <span className="halo mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive ring-1 ring-destructive/15">
           <TriangleAlert className="size-4" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-foreground/85">
-            {total} cosa{total === 1 ? "" : "s"} que atender
+            <Numero valor={total} className="tabular-nums" /> cosa
+            {total === 1 ? "" : "s"} que atender
           </p>
 
           {/* Cada trozo es su propio enlace: el número y lo que es van juntos y
@@ -78,7 +86,17 @@ export function Atencion({
               obliga a buscar a mano lo que acaba de señalar. */}
           <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-2">
             {activos.map((p, i) => (
-              <span key={p.href} className="flex items-baseline gap-1">
+              <span
+                key={p.href}
+                className="aparece flex items-baseline gap-1"
+                // Escalonado corto: los pendientes entran de izquierda a
+                // derecha en el mismo orden en que cuestan dinero, que es el
+                // orden en que están puestos. A 60ms el barrido se percibe sin
+                // que haya que esperar a que termine para leer.
+                style={
+                  { "--retraso": `${i * 60}ms` } as React.CSSProperties
+                }
+              >
                 {/* Alineado por la línea base y no por el centro: centrado, el
                     punto quedaba flotando a media altura entre un número de 18px
                     y un texto de 14px, y se leía como un carácter suelto. */}
@@ -91,14 +109,18 @@ export function Atencion({
                   href={p.href}
                   className="group inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-destructive/10"
                 >
-                  <span className="text-lg font-semibold tabular-nums text-destructive">
-                    {p.cuantos}
-                  </span>
+                  <Numero
+                    valor={p.cuantos}
+                    className="text-lg font-semibold tabular-nums text-destructive"
+                  />
                   <span className="text-sm text-foreground/75 group-hover:text-foreground">
                     {p.cuantos === 1 ? p.uno : p.varios}
                   </span>
+                  {/* La flecha además de aparecer AVANZA. Apareciendo sin más
+                      parpadea al pasar por encima; saliendo de debajo del texto
+                      se lee como la dirección a la que lleva el enlace. */}
                   <ArrowRight
-                    className="size-3 self-center text-destructive opacity-0 transition-opacity group-hover:opacity-100"
+                    className="size-3 -translate-x-1 self-center text-destructive opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100"
                     aria-hidden
                   />
                 </Link>

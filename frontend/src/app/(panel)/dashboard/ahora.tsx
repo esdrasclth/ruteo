@@ -7,9 +7,12 @@ import { useApi } from "@/lib/use-api";
 import { EXCEPTION_SEVERITY_LABELS, severityBadgeClass } from "@/lib/fase2";
 import { Atencion, Pendiente } from "@/components/atencion";
 import { Recorrido } from "@/components/recorrido";
+import { MedidorApilado, Tramo } from "@/components/medidor";
+import { Numero } from "@/components/numero";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 /**
  * La mitad «ahora» de la pantalla de inicio (§6 del plan): dónde está la carga
@@ -40,6 +43,7 @@ export function Ahora() {
   const {
     datos: tablero,
     cargando,
+    refrescando,
     recargar: load,
   } = useApi<TableroOperacion>("/analytics/operacion", {
     mensajeDeError: "No se pudo cargar el tablero",
@@ -48,9 +52,12 @@ export function Ahora() {
   if (cargando || !tablero) {
     return (
       <div className="grid gap-4">
-        <Skeleton className="h-20 rounded-2xl" />
-        <Skeleton className="h-24 rounded-2xl" />
-        <Skeleton className="h-24 rounded-2xl" />
+        {/* Los esqueletos imitan la forma de lo que viene —una franja fina y
+            dos bloques— y no tres cajas iguales: así el salto al llegar los
+            datos es de contenido y no de maquetación. */}
+        <Skeleton className="esqueleto-brillo h-20 rounded-2xl" />
+        <Skeleton className="esqueleto-brillo h-24 rounded-2xl" />
+        <Skeleton className="esqueleto-brillo h-24 rounded-2xl" />
       </div>
     );
   }
@@ -58,6 +65,26 @@ export function Ahora() {
   const { bodegas, aduana, excepciones, ultimaMilla } = tablero;
   const totalBultos =
     bodegas.detalle.reduce((t, b) => t + b.bultos, 0) + bodegas.sinUbicar;
+
+  // El reparto entre bodegas, en una sola barra. Los números de al lado dicen
+  // CUÁNTO hay en cada una; la barra dice qué parte del total es cada una, que
+  // con tres o cuatro bodegas es una división mental que nadie hace al vuelo.
+  // Los sin ubicar entran como un tramo más, en rojo y al final: son parte del
+  // total —si no, la barra no cuadraría con la cifra de la derecha— pero no son
+  // un sitio donde esté la carga, que es lo que la barra dibuja.
+  const tramosBodega: Tramo[] = [
+    ...bodegas.detalle.map((b) => ({
+      clave: b.warehouseId ?? "sin-id",
+      valor: b.bultos,
+      etiqueta: b.name ?? "Bodega",
+    })),
+    {
+      clave: "sin-ubicar",
+      valor: bodegas.sinUbicar,
+      etiqueta: "Sin bodega asignada",
+      alerta: true,
+    },
+  ];
 
   // Lo urgente, en el orden en que cuesta dinero: una excepción sin dueño no
   // avanza nunca; un bulto retenido en aduana genera almacenaje cada día; un
@@ -108,14 +135,26 @@ export function Ahora() {
               como primer argumento para escribir la caché a mano, y pasarle el
               manejador directo le colaría el evento del ratón como si fuera el
               tablero. */}
-          <Button variant="outline" size="sm" onClick={() => void load()}>
-            <RefreshCw className="size-4" aria-hidden />
+          {/* El icono gira mientras se pide de verdad. Sin esto, pulsar
+              «Actualizar» sobre un tablero que apenas cambia no daba ninguna
+              señal de que hubiera pasado algo, y se pulsaba tres veces. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void load()}
+            disabled={refrescando}
+          >
+            <RefreshCw
+              className={cn("size-4", refrescando && "animate-spin")}
+              aria-hidden
+            />
             Actualizar
           </Button>
         </div>
       </div>
 
       <Atencion
+        className="aparece"
         pendientes={pendientes}
         // El desglose por severidad vive DENTRO de la franja y ya no en una
         // tarjeta aparte: es la letra pequeña de «3 excepciones abiertas», y
@@ -152,13 +191,17 @@ export function Ahora() {
       {/* Dónde está la carga: una línea de bodegas, no una tarjeta con una fila
           bordeada por bodega. Con tres bodegas aquello ocupaba media pantalla
           para decir tres números. */}
-      <section className="glass-card rounded-2xl p-5">
+      <section
+        className="glass-card aparece rounded-2xl p-5"
+        style={{ "--retraso": "60ms" } as React.CSSProperties}
+      >
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h3 className="text-sm font-semibold text-foreground/75">
             Dónde está la carga
           </h3>
           <span className="text-xs text-muted-foreground">
-            {totalBultos} bulto{totalBultos === 1 ? "" : "s"} en total
+            <Numero valor={totalBultos} className="tabular-nums" /> bulto
+            {totalBultos === 1 ? "" : "s"} en total
           </span>
         </div>
 
@@ -167,12 +210,15 @@ export function Ahora() {
             No hay bultos en bodega ahora mismo.
           </p>
         ) : (
+          <>
+          <MedidorApilado tramos={tramosBodega} retraso={120} className="mt-4" />
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
             {bodegas.detalle.map((b) => (
               <div key={b.warehouseId} className="flex flex-col">
-                <span className="text-2xl font-semibold tabular-nums text-primary">
-                  {b.bultos}
-                </span>
+                <Numero
+                  valor={b.bultos}
+                  className="text-2xl font-semibold tabular-nums text-primary"
+                />
                 <span className="text-xs leading-tight text-muted-foreground">
                   {b.name ?? "Bodega"}
                   {b.code ? ` · ${b.code}` : ""}
@@ -188,7 +234,7 @@ export function Ahora() {
                 className="group flex flex-col rounded-lg px-2 py-1 transition-colors hover:bg-destructive/10"
               >
                 <span className="flex items-center gap-1.5 text-2xl font-semibold tabular-nums text-destructive">
-                  {bodegas.sinUbicar}
+                  <Numero valor={bodegas.sinUbicar} />
                   <PackageSearch className="size-4" aria-hidden />
                 </span>
                 <span className="text-xs leading-tight text-muted-foreground">
@@ -197,12 +243,14 @@ export function Ahora() {
               </Link>
             )}
           </div>
+          </>
         )}
       </section>
 
       <Recorrido
         titulo="Aduana"
         vacio="Nada en trámite aduanero."
+        retraso={120}
         pasos={[
           { etiqueta: "Pendientes", valor: aduana.pendientes, href: "/customs" },
           {
@@ -223,6 +271,7 @@ export function Ahora() {
       <Recorrido
         titulo="Última milla"
         vacio="Nada en reparto ahora mismo."
+        retraso={180}
         pasos={[
           {
             etiqueta: "En bodega",

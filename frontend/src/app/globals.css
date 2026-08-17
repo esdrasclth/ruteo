@@ -74,6 +74,62 @@ body {
   color: var(--foreground);
 }
 
+/* --- Movimiento -------------------------------------------------------------
+   Casi todas las animaciones de aquí se declaran SOLO con `from`: el estado en
+   reposo del elemento ya es el final. Eso es lo que permite apagarlas de golpe
+   más abajo cuando el sistema pide menos movimiento y que lo que quede sea la
+   pantalla terminada, y no una línea sin dibujar o una barra a cero. Las dos
+   que sí llevan `to` —halo y brillo— son adorno puro y se retiran enteras.
+
+   Van fuera de `@layer utilities` a propósito: `@keyframes` dentro de una capa
+   compila, pero deja de estar garantizado que gane al de fuera si algún día
+   otra hoja define un nombre igual. */
+
+@keyframes ruteo-aparece {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes ruteo-traza {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes ruteo-revela {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ruteo-crece {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes ruteo-halo {
+  from {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+@keyframes ruteo-brilla {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
 @layer utilities {
   /* Off-white panel surface with very subtle low-opacity teal radial gradients. */
   .panel-surface {
@@ -367,6 +423,99 @@ body {
     );
   }
 
+  /* --- Entrada escalonada ---------------------------------------------------
+     `backwards` es lo que hace que el retraso sirva de algo: sin él el elemento
+     se pinta ya visible y sólo empieza a moverse cuando le toca, que es
+     exactamente el parpadeo que la animación venía a evitar. */
+  .aparece {
+    animation: ruteo-aparece 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: var(--retraso, 0ms);
+  }
+
+  /* La línea de una gráfica dibujándose sola. Se usa con `pathLength="1"` en el
+     SVG: así el `dasharray` vale 1 sea cual sea el largo real del trazo, y no
+     hay que medirlo en JS con `getTotalLength()` —que obliga a una ref, a un
+     efecto y a un repintado antes de poder animar—. */
+  .traza {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    animation: ruteo-traza 1.1s cubic-bezier(0.32, 0.72, 0.3, 1);
+  }
+
+  .revela {
+    animation: ruteo-revela 0.9s ease-out 0.15s backwards;
+  }
+
+  /* --- Medidores ------------------------------------------------------------
+     Barra de proporción: pista tenue y relleno con el degradado de marca. El
+     ancho real lo fija quien la usa en línea (es un dato, no un estilo); la
+     ENTRADA se anima con `scaleX` para que viva en el compositor, y los cambios
+     posteriores —al cambiar el rango de fechas— con una transición de `width`,
+     que es la única forma de ir de una proporción a otra sin saltar. */
+  .medidor {
+    background-color: color-mix(in srgb, #183a37 9%, transparent);
+  }
+
+  /* Crecer desde la izquierda. Va aparte del relleno porque la barra apilada
+     —que no tiene un relleno único sino un tramo por bodega— necesita la misma
+     entrada sin heredar el degradado. */
+  .crece {
+    transform-origin: left center;
+    animation: ruteo-crece 0.9s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: var(--retraso, 0ms);
+  }
+
+  .medidor-relleno {
+    background-image: linear-gradient(90deg, #183a37, #3f9689);
+    transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* El mismo medidor cuando lo que mide es un problema. Rojo de marca, no el
+     verde: una barra llena de color de acento se lee como algo que va bien. */
+  .medidor-alerta {
+    background-image: linear-gradient(90deg, #b3261e, #d0453c);
+  }
+
+  /* Halo que sale del aviso y se desvanece. `isolation` + `z-index: -1` lo
+     mandan por detrás del propio icono, que es lo que hace que se lea como un
+     pulso alrededor y no como una mancha encima. */
+  .halo {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .halo::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-color: color-mix(in srgb, #b3261e 22%, transparent);
+    animation: ruteo-halo 2.4s ease-out infinite;
+    pointer-events: none;
+  }
+
+  /* Brillo que recorre los esqueletos de carga. `animate-pulse` a secas dice
+     «esto está vacío»; un barrido dice «esto viene en camino», que es lo que
+     pasa de verdad. */
+  .esqueleto-brillo {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .esqueleto-brillo::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.6),
+      transparent
+    );
+    animation: ruteo-brilla 1.6s ease-in-out infinite;
+  }
+
   /* Frosted glass active state for the dark navy sidebar — subtle. */
   .glass-active {
     background: rgba(255, 255, 255, 0.09);
@@ -402,5 +551,32 @@ body {
   }
   .scroll-sutil:hover::-webkit-scrollbar-thumb {
     background-color: rgba(255, 255, 255, 0.24);
+  }
+}
+
+/* --- Cuando el sistema pide menos movimiento --------------------------------
+   Fuera de `@layer utilities` para que gane sin depender del orden de la capa:
+   dentro, una utilidad declarada después podría volver a encender lo que aquí
+   se apaga, y esto no es una preferencia estética sino de accesibilidad.
+
+   Las que animan un estado (trazo, medidor, entrada) se quedan SIN animación y
+   por tanto en su estado de reposo, que ya es el final —la gráfica sale
+   dibujada y las barras a su tamaño—. Las que sólo son adorno y además se
+   repiten sin parar se retiran del todo. */
+@media (prefers-reduced-motion: reduce) {
+  .aparece,
+  .traza,
+  .revela,
+  .crece {
+    animation: none;
+  }
+
+  .medidor-relleno {
+    transition: none;
+  }
+
+  .halo::after,
+  .esqueleto-brillo::after {
+    display: none;
   }
 }
