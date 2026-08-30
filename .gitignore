@@ -21,3 +21,6 @@ backend/prisma/*.db
 
 # Archivos de bloqueo de Affinity Designer.
 *.af~lock~
+
+# Lleva la contraseña de la demo escrita dentro, a petición expresa.
+backend/scripts/sembrar-demo.ts

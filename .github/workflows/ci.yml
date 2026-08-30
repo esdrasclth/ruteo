@@ -140,6 +140,15 @@ jobs:
           NEXT_PUBLIC_API_URL: https://api.ejemplo.invalid/api
           NEXT_PUBLIC_APP_URL: https://panel.ejemplo.invalid
           NEXT_PUBLIC_SITE_URL: https://ejemplo.invalid
+      - name: Presupuesto de rendimiento
+        if: matrix.app == 'frontend'
+        run: npm run budget
+      - name: Navegador para E2E y accesibilidad
+        if: matrix.app == 'frontend'
+        run: npx playwright install --with-deps chromium
+      - name: E2E y accesibilidad
+        if: matrix.app == 'frontend'
+        run: npm run test:e2e
 
   imagenes:
     name: Imágenes de despliegue

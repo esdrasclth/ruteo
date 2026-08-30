@@ -5,8 +5,10 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -25,6 +27,8 @@ import { ResetPasswordCodeDto } from './dto/reset-password-code.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { VerifyEmailPublicDto } from './dto/verify-email-public.dto';
 import type { RefreshPayload } from './strategies/jwt-refresh.strategy';
+import { borrarCookies, guardarCookies } from './auth-cookies';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -33,14 +37,20 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly credenciales: CredentialsService,
+    private readonly config: ConfigService,
   ) {}
 
   // Registrar empresas en bucle es la forma barata de ensuciar la instancia de
   // identidad, donde el nombre de usuario es único globalmente.
   @RateLimit(5, 3600)
   @Post('register')
-  register(@Body() dto: RegisterDto): Promise<Tokens> {
-    return this.auth.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<Tokens> {
+    const tokens = await this.auth.register(dto);
+    guardarCookies(response, tokens, this.enProduccion, this.dominioCookie);
+    return tokens;
   }
 
   // El tope por IP frena el barrido; el bloqueo por cuenta (LoginThrottle)
@@ -52,8 +62,20 @@ export class AuthController {
   @RateLimit(10, 300)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto): Promise<Tokens | EmpresasDeAcceso> {
-    return this.auth.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<Tokens | EmpresasDeAcceso> {
+    const resultado = await this.auth.login(dto);
+    if (this.esTokens(resultado)) {
+      guardarCookies(
+        response,
+        resultado,
+        this.enProduccion,
+        this.dominioCookie,
+      );
+    }
+    return resultado;
   }
 
   // Canje del vale que emitió el login del panel raíz. Aquí es donde nace la
@@ -66,26 +88,44 @@ export class AuthController {
   @RateLimit(30, 300)
   @Post('handoff')
   @HttpCode(HttpStatus.OK)
-  handoff(@Body() dto: HandoffDto): Promise<Tokens> {
-    return this.auth.canjearHandoff(dto.code);
+  async handoff(
+    @Body() dto: HandoffDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<Tokens> {
+    const tokens = await this.auth.canjearHandoff(dto.code);
+    guardarCookies(response, tokens, this.enProduccion, this.dominioCookie);
+    return tokens;
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @UseGuards(JwtRefreshGuard)
-  refresh(@CurrentUser() user: RefreshPayload): Promise<Tokens> {
-    return this.auth.refresh(user.tid, user.sub, user.refreshToken);
+  async refresh(
+    @CurrentUser() user: RefreshPayload,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<Tokens> {
+    const tokens = await this.auth.refresh(
+      user.tid,
+      user.sub,
+      user.refreshToken,
+    );
+    guardarCookies(response, tokens, this.enProduccion, this.dominioCookie);
+    return tokens;
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  async logout(@CurrentUser() user: AuthUser): Promise<void> {
+  async logout(
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<void> {
     if (user.userId) {
       await this.auth.logout(user.tenantId, user.userId);
     }
+    borrarCookies(response, this.enProduccion, this.dominioCookie);
   }
 
   // Público: quien ha olvidado la contraseña no tiene sesión.
@@ -181,5 +221,17 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: AuthUser): AuthUser {
     return user;
+  }
+
+  private get enProduccion() {
+    return this.config.get<string>('NODE_ENV') === 'production';
+  }
+
+  private get dominioCookie() {
+    return this.config.get<string>('AUTH_COOKIE_DOMAIN');
+  }
+
+  private esTokens(resultado: Tokens | EmpresasDeAcceso): resultado is Tokens {
+    return 'accessToken' in resultado && 'refreshToken' in resultado;
   }
 }

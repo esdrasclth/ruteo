@@ -2,12 +2,7 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
-import {
-  DriversAnalytics,
-  Overview,
-  PaymentsAnalytics,
-  ShipmentsAnalytics,
-} from "@/lib/api";
+import { DashboardAnalytics } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import {
   PAYMENT_STATUS_LABELS,
@@ -163,32 +158,18 @@ function DashboardContent() {
   // esqueleto y hacer saltar el layout entero.
   const opciones = { mensajeDeError, keepPreviousData: true };
 
-  const resumen = useApi<Overview>(`/analytics/overview${qs}`, opciones);
-  const envios = useApi<ShipmentsAnalytics>(
-    `/analytics/shipments${qs}`,
+  const tablero = useApi<DashboardAnalytics>(
+    `/analytics/dashboard${qs}`,
     opciones,
   );
-  const cobros = useApi<PaymentsAnalytics>(
-    `/analytics/payments${qs}`,
-    opciones,
-  );
-  const repartidores = useApi<DriversAnalytics>(
-    `/analytics/drivers${qs}`,
-    opciones,
-  );
-
-  const overview = resumen.datos ?? null;
-  const shipments = envios.datos ?? null;
-  const payments = cobros.datos ?? null;
-  const drivers = repartidores.datos ?? null;
+  const overview = tablero.datos?.overview ?? null;
+  const shipments = tablero.datos?.shipments ?? null;
+  const payments = tablero.datos?.payments ?? null;
+  const drivers = tablero.datos?.drivers ?? null;
 
   // Atenuar mientras se refresca por detrás, que es justo lo que `refrescando`
   // significa: hay datos en pantalla y viene una versión nueva.
-  const recargando =
-    resumen.refrescando ||
-    envios.refrescando ||
-    cobros.refrescando ||
-    repartidores.refrescando;
+  const recargando = tablero.refrescando;
 
   // El skeleton cubre SOLO la mitad del período. Antes cortaba la pantalla
   // entera, y ahora eso escondería la mitad «Ahora» —que ya tiene sus datos y

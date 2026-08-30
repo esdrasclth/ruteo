@@ -1,22 +1,22 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-/**
- * Lo que se ve mientras se descarga el código de una pantalla del panel.
- *
- * Se dibuja DENTRO del armazón, así que el menú y la barra ya están puestos y
- * lo único que cambia es el área de contenido: la navegación no parpadea.
- *
- * En un panel de datos que se piden desde el navegador esto no cubre la espera
- * de la API —de eso se encargan los esqueletos de cada pantalla—, sino la del
- * bundle de la ruta. Se nota justo donde más importa: un teléfono con mala
- * cobertura, que es desde donde entra un repartidor.
- */
-export default function CargandoPanel() {
+/** Shell servidor: la navegación y la geometría aparecen antes de los datos. */
+export default function PanelLoading() {
   return (
-    <div className="flex flex-col gap-4">
-      <Skeleton className="h-8 w-56" />
-      <Skeleton className="h-4 w-80" />
-      <Skeleton className="h-64 w-full rounded-2xl" />
+    <div className="flex min-h-[60vh] flex-col gap-6" aria-busy="true">
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-72" />
+        </div>
+        <Skeleton className="h-10 w-32 rounded-lg" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className="h-28 rounded-2xl" />
+        ))}
+      </div>
+      <Skeleton className="h-72 w-full rounded-2xl" />
     </div>
   );
 }

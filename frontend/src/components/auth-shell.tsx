@@ -19,7 +19,7 @@ export function AuthShell({
   stepper?: ReactNode;
 }) {
   return (
-    <div className="brand-dark auth-photo flex min-h-screen flex-1 items-center justify-center px-4 py-10 sm:px-8">
+    <main className="brand-dark auth-photo flex min-h-screen flex-1 items-center justify-center px-4 py-10 sm:px-8">
       {/* z-10: el filtro de marca va en un ::after, que de otro modo se
           pintaría por encima del formulario. */}
       <div className="relative z-10 w-full max-w-5xl">
@@ -35,18 +35,14 @@ export function AuthShell({
 
         <CreditoBrandsofts />
       </div>
-    </div>
+    </main>
   );
 }
 
 // Crédito del desarrollador. Va al pie del lienzo y no dentro de la tarjeta:
 // aquí acompaña sin competir con el formulario, que es lo único que la persona
 // ha venido a hacer.
-export function CreditoBrandsofts({
-  className,
-}: {
-  className?: string;
-}) {
+export function CreditoBrandsofts({ className }: { className?: string }) {
   return (
     <p className={cn("mt-8 text-center text-xs text-white/35", className)}>
       Desarrollado por{" "}

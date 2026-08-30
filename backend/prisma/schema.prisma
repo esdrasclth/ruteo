@@ -759,6 +759,7 @@ model Customer {
   claims    Claim[]
 
   @@index([tenantId])
+  @@index([tenantId, createdAt, id])
   @@map("customers")
 }
 
@@ -895,6 +896,9 @@ model Shipment {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, type, createdAt])
+  @@index([tenantId, createdAt, id])
   @@index([customerId])
   @@index([destinationAddressId])
   @@index([deliveryWarehouseId])
@@ -1286,6 +1290,7 @@ model Exception {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, status, createdAt, id])
   @@index([shipmentId])
   @@map("exceptions")
 }
@@ -1611,6 +1616,7 @@ model Route {
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([driverId])
+  @@index([tenantId, scheduledDate, id])
   @@map("routes")
 }
 

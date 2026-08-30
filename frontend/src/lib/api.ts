@@ -120,6 +120,7 @@ async function tryRefresh(): Promise<boolean> {
       try {
         const res = await fetch(`${API_URL}/auth/refresh`, {
           method: "POST",
+          credentials: "include",
           headers: { Authorization: `Bearer ${session.refreshToken}` },
         });
         if (!res.ok) {
@@ -187,7 +188,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.headers as Record<string, string>),
     };
     if (session) headers.Authorization = `Bearer ${session.accessToken}`;
-    return fetch(`${API_URL}${path}`, { ...init, headers });
+    return fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers,
+    });
   };
 
   let res = await doFetch();
@@ -391,6 +396,7 @@ export interface Paginated<T> {
   total: number;
   page: number;
   pageSize: number;
+  nextCursor?: string | null;
 }
 
 export interface Overview {
@@ -406,6 +412,13 @@ export interface Overview {
   cod: { pending: string; collected: string; remitted: string };
   revenue: { pending: string; collected: string; remitted: string };
   notifications: { sent: number; failed: number };
+}
+
+export interface DashboardAnalytics {
+  overview: Overview;
+  shipments: ShipmentsAnalytics;
+  payments: PaymentsAnalytics;
+  drivers: DriversAnalytics;
 }
 
 export type VehicleType = "MOTORCYCLE" | "CAR" | "VAN" | "TRUCK" | "BICYCLE";
@@ -591,16 +604,9 @@ export interface RouteDetail {
 
 export type LockerStatus = "ACTIVE" | "SUSPENDED";
 export type PackageStatus =
-  | "PRE_ALERTED"
-  | "RECEIVED"
-  | "CONSOLIDATED"
-  | "SHIPPED";
+  "PRE_ALERTED" | "RECEIVED" | "CONSOLIDATED" | "SHIPPED";
 export type CustomsStatus =
-  | "PENDING"
-  | "IN_REVIEW"
-  | "ON_HOLD"
-  | "CLEARED"
-  | "REJECTED";
+  "PENDING" | "IN_REVIEW" | "ON_HOLD" | "CLEARED" | "REJECTED";
 
 export interface Locker {
   id: string;
@@ -831,7 +837,11 @@ export interface Charge {
     trackingNumber: string;
     recipientName: string;
   } | null;
-  payment: { id: string; method: PaymentMethod | null; reference: string | null } | null;
+  payment: {
+    id: string;
+    method: PaymentMethod | null;
+    reference: string | null;
+  } | null;
 }
 
 /** Cuentas de un conjunto de cargos. Los anulados no entran en ninguna cifra. */
@@ -864,10 +874,7 @@ export interface CobroDeCargos {
 
 export type Plan = "FREE" | "STARTER" | "PRO" | "ENTERPRISE";
 export type SubscriptionStatus =
-  | "TRIALING"
-  | "ACTIVE"
-  | "PAST_DUE"
-  | "CANCELED";
+  "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED";
 
 export interface PlanDefinition {
   plan: Plan;
@@ -1063,10 +1070,7 @@ export interface PublicTracking {
 }
 
 export type ApiScope =
-  | "SHIPMENTS_READ"
-  | "SHIPMENTS_WRITE"
-  | "LOCKERS_READ"
-  | "LOCKERS_WRITE";
+  "SHIPMENTS_READ" | "SHIPMENTS_WRITE" | "LOCKERS_READ" | "LOCKERS_WRITE";
 
 export interface ApiKey {
   id: string;
@@ -1262,7 +1266,11 @@ export interface ExceptionRow {
   createdAt: string;
   shipmentId: string | null;
   manifestId: string | null;
-  shipment?: { id: string; trackingNumber: string; status: ShipmentStatus } | null;
+  shipment?: {
+    id: string;
+    trackingNumber: string;
+    status: ShipmentStatus;
+  } | null;
   manifest?: { id: string; number: string } | null;
 }
 
@@ -1283,18 +1291,10 @@ export interface ArchivoAdjunto {
 // ---- Fase 6: posventa ----
 
 export type ClaimType =
-  | "DAMAGED"
-  | "LOST"
-  | "MISSING_ITEM"
-  | "WRONG_CHARGE"
-  | "OTHER";
+  "DAMAGED" | "LOST" | "MISSING_ITEM" | "WRONG_CHARGE" | "OTHER";
 
 export type ClaimStatus =
-  | "OPEN"
-  | "INVESTIGATING"
-  | "APPROVED"
-  | "REJECTED"
-  | "SETTLED";
+  "OPEN" | "INVESTIGATING" | "APPROVED" | "REJECTED" | "SETTLED";
 
 export interface Claim {
   id: string;

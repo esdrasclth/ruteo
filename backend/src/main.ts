@@ -36,6 +36,7 @@ async function bootstrap() {
     'http://{slug}.localhost:3001',
   );
   app.enableCors({
+    credentials: true,
     origin(origen, cb) {
       if (!origen || origen === panelRaiz) return cb(null, true);
       if (esOrigenDeTenant(plantillaTenant, origen)) return cb(null, true);

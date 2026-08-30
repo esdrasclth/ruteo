@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AnalyticsRangeDto } from './dto/analytics-range.dto';
+import { RedisService } from '../../redis/redis.service';
 
 interface Range {
   from: Date;
@@ -22,7 +23,32 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
+
+  async dashboard(tenantId: string, dto: AnalyticsRangeDto) {
+    const bucket = Math.floor(Date.now() / 30_000);
+    const key = `analytics:dashboard:${tenantId}:${dto.from ?? '30d'}:${dto.to ?? bucket}`;
+    const cached = await this.redis.getJson<{
+      overview: Awaited<ReturnType<AnalyticsService['overview']>>;
+      shipments: Awaited<ReturnType<AnalyticsService['shipments']>>;
+      payments: Awaited<ReturnType<AnalyticsService['payments']>>;
+      drivers: Awaited<ReturnType<AnalyticsService['drivers']>>;
+    }>(key);
+    if (cached) return cached;
+
+    const [overview, shipments, payments, drivers] = await Promise.all([
+      this.overview(tenantId, dto),
+      this.shipments(tenantId, dto),
+      this.payments(tenantId, dto),
+      this.drivers(tenantId, dto),
+    ]);
+    const result = { overview, shipments, payments, drivers };
+    void this.redis.setJson(key, result, 30);
+    return result;
+  }
 
   private resolveRange(dto: AnalyticsRangeDto): Range {
     const to = dto.to ? new Date(dto.to) : new Date();

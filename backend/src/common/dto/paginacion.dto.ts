@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 /**
  * Página pedida por quien consulta un listado.
@@ -30,6 +30,12 @@ export class PaginacionDto {
   @Min(1)
   @Max(100)
   pageSize: number = 20;
+
+  /** Cursor opaco para evitar recorridos costosos en páginas profundas. */
+  @ApiPropertyOptional({ description: 'ID de la última fila recibida' })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
 }
 
 /** Forma de respuesta de todo listado paginado. */
@@ -38,6 +44,7 @@ export interface Pagina<T> {
   total: number;
   page: number;
   pageSize: number;
+  nextCursor?: string | null;
 }
 
 /** Cuántas filas saltar para llegar a la página pedida. */

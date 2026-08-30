@@ -32,6 +32,11 @@ export class AnalyticsController {
     return this.analytics.overview(user.tenantId, dto);
   }
 
+  @Get('dashboard')
+  dashboard(@CurrentUser() user: AuthUser, @Query() dto: AnalyticsRangeDto) {
+    return this.analytics.dashboard(user.tenantId, dto);
+  }
+
   @Get('shipments')
   shipments(@CurrentUser() user: AuthUser, @Query() dto: AnalyticsRangeDto) {
     return this.analytics.shipments(user.tenantId, dto);

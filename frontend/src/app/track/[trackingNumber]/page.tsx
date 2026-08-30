@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ArrowLeft, ExternalLink, PackageX, Truck } from "lucide-react";
+import { io } from "socket.io-client";
 import {
   API_URL,
   LegStatus,
@@ -252,6 +253,40 @@ export default function PublicTrackingPage({
     })();
     return () => {
       cancelled = true;
+    };
+  }, [trackingNumber]);
+
+  // El endpoint REST sigue siendo la fuente inicial y de reconciliación; el
+  // socket evita esperar al siguiente refresh cuando operación cambia el
+  // estado. Es un canal público de solo lectura y está limitado por sala en el
+  // gateway.
+  useEffect(() => {
+    const origin = new URL(API_URL).origin;
+    const socket = io(`${origin}/tracking`, {
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+    });
+    const onUpdate = (payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+      const evento = payload as {
+        trackingNumber?: string;
+        status?: PublicTracking["status"];
+      };
+      if (evento.trackingNumber !== trackingNumber || !evento.status) {
+        return;
+      }
+      setData((actual) =>
+        actual ? { ...actual, status: evento.status! } : actual,
+      );
+    };
+    socket.on("connect", () => {
+      socket.emit("subscribe", { trackingNumber });
+    });
+    socket.on("shipment.updated", onUpdate);
+    return () => {
+      socket.off("shipment.updated", onUpdate);
+      socket.disconnect();
     };
   }, [trackingNumber]);
 

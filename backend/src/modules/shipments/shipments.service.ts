@@ -422,19 +422,22 @@ export class ShipmentsService {
       };
 
       const [total, items] = await Promise.all([
-        tx.shipment.count({ where }),
+        query.cursor ? Promise.resolve(-1) : tx.shipment.count({ where }),
         tx.shipment.findMany({
           where,
-          orderBy: { createdAt: 'desc' },
-          skip: (query.page - 1) * query.pageSize,
-          take: query.pageSize,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+          take: query.pageSize + 1,
         }),
       ]);
+      const haySiguiente = items.length > query.pageSize;
+      const visibles = haySiguiente ? items.slice(0, query.pageSize) : items;
       return {
-        items,
+        items: visibles,
         total,
         page: query.page,
         pageSize: query.pageSize,
+        nextCursor: haySiguiente ? (visibles.at(-1)?.id ?? null) : null,
       };
     });
   }

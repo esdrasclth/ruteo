@@ -18,6 +18,11 @@ class EnvironmentVariables {
   @IsEnum(NodeEnv)
   NODE_ENV: NodeEnv = NodeEnv.Development;
 
+  /** Dominio compartido opcional para sesiones entre api y panel. */
+  @IsOptional()
+  @IsString()
+  AUTH_COOKIE_DOMAIN?: string;
+
   @IsNumber()
   PORT: number = 3000;
 
