@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, use, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, Customer, CustomerDetail } from "@/lib/api";
@@ -40,6 +39,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
 
 export default function CustomerDetailPage({
   params,
@@ -47,7 +51,6 @@ export default function CustomerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -215,7 +218,35 @@ export default function CustomerDetailPage({
           {customer.lockers.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">Sin casilleros.</p>
           ) : (
-            <Table>
+            <>
+              <MobileList label="Casilleros del cliente">
+                {customer.lockers.map((l) => (
+                  <MobileListCard
+                    key={l.id}
+                    href={`/lockers/${l.id}`}
+                    label={`Abrir casillero ${l.code}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-mono text-sm font-medium">{l.code}</p>
+                      <Badge
+                        className={
+                          l.status === "ACTIVE"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }
+                      >
+                        {LOCKER_STATUS_LABELS[l.status]}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 truncate text-xs text-muted-foreground">
+                      <span className="sr-only">Dirección: </span>
+                      {l.addressLine1}, {l.city}, {l.state} {l.postalCode}
+                    </p>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Código</TableHead>
@@ -225,13 +256,14 @@ export default function CustomerDetailPage({
               </TableHeader>
               <TableBody>
                 {customer.lockers.map((l) => (
-                  <TableRow
-                    key={l.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/lockers/${l.id}`)}
-                  >
-                    <TableCell className="font-mono">
-                      {l.code}
+                  <TableRow key={l.id}>
+                    <TableCell>
+                      <Link
+                        href={`/lockers/${l.id}`}
+                        className="font-mono font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {l.code}
+                      </Link>
                     </TableCell>
                     <TableCell className="max-w-56 truncate">
                       {l.addressLine1}, {l.city}, {l.state} {l.postalCode}
@@ -250,7 +282,9 @@ export default function CustomerDetailPage({
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -265,10 +299,38 @@ export default function CustomerDetailPage({
           {customer.shipments.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">Sin envíos.</p>
           ) : (
-            <Table>
+            <>
+              <MobileList label="Envíos del cliente">
+                {customer.shipments.map((s) => (
+                  <MobileListCard
+                    key={s.id}
+                    href={`/shipments/${s.id}`}
+                    label={`Abrir envío ${s.trackingNumber}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-mono text-sm font-medium">
+                        {s.trackingNumber}
+                      </p>
+                      <Badge className="bg-muted text-muted-foreground">
+                        {STATUS_LABELS[s.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                      <MobileListMeta label="Tipo">
+                        {TYPE_LABELS[s.type]}
+                      </MobileListMeta>
+                      <MobileListMeta label="Creado">
+                        {new Date(s.createdAt).toLocaleDateString("es-HN")}
+                      </MobileListMeta>
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tracking</TableHead>
+                  <TableHead>Guía</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Creado</TableHead>
@@ -276,13 +338,14 @@ export default function CustomerDetailPage({
               </TableHeader>
               <TableBody>
                 {customer.shipments.map((s) => (
-                  <TableRow
-                    key={s.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/shipments/${s.id}`)}
-                  >
-                    <TableCell className="font-mono">
-                      {s.trackingNumber}
+                  <TableRow key={s.id}>
+                    <TableCell>
+                      <Link
+                        href={`/shipments/${s.id}`}
+                        className="font-mono font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {s.trackingNumber}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       {TYPE_LABELS[s.type]}
@@ -298,7 +361,9 @@ export default function CustomerDetailPage({
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -318,7 +383,7 @@ export default function CustomerDetailPage({
                 onChange={set("name")}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="edit-email">Correo</Label>
                 <Input

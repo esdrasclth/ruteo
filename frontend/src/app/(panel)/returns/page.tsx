@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { opcionDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
 
 const fmtFecha = (v: string | null) =>
   v ? new Date(v).toLocaleDateString("es-HN") : "—";
@@ -44,7 +45,21 @@ const fmtFecha = (v: string | null) =>
  * está en el precio—.
  */
 export default function ReturnsPage() {
-  const [filtro, setFiltro] = useState<ReturnStatus | "TODAS">("PENDING");
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <ReturnsContent />
+    </Suspense>
+  );
+}
+
+function ReturnsContent() {
+  const { searchParams, actualizar } = useUrlFilters();
+  const filtro = opcionDesdeUrl<ReturnStatus | "TODAS">(
+    searchParams,
+    "status",
+    ["PENDING", "IN_TRANSIT", "COMPLETED", "CANCELLED", "TODAS"],
+    "PENDING",
+  );
   const [busy, setBusy] = useState(false);
 
   const q = filtro === "TODAS" ? "" : `&status=${filtro}`;
@@ -156,7 +171,15 @@ export default function ReturnsPage() {
             key={f.valor}
             size="sm"
             variant={filtro === f.valor ? "default" : "outline"}
-            onClick={() => setFiltro(f.valor)}
+            onClick={() =>
+              actualizar(
+                {
+                  status: f.valor === "PENDING" ? null : f.valor,
+                  page: null,
+                },
+                "push",
+              )
+            }
           >
             {f.etiqueta}
           </Button>

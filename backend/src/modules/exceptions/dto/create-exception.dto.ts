@@ -4,7 +4,13 @@ import {
   ExceptionStatus,
   ExceptionType,
 } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateExceptionDto {
   @ApiProperty({ enum: ExceptionType })

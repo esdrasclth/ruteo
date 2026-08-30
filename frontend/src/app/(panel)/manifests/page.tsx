@@ -33,6 +33,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
 
 export default function ManifestsPage() {
   const [abrir, setAbrir] = useState(false);
@@ -80,13 +85,13 @@ export default function ManifestsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="text-base" aria-live="polite">
             {datos ? `${datos.total} manifiesto(s)` : "Cargando…"}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 md:p-6" aria-busy={!datos}>
           {!datos ? (
-            <Skeleton className="h-40 w-full" />
+            <Skeleton className="m-4 h-40 w-[calc(100%-2rem)] md:m-0 md:w-full" />
           ) : datos.items.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
@@ -99,7 +104,49 @@ export default function ManifestsPage() {
               }
             />
           ) : (
-            <Table>
+            <>
+              <MobileList label="Manifiestos">
+                {datos.items.map((m) => (
+                  <MobileListCard
+                    key={m.id}
+                    href={`/manifests/${m.id}`}
+                    label={`Abrir manifiesto ${m.number}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {m.number}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {m.trip?.flightNumber
+                            ? `Vuelo ${m.trip.flightNumber}`
+                            : "Sin vuelo asignado"}
+                        </p>
+                      </div>
+                      <Badge className={manifestStatusBadgeClass(m.status)}>
+                        {MANIFEST_STATUS_LABELS[m.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <MobileListMeta label="Guías">
+                        {m._count.items} guías
+                      </MobileListMeta>
+                      <MobileListMeta label="Declarado">
+                        {m.totalPieces} bultos · {m.totalWeightKg} kg
+                      </MobileListMeta>
+                      {m._count.exceptions > 0 ? (
+                        <MobileListMeta label="Excepciones">
+                          <span className="font-medium text-red-700 dark:text-red-300">
+                            {m._count.exceptions} excepciones
+                          </span>
+                        </MobileListMeta>
+                      ) : null}
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Número</TableHead>
@@ -160,7 +207,9 @@ export default function ManifestsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

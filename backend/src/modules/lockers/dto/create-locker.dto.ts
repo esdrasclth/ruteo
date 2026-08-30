@@ -18,7 +18,8 @@ export class CreateLockerDto {
   code?: string;
 
   @ApiPropertyOptional({
-    description: 'Link to an existing customer; created from contact when omitted',
+    description:
+      'Link to an existing customer; created from contact when omitted',
   })
   @IsOptional()
   @IsUUID()

@@ -64,7 +64,10 @@ export class ZonesController {
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
-  remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.zones.remove(user.tenantId, id);
   }
 }

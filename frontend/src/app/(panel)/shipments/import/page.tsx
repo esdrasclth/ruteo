@@ -148,7 +148,7 @@ export default function ImportShipmentsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Línea</TableHead>
-                      <TableHead>Tracking</TableHead>
+                      <TableHead>Guía</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

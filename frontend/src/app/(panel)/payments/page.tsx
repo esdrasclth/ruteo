@@ -2,7 +2,6 @@
 
 import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { CreditCard, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -16,7 +15,6 @@ import {
   PaymentSummaryRow,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { usePagina } from "@/lib/use-pagina";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -58,6 +56,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  opcionDesdeUrl,
+  paginaDesdeUrl,
+  useUrlFilters,
+} from "@/lib/use-url-filters";
 
 const STATUS_FILTERS = ["PENDING", "COLLECTED", "REMITTED", "CANCELLED"];
 const TYPE_FILTERS = ["COD", "SUBSCRIPTION", "CHARGES"];
@@ -73,16 +76,24 @@ export default function PaymentsPage() {
 }
 
 function PaymentsContent() {
-  const searchParams = useSearchParams();
+  const { searchParams, actualizar } = useUrlFilters();
   // Llega desde el detalle de un envio: "ver los cobros de este envio".
   const shipmentId = searchParams.get("shipmentId");
   const [cargos, setCargos] = useState<ChargesResumen | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [status, setStatus] = useState("ALL");
-  const [type, setType] = useState("ALL");
-  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin
-  // explicar por qué; `usePagina` vuelve al principio sin pasar por un efecto.
-  const [page, setPage] = usePagina(`${status}|${type}|${shipmentId}`);
+  const status = opcionDesdeUrl(
+    searchParams,
+    "status",
+    ["ALL", ...STATUS_FILTERS],
+    "ALL",
+  );
+  const type = opcionDesdeUrl(
+    searchParams,
+    "type",
+    ["ALL", ...TYPE_FILTERS],
+    "ALL",
+  );
+  const page = paginaDesdeUrl(searchParams);
   const [busy, setBusy] = useState(false);
 
   const [collecting, setCollecting] = useState<Payment | null>(null);
@@ -290,7 +301,15 @@ function PaymentsContent() {
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={status} onValueChange={setStatus}>
+        <Select
+          value={status}
+          onValueChange={(v) =>
+            actualizar(
+              { status: v === "ALL" ? null : v, page: null },
+              "push",
+            )
+          }
+        >
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
@@ -303,7 +322,15 @@ function PaymentsContent() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={type} onValueChange={setType}>
+        <Select
+          value={type}
+          onValueChange={(v) =>
+            actualizar(
+              { type: v === "ALL" ? null : v, page: null },
+              "push",
+            )
+          }
+        >
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
@@ -413,7 +440,7 @@ function PaymentsContent() {
           variant="outline"
           size="sm"
           disabled={page <= 1}
-          onClick={() => setPage((p) => p - 1)}
+          onClick={() => actualizar({ page: page - 1 }, "push")}
         >
           Anterior
         </Button>
@@ -424,7 +451,7 @@ function PaymentsContent() {
           variant="outline"
           size="sm"
           disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => actualizar({ page: page + 1 }, "push")}
         >
           Siguiente
         </Button>
@@ -442,9 +469,9 @@ function PaymentsContent() {
           </DialogHeader>
           <form onSubmit={onCollect} className="grid gap-4">
             <div className="grid gap-2">
-              <Label>Método</Label>
+              <Label htmlFor="payment-method">Método</Label>
               <Select value={method} onValueChange={setMethod}>
-                <SelectTrigger>
+                <SelectTrigger id="payment-method" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -467,13 +494,13 @@ function PaymentsContent() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Cobrado por (driver)</Label>
+              <Label htmlFor="payment-driver">Cobrado por (repartidor)</Label>
               <Select value={driverId} onValueChange={setDriverId}>
-                <SelectTrigger>
+                <SelectTrigger id="payment-driver" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE">Sin driver</SelectItem>
+                  <SelectItem value="NONE">Sin repartidor</SelectItem>
                   {drivers.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}

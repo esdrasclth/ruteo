@@ -64,7 +64,10 @@ export class CarriersController {
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
-  remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.carriers.remove(user.tenantId, id);
   }
 }

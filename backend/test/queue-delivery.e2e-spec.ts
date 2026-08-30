@@ -190,7 +190,7 @@ describe('Entrega asíncrona por BullMQ', () => {
     // sin esto el alta devuelve 403. Un cliente que usa webhooks paga un plan
     // que los trae, así que la prueba refleja el caso real.
     await admin.tenant.update({
-      where: { id: yo.body.tenantId as string },
+      where: { id: (yo.body as { tenantId: string }).tenantId },
       data: { plan: 'PRO' },
     });
 

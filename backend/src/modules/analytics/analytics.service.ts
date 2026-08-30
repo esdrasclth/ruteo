@@ -26,7 +26,9 @@ export class AnalyticsService {
 
   private resolveRange(dto: AnalyticsRangeDto): Range {
     const to = dto.to ? new Date(dto.to) : new Date();
-    const from = dto.from ? new Date(dto.from) : new Date(to.getTime() - 30 * DAY_MS);
+    const from = dto.from
+      ? new Date(dto.from)
+      : new Date(to.getTime() - 30 * DAY_MS);
     return { from, to };
   }
 
@@ -71,7 +73,9 @@ export class AnalyticsService {
       const delivered = statusCount(shipmentByStatus, 'DELIVERED');
 
       const codSum = (status: PaymentStatus) =>
-        this.amount(codByStatus.find((r) => r.status === status)?._sum.amount ?? null);
+        this.amount(
+          codByStatus.find((r) => r.status === status)?._sum.amount ?? null,
+        );
       const revenueSum = (status: PaymentStatus) =>
         this.amount(
           revenueByStatus.find((r) => r.status === status)?._sum.amount ?? null,
@@ -144,7 +148,10 @@ export class AnalyticsService {
 
       return {
         range: { from, to },
-        byStatus: byStatus.map((r) => ({ status: r.status, count: r._count._all })),
+        byStatus: byStatus.map((r) => ({
+          status: r.status,
+          count: r._count._all,
+        })),
         byType: byType.map((r) => ({ type: r.type, count: r._count._all })),
         daily: daily.map((r) => ({
           date: r.day.toISOString().slice(0, 10),

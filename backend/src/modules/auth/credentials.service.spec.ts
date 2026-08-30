@@ -148,7 +148,7 @@ describe('CredentialsService', () => {
 
       expect(filas).toHaveLength(0);
       expect(enviados).toHaveLength(1);
-      expect(/\d{6}/.test(enviados[0].body)).toBe(false);
+      expect(enviados[0].body).not.toMatch(/\b\d{6}\b/);
       expect(enviados[0].title).toMatch(/todav/i);
     });
 

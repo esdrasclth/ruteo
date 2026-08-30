@@ -162,7 +162,7 @@ function esRutaPublica(path: string): boolean {
 /**
  * A la pantalla de entrada, una sola vez.
  *
- * Asignar `location.href` no detiene el JavaScript que ya está corriendo: la
+ * Pedir una navegación no detiene el JavaScript que ya está corriendo: la
  * página sigue viva hasta que el navegador navega, y en ese rato pueden caer
  * varias respuestas 401 más. Sin esta bandera, cada una reasigna la URL y el
  * navegador acumula navegaciones.
@@ -171,7 +171,10 @@ let yendoALogin = false;
 function irALogin() {
   if (typeof window === "undefined" || yendoALogin) return;
   yendoALogin = true;
-  window.location.href = "/login";
+  // Aquí el reload completo es intencional: limpia de memoria toda la caché de
+  // datos de la sesión vencida. La URL absoluta evita que Next interprete esta
+  // salida de emergencia como navegación relativa que debería usar su router.
+  window.location.replace(new URL("/login", window.location.origin).href);
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

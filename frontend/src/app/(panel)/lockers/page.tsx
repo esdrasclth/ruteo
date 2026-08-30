@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Archive, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +32,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
 
 const EMPTY_FORM = {
   customerName: "",
@@ -90,12 +96,11 @@ export default function LockersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
       <PageHeader
         title="Casilleros USA"
-        description="{lockers ? `${lockers.length} casilleros` : &quot;Cargando…&quot;}"
-      />
-        <Dialog open={open} onOpenChange={setOpen}>
+        description={lockers ? `${lockers.length} casilleros` : "Cargando…"}
+        actions={
+          <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="size-4" />
@@ -116,7 +121,7 @@ export default function LockersPage() {
                   onChange={set("customerName")}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
                   <Label htmlFor="customerEmail">Correo</Label>
                   <Input
@@ -145,7 +150,7 @@ export default function LockersPage() {
                   onChange={set("addressLine1")}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="grid gap-2">
                   <Label htmlFor="city">Ciudad *</Label>
                   <Input
@@ -181,11 +186,12 @@ export default function LockersPage() {
               </DialogFooter>
             </form>
           </DialogContent>
-        </Dialog>
-      </div>
+          </Dialog>
+        }
+      />
 
       <Card className="overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="p-0" aria-busy={!lockers}>
           {!lockers ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -205,7 +211,48 @@ export default function LockersPage() {
               }
             />
           ) : (
-            <Table>
+            <>
+              <MobileList label="Casilleros">
+                {lockers.map((l) => (
+                  <MobileListCard
+                    key={l.id}
+                    href={`/lockers/${l.id}`}
+                    label={`Abrir casillero ${l.code} de ${l.customerName}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm font-medium">
+                          {l.code}
+                        </p>
+                        <p className="mt-0.5 truncate text-sm font-medium">
+                          {l.customerName}
+                        </p>
+                      </div>
+                      <Badge
+                        className={
+                          l.status === "ACTIVE"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }
+                      >
+                        {LOCKER_STATUS_LABELS[l.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                      <MobileListMeta label="Contacto">
+                        {l.customerEmail ?? l.customerPhone ?? "—"}
+                      </MobileListMeta>
+                      <MobileListMeta label="Dirección">
+                        <span className="truncate">
+                          {l.addressLine1}, {l.city}, {l.state} {l.postalCode}
+                        </span>
+                      </MobileListMeta>
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Código</TableHead>
@@ -217,13 +264,14 @@ export default function LockersPage() {
               </TableHeader>
               <TableBody>
                 {lockers.map((l) => (
-                  <TableRow
-                    key={l.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/lockers/${l.id}`)}
-                  >
-                    <TableCell className="font-mono">
-                      {l.code}
+                  <TableRow key={l.id}>
+                    <TableCell>
+                      <Link
+                        href={`/lockers/${l.id}`}
+                        className="font-mono font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {l.code}
+                      </Link>
                     </TableCell>
                     <TableCell className="font-medium">
                       {l.customerName}
@@ -248,7 +296,9 @@ export default function LockersPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

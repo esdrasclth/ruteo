@@ -17,9 +17,13 @@ export interface AuthUser {
   llave?: { prefix: string; alcances: ApiScope[] };
 }
 
+interface AuthenticatedRequest {
+  user: AuthUser;
+}
+
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): AuthUser => {
-    const request = ctx.switchToHttp().getRequest();
-    return request.user as AuthUser;
+    const request = ctx.switchToHttp().getRequest<AuthenticatedRequest>();
+    return request.user;
   },
 );

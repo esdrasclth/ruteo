@@ -359,10 +359,7 @@ export class UsersService {
       if (isSelf) {
         throw new ForbiddenException('You cannot change your own status');
       }
-      if (
-        dto.status === UserStatus.DISABLED &&
-        target.role === Role.OWNER
-      ) {
+      if (dto.status === UserStatus.DISABLED && target.role === Role.OWNER) {
         await this.assertNotLastOwner(actor.tenantId, targetId);
       }
     }

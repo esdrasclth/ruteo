@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { Plane, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -45,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { paginaDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
 
 /**
  * Viajes: el vuelo físico que mueve la carga.
@@ -88,11 +89,20 @@ const VACIO = {
 };
 
 export default function TripsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <TripsContent />
+    </Suspense>
+  );
+}
+
+function TripsContent() {
+  const { searchParams, actualizar } = useUrlFilters();
   const [abierto, setAbierto] = useState(false);
   const [form, setForm] = useState(VACIO);
   const [busy, setBusy] = useState(false);
 
-  const [page, setPage] = useState(1);
+  const page = paginaDesdeUrl(searchParams);
   const { datos, recargar: cargar } = useApi<Paginated<Trip>>(
     `/warehouses/trips?page=${page}&pageSize=20`,
     { mensajeDeError: "Error cargando viajes", keepPreviousData: true },
@@ -197,13 +207,14 @@ export default function TripsPage() {
             <div className="flex flex-col items-start gap-2 py-6">
               <Plane className="size-8 text-muted-foreground" aria-hidden />
               <p className="text-sm text-muted-foreground">
-                Todavía no hay viajes. Un viaje es el vuelo que mueve la carga; a
-                él se enganchan los manifiestos para saber cuándo llega cada uno
-                y a qué bodega.
+                Todavía no hay viajes. Un viaje es el vuelo que mueve la carga;
+                a él se enganchan los manifiestos para saber cuándo llega cada
+                uno y a qué bodega.
               </p>
               {bodegas.length === 0 && (
                 <p className="text-sm text-amber-600">
-                  Antes necesitas al menos una bodega de origen y una de destino.
+                  Antes necesitas al menos una bodega de origen y una de
+                  destino.
                 </p>
               )}
               <Button variant="outline" onClick={() => setAbierto(true)}>
@@ -290,7 +301,7 @@ export default function TripsPage() {
           page={datos.page}
           pageSize={datos.pageSize}
           total={datos.total}
-          onPage={setPage}
+          onPage={(siguiente) => actualizar({ page: siguiente }, "push")}
           etiqueta="viajes"
         />
       ) : null}
@@ -301,7 +312,7 @@ export default function TripsPage() {
             <DialogTitle>Nuevo viaje</DialogTitle>
           </DialogHeader>
           <form onSubmit={crear} className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="flightNumber">Vuelo</Label>
                 <Input
@@ -315,14 +326,14 @@ export default function TripsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Transportista</Label>
+                <Label htmlFor="trip-carrier">Transportista</Label>
                 <Select
                   value={form.carrierId}
                   onValueChange={(v) =>
                     setForm((f) => ({ ...f, carrierId: v }))
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="trip-carrier" className="w-full">
                     <SelectValue placeholder="Opcional" />
                   </SelectTrigger>
                   <SelectContent>
@@ -336,16 +347,16 @@ export default function TripsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label>Sale de</Label>
+                <Label htmlFor="trip-origin">Sale de</Label>
                 <Select
                   value={form.originWarehouseId}
                   onValueChange={(v) =>
                     setForm((f) => ({ ...f, originWarehouseId: v }))
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="trip-origin" className="w-full">
                     <SelectValue placeholder="Bodega de origen" />
                   </SelectTrigger>
                   <SelectContent>
@@ -358,14 +369,14 @@ export default function TripsPage() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Llega a</Label>
+                <Label htmlFor="trip-destination">Llega a</Label>
                 <Select
                   value={form.destinationWarehouseId}
                   onValueChange={(v) =>
                     setForm((f) => ({ ...f, destinationWarehouseId: v }))
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="trip-destination" className="w-full">
                     <SelectValue placeholder="Bodega de destino" />
                   </SelectTrigger>
                   <SelectContent>
@@ -379,7 +390,7 @@ export default function TripsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="departureAt">Salida</Label>
                 <Input

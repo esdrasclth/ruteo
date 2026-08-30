@@ -46,8 +46,9 @@ export class DireccionesService {
       // acabaría con cero por defecto y el alta de envíos no propondría
       // ninguna, que es peor que proponer la única que hay.
       const esPrimera =
-        (await tx.customerAddress.count({ where: { customerId, active: true } })) ===
-        0;
+        (await tx.customerAddress.count({
+          where: { customerId, active: true },
+        })) === 0;
       const porDefecto = dto.isDefault ?? esPrimera;
 
       if (porDefecto) {

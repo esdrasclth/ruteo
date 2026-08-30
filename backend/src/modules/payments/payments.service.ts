@@ -1,9 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
-  PaymentStatus,
-  PaymentType,
-  Prisma,
-} from '@prisma/client';
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -23,7 +23,11 @@ export class PaymentsService {
   createCodInTx(
     tx: Prisma.TransactionClient,
     tenantId: string,
-    shipment: { id: string; codAmount: Prisma.Decimal | null; currency: string },
+    shipment: {
+      id: string;
+      codAmount: Prisma.Decimal | null;
+      currency: string;
+    },
   ) {
     if (!shipment.codAmount || shipment.codAmount.lte(0)) {
       return undefined;
@@ -60,10 +64,7 @@ export class PaymentsService {
 
   // Called inside the delivery transaction: marks the shipment's pending COD
   // payments as collected.
-  collectForShipmentInTx(
-    tx: Prisma.TransactionClient,
-    shipmentId: string,
-  ) {
+  collectForShipmentInTx(tx: Prisma.TransactionClient, shipmentId: string) {
     return tx.payment.updateMany({
       where: {
         shipmentId,
@@ -166,9 +167,7 @@ export class PaymentsService {
     const { tenantId } = actor;
     const payment = await this.findOne(tenantId, id);
     if (payment.status !== PaymentStatus.COLLECTED) {
-      throw new BadRequestException(
-        'Only collected payments can be remitted',
-      );
+      throw new BadRequestException('Only collected payments can be remitted');
     }
     const updated = await this.prisma.withTenant(tenantId, (tx) =>
       tx.payment.update({

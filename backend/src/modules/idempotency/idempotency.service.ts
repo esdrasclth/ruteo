@@ -116,15 +116,10 @@ export class IdempotencyService {
 
   // Stores the final response so future requests with the same key replay it.
   // The body is normalized through JSON so Decimals/Dates match the wire format.
-  async complete(
-    tenantId: string,
-    key: string,
-    status: number,
-    body: unknown,
-  ) {
-    const normalized = JSON.parse(JSON.stringify(body ?? null)) as
-      | Prisma.InputJsonValue
-      | null;
+  async complete(tenantId: string, key: string, status: number, body: unknown) {
+    const normalized = JSON.parse(
+      JSON.stringify(body ?? null),
+    ) as Prisma.InputJsonValue | null;
     await this.prisma.withTenant(tenantId, (tx) =>
       tx.idempotencyKey.updateMany({
         where: { tenantId, key },

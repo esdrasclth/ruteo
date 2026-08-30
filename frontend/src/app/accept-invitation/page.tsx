@@ -105,8 +105,11 @@ function Formulario() {
         )}
 
         <div className="grid gap-2.5">
-          <Label className="text-white/80">Código de la invitación</Label>
+          <p className="text-sm font-medium leading-none text-white/80">
+            Código de la invitación
+          </p>
           <OtpInput
+            label="Código de la invitación"
             value={code}
             onChange={setCode}
             variant="oscuro"

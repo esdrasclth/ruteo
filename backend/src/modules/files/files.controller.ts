@@ -55,7 +55,10 @@ export class FilesController {
   // credencial de un rato, no una dirección estable.
   @Post(':id/url')
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR, Role.DRIVER)
-  async url(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+  async url(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return { url: await this.files.urlDeDescarga(user.tenantId, id) };
   }
 }

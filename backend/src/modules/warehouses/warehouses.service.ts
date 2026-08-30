@@ -148,7 +148,9 @@ export class WarehousesService {
           status: dto.status,
           // La llegada se sella al marcarla, no se teclea: es la fecha contra la
           // que se mide si la carga se descargó el mismo día que aterrizó.
-          ...(dto.status === TripStatus.ARRIVED ? { arrivalAt: new Date() } : {}),
+          ...(dto.status === TripStatus.ARRIVED
+            ? { arrivalAt: new Date() }
+            : {}),
         },
       }),
     );

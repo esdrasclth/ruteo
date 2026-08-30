@@ -90,7 +90,10 @@ describe('registrarIntento', () => {
   // intento, que es peor que no tenerlo.
   it('cuenta por envío y no por parada', async () => {
     const tx = txConUltimoIntento(4);
-    await registrar(tx, { shipmentId: ENVIO, outcome: DeliveryOutcome.SUCCESS });
+    await registrar(tx, {
+      shipmentId: ENVIO,
+      outcome: DeliveryOutcome.SUCCESS,
+    });
     expect(tx.deliveryAttempt.aggregate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { shipmentId: ENVIO } }),
     );

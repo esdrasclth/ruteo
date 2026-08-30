@@ -29,7 +29,15 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
-      "prettier/prettier": ["error", { endOfLine: "auto" }],
+      'prettier/prettier': ['error', { endOfLine: 'auto' }],
+    },
+  },
+  {
+    files: ['**/*.spec.ts', 'test/**/*.ts'],
+    rules: {
+      // Los dobles de prueba devuelven promesas para respetar el contrato que
+      // simulan, aunque el cuerpo del mock no necesite esperar nada.
+      '@typescript-eslint/require-await': 'off',
     },
   },
 );

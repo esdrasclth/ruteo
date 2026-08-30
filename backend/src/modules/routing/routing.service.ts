@@ -67,7 +67,9 @@ export class RoutingService {
 
   async road(coords: [number, number][]): Promise<RoadRoute | null> {
     const firma = createHash('sha1')
-      .update(coords.map(([a, b]) => `${a.toFixed(5)},${b.toFixed(5)}`).join(';'))
+      .update(
+        coords.map(([a, b]) => `${a.toFixed(5)},${b.toFixed(5)}`).join(';'),
+      )
       .digest('hex');
     const clave = `road:${firma}`;
 

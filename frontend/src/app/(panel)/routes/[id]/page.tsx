@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Image as ImageIcon,
   MapPin,
+  Navigation,
   PenLine,
   Plus,
   Wand2,
@@ -68,6 +69,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
 
 export default function RouteDetailPage({
   params,
@@ -297,7 +303,7 @@ export default function RouteDetailPage({
     }));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-20 md:pb-0">
       <PageHeader
         breadcrumbs={[
           { label: "Rutas", href: "/routes" },
@@ -312,17 +318,21 @@ export default function RouteDetailPage({
           <Badge className={routeStatusBadgeClass(route.status)}>
             {ROUTE_STATUS_LABELS[route.status]}
           </Badge>
-          {nexts.map((s) => (
-            <Button
-              key={s}
-              variant={s === "CANCELLED" ? "outline" : "default"}
-              size="sm"
-              disabled={busy}
-              onClick={() => onRouteStatus(s)}
-            >
-              {ROUTE_STATUS_LABELS[s]}
-            </Button>
-          ))}
+          {nexts.length > 0 ? (
+            <div className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 gap-2 border-t border-border bg-background/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur md:static md:flex md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+              {nexts.map((s) => (
+                <Button
+                  key={s}
+                  variant={s === "CANCELLED" ? "outline" : "default"}
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onRouteStatus(s)}
+                >
+                  {ROUTE_STATUS_LABELS[s]}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           </div>
         }
       />
@@ -392,7 +402,93 @@ export default function RouteDetailPage({
               Sin paradas. Agrega envíos a la ruta.
             </p>
           ) : (
-            <Table>
+            <>
+              <MobileList label="Paradas de la ruta">
+                {route.stops.map((stop) => (
+                  <MobileListCard key={stop.id}>
+                    <div className="flex items-start gap-3">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                        {stop.sequence}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <Link
+                            href={`/shipments/${stop.shipmentId}`}
+                            className="font-mono text-sm font-medium text-primary underline-offset-2 hover:underline"
+                          >
+                            {stop.shipment.trackingNumber}
+                          </Link>
+                          <Badge className={stopStatusBadgeClass(stop.status)}>
+                            {STOP_STATUS_LABELS[stop.status]}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 flex items-start gap-1 text-sm text-muted-foreground">
+                          <MapPin
+                            aria-hidden
+                            className="mt-0.5 size-3.5 shrink-0"
+                          />
+                          <span>{stop.addressLabel ?? "Sin dirección"}</span>
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <MobileListMeta label="Tipo">
+                            {STOP_TYPE_LABELS[stop.type]}
+                          </MobileListMeta>
+                          <Badge className={statusBadgeClass(stop.shipment.status)}>
+                            {STATUS_LABELS[stop.shipment.status]}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2 [&>*]:flex-1">
+                      {stop.lat !== null && stop.lng !== null ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${stop.lat},${stop.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <Navigation className="size-4" />
+                            Navegar
+                          </a>
+                        </Button>
+                      ) : null}
+                      {route.status === "IN_PROGRESS" &&
+                      stop.status === "PENDING" ? (
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => onArrive(stop)}
+                        >
+                          Llegué
+                        </Button>
+                      ) : null}
+                      {route.status === "IN_PROGRESS" &&
+                      stop.status === "ARRIVED" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => setCompleteStop(stop)}
+                          >
+                            Entregar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => setFailStop(stop)}
+                          >
+                            Falló
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">#</TableHead>
@@ -537,7 +633,9 @@ export default function RouteDetailPage({
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -6,6 +6,11 @@ import {
 } from '@nestjs/common';
 import { PlatformAuthService } from './platform-auth.service';
 
+interface PlatformRequest {
+  headers: { authorization?: string | string[] };
+  platformAdmin?: Awaited<ReturnType<PlatformAuthService['verificarToken']>>;
+}
+
 /**
  * Guard del panel de plataforma.
  *
@@ -18,7 +23,7 @@ export class PlatformAuthGuard implements CanActivate {
   constructor(private readonly auth: PlatformAuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<PlatformRequest>();
     const cabecera = String(req.headers?.authorization ?? '');
     if (!cabecera.startsWith('Bearer ')) {
       throw new UnauthorizedException('Falta la sesión de plataforma');

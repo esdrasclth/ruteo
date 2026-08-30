@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, Suspense, useCallback, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { opcionDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
 
 const fmtFecha = (v: string | null) =>
   v ? new Date(v).toLocaleDateString("es-HN") : "—";
@@ -58,7 +59,21 @@ type Decision = { claim: Claim; accion: "aprobar" | "rechazar" };
  * juego —no el total histórico, que no obliga a hacer nada—.
  */
 export default function ClaimsPage() {
-  const [filtro, setFiltro] = useState<ClaimStatus | "TODOS">("OPEN");
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <ClaimsContent />
+    </Suspense>
+  );
+}
+
+function ClaimsContent() {
+  const { searchParams, actualizar } = useUrlFilters();
+  const filtro = opcionDesdeUrl<ClaimStatus | "TODOS">(
+    searchParams,
+    "status",
+    ["OPEN", "INVESTIGATING", "APPROVED", "SETTLED", "REJECTED", "TODOS"],
+    "OPEN",
+  );
   const [decision, setDecision] = useState<Decision | null>(null);
   const [resolucion, setResolucion] = useState("");
   const [importe, setImporte] = useState("");
@@ -191,7 +206,15 @@ export default function ClaimsPage() {
             key={f.valor}
             size="sm"
             variant={filtro === f.valor ? "default" : "outline"}
-            onClick={() => setFiltro(f.valor)}
+            onClick={() =>
+              actualizar(
+                {
+                  status: f.valor === "OPEN" ? null : f.valor,
+                  page: null,
+                },
+                "push",
+              )
+            }
           >
             {f.etiqueta}
           </Button>

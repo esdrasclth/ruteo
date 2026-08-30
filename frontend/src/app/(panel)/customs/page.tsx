@@ -302,7 +302,7 @@ export default function CustomsRulesPage() {
             <DialogTitle>Nueva regla</DialogTitle>
           </DialogHeader>
           <form onSubmit={crear} className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="country">País *</Label>
                 <Input
@@ -333,14 +333,14 @@ export default function CustomsRulesPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label>Categoría *</Label>
+              <Label htmlFor="customs-category">Categoría *</Label>
               <Select
                 value={form.category}
                 onValueChange={(v) =>
                   setForm((f) => ({ ...f, category: v as CustomsCategory }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="customs-category" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -356,7 +356,7 @@ export default function CustomsRulesPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="dutyRate">Arancel (%) *</Label>
                 <Input

@@ -49,6 +49,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
 
 export default function DriversPage() {
   const confirmar = useConfirmar();
@@ -62,7 +67,7 @@ export default function DriversPage() {
   });
 
   const { datos, recargar: load } = useApi<Driver[]>("/drivers", {
-    mensajeDeError: "Error cargando drivers",
+    mensajeDeError: "Error cargando repartidores",
   });
   // `?? null` para no cambiar el resto de la pantalla: antes esto era
   // `T | null` y `useApi` entrega `T | undefined`.
@@ -81,7 +86,7 @@ export default function DriversPage() {
           vehiclePlate: form.vehiclePlate.trim() || undefined,
         }),
       });
-      toast.success("Driver creado");
+      toast.success("Repartidor creado");
       setOpen(false);
       setForm({
         name: "",
@@ -92,7 +97,7 @@ export default function DriversPage() {
       await load();
     } catch (err) {
       toast.error(
-        err instanceof ApiError ? err.message : "No se pudo crear el driver",
+        err instanceof ApiError ? err.message : "No se pudo crear el repartidor",
       );
     } finally {
       setSaving(false);
@@ -128,7 +133,7 @@ export default function DriversPage() {
     }
     try {
       await api(`/drivers/${driver.id}`, { method: "DELETE" });
-      toast.success("Driver eliminado");
+      toast.success("Repartidor eliminado");
       await load();
     } catch (err) {
       toast.error(
@@ -147,12 +152,12 @@ export default function DriversPage() {
           <DialogTrigger asChild>
             <Button>
               <Plus className="size-4" />
-              Nuevo driver
+              Nuevo repartidor
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Nuevo driver</DialogTitle>
+              <DialogTitle>Nuevo repartidor</DialogTitle>
             </DialogHeader>
             <form onSubmit={onCreate} className="grid gap-4">
               <div className="grid gap-2">
@@ -177,16 +182,16 @@ export default function DriversPage() {
                   }
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
-                  <Label>Vehículo</Label>
+                  <Label htmlFor="driver-vehicle">Vehículo</Label>
                   <Select
                     value={form.vehicleType}
                     onValueChange={(v) =>
                       setForm((f) => ({ ...f, vehicleType: v as VehicleType }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="driver-vehicle" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -224,7 +229,7 @@ export default function DriversPage() {
       />
 
       <Card className="overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="p-0" aria-busy={!drivers}>
           {!drivers ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -244,7 +249,72 @@ export default function DriversPage() {
               }
             />
           ) : (
-            <Table>
+            <>
+              <MobileList label="Repartidores">
+                {drivers.map((d) => (
+                  <MobileListCard key={d.id}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{d.name}</p>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {d.phone ?? "Sin teléfono"}
+                        </p>
+                      </div>
+                      <Badge className={driverStatusBadgeClass(d.status)}>
+                        {DRIVER_STATUS_LABELS[d.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                      <MobileListMeta label="Vehículo">
+                        {VEHICLE_LABELS[d.vehicleType]}
+                      </MobileListMeta>
+                      <MobileListMeta label="Placa">
+                        {d.vehiclePlate ?? "—"}
+                      </MobileListMeta>
+                    </div>
+                    <Select
+                      value={d.status}
+                      onValueChange={(v) =>
+                        onStatusChange(d, v as DriverStatus)
+                      }
+                    >
+                      <SelectTrigger
+                        aria-label={`Cambiar estado de ${d.name}`}
+                        className="mt-3 w-full"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(
+                          Object.keys(DRIVER_STATUS_LABELS) as DriverStatus[]
+                        ).map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {DRIVER_STATUS_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/routes?driverId=${d.id}`}>
+                          <RouteIcon className="size-4" />
+                          Ver rutas
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label={`Eliminar a ${d.name}`}
+                        onClick={() => onDelete(d)}
+                      >
+                        <Trash2 className="size-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
@@ -269,7 +339,10 @@ export default function DriversPage() {
                           onStatusChange(d, v as DriverStatus)
                         }
                       >
-                        <SelectTrigger className="h-8 w-40">
+                        <SelectTrigger
+                          aria-label={`Estado de ${d.name}`}
+                          className="h-8 w-40"
+                        >
                           <Badge className={driverStatusBadgeClass(d.status)}>
                             {DRIVER_STATUS_LABELS[d.status]}
                           </Badge>
@@ -297,6 +370,7 @@ export default function DriversPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label={`Eliminar a ${d.name}`}
                           onClick={() => onDelete(d)}
                         >
                           <Trash2 className="size-4 text-destructive" />
@@ -306,7 +380,9 @@ export default function DriversPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

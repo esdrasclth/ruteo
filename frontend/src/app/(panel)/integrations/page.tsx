@@ -460,8 +460,10 @@ export default function IntegrationsPage() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Permisos</Label>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium leading-none">
+                  Permisos
+                </legend>
                 <p className="text-xs text-muted-foreground">
                   Da sólo los que la integración necesite. La recepción en
                   bodega y las fotos no se pueden dar a una llave.
@@ -493,7 +495,7 @@ export default function IntegrationsPage() {
                     </label>
                   ))}
                 </div>
-              </div>
+              </fieldset>
               <DialogFooter>
                 <Button type="submit" disabled={busy}>
                   Crear

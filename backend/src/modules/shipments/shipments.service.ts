@@ -294,9 +294,7 @@ export class ShipmentsService {
     // apuntando a la casa de un tercero, y el enlace serviría además para
     // leerla desde el detalle del envío.
     if (dto.customerId && direccion.customerId !== dto.customerId) {
-      throw new BadRequestException(
-        'Esa dirección es de otro cliente.',
-      );
+      throw new BadRequestException('Esa dirección es de otro cliente.');
     }
 
     return {

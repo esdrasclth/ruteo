@@ -53,13 +53,19 @@ export function PageHeader({
             {title}
           </h1>
           {description ? (
-            <p className="max-w-2xl text-sm text-muted-foreground">
+            <p
+              className="max-w-2xl text-sm text-muted-foreground"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               {description}
             </p>
           ) : null}
         </div>
         {actions ? (
-          <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
+            {actions}
+          </div>
         ) : null}
       </div>
     </div>

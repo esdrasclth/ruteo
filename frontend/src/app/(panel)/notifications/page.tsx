@@ -2,7 +2,6 @@
 
 import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { Bell, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -14,7 +13,6 @@ import {
   NotificationStatus,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { usePagina } from "@/lib/use-pagina";
 import { Paginacion } from "@/components/paginacion";
 import {
   NOTIFICATION_CHANNEL_LABELS,
@@ -52,6 +50,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import {
+  opcionDesdeUrl,
+  paginaDesdeUrl,
+  useUrlFilters,
+} from "@/lib/use-url-filters";
 
 const CHANNELS: NotificationChannel[] = ["SMS", "EMAIL", "PUSH", "WHATSAPP"];
 const STATUSES: NotificationStatus[] = ["PENDING", "SENT", "FAILED"];
@@ -82,12 +85,22 @@ export default function NotificationsPage() {
 }
 
 function NotificationsContent() {
-  const searchParams = useSearchParams();
+  const { searchParams, actualizar } = useUrlFilters();
   // Llega desde el detalle de un envío: "ver los avisos de este envío".
   const shipmentId = searchParams.get("shipmentId");
 
-  const [status, setStatus] = useState<string>(TODOS);
-  const [channel, setChannel] = useState<string>(TODOS);
+  const status = opcionDesdeUrl(
+    searchParams,
+    "status",
+    [TODOS, ...STATUSES],
+    TODOS,
+  );
+  const channel = opcionDesdeUrl(
+    searchParams,
+    "channel",
+    [TODOS, ...CHANNELS],
+    TODOS,
+  );
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -97,8 +110,7 @@ function NotificationsContent() {
   if (status !== TODOS) params.set("status", status);
   if (channel !== TODOS) params.set("channel", channel);
   if (shipmentId) params.set("shipmentId", shipmentId);
-  // La página vuelve a 1 al cambiar cualquier filtro.
-  const [page, setPage] = usePagina(`${status}|${channel}|${shipmentId ?? ""}`);
+  const page = paginaDesdeUrl(searchParams);
 
   params.set("page", String(page));
   params.set("pageSize", "20");
@@ -177,7 +189,9 @@ function NotificationsContent() {
             {fallidas > 0 && status !== "FAILED" ? (
               <button
                 type="button"
-                onClick={() => setStatus("FAILED")}
+                onClick={() =>
+                  actualizar({ status: "FAILED", page: null }, "push")
+                }
                 className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20"
               >
                 {fallidas} fallida{fallidas === 1 ? "" : "s"} en esta página ·
@@ -186,7 +200,15 @@ function NotificationsContent() {
             ) : null}
           </div>
           <div className="flex items-center gap-2">
-            <Select value={status} onValueChange={setStatus}>
+            <Select
+              value={status}
+              onValueChange={(v) =>
+                actualizar(
+                  { status: v === TODOS ? null : v, page: null },
+                  "push",
+                )
+              }
+            >
               <SelectTrigger className="w-44" aria-label="Filtrar por estado">
                 <SelectValue />
               </SelectTrigger>
@@ -199,7 +221,15 @@ function NotificationsContent() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={channel} onValueChange={setChannel}>
+            <Select
+              value={channel}
+              onValueChange={(v) =>
+                actualizar(
+                  { channel: v === TODOS ? null : v, page: null },
+                  "push",
+                )
+              }
+            >
               <SelectTrigger className="w-44" aria-label="Filtrar por canal">
                 <SelectValue />
               </SelectTrigger>
@@ -306,7 +336,7 @@ function NotificationsContent() {
           page={datos.page}
           pageSize={datos.pageSize}
           total={datos.total}
-          onPage={setPage}
+          onPage={(siguiente) => actualizar({ page: siguiente }, "push")}
           etiqueta="avisos"
         />
       ) : null}
@@ -317,7 +347,7 @@ function NotificationsContent() {
             <DialogTitle>Enviar notificación</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSend} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="notif-channel">Canal</Label>
                 <Select

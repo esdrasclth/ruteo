@@ -1,8 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PackageCondition, PackagePhotoType } from '@prisma/client';
-import { Type } from 'class-transformer';
 import {
-  IsArray,
   IsEnum,
   IsInt,
   IsNumber,
@@ -11,7 +9,6 @@ import {
   IsUUID,
   Max,
   Min,
-  ValidateNested,
 } from 'class-validator';
 import { PreAlertPackageDto } from './pre-alert-package.dto';
 
@@ -21,7 +18,10 @@ export class FotoDeRecepcionDto {
   @IsUUID()
   fileId: string;
 
-  @ApiPropertyOptional({ enum: PackagePhotoType, default: PackagePhotoType.EXTERIOR })
+  @ApiPropertyOptional({
+    enum: PackagePhotoType,
+    default: PackagePhotoType.EXTERIOR,
+  })
   @IsOptional()
   @IsEnum(PackagePhotoType)
   type?: PackagePhotoType;
@@ -70,7 +70,10 @@ export class IntakePackageDto extends PreAlertPackageDto {
    * Se registra siempre, incluso `GOOD`: «no se anotó nada» y «se revisó y
    * estaba bien» son cosas distintas el día que alguien reclama un daño.
    */
-  @ApiPropertyOptional({ enum: PackageCondition, default: PackageCondition.GOOD })
+  @ApiPropertyOptional({
+    enum: PackageCondition,
+    default: PackageCondition.GOOD,
+  })
   @IsOptional()
   @IsEnum(PackageCondition)
   condition?: PackageCondition;

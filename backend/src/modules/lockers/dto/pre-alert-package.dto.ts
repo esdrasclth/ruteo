@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PackageCategory } from '@prisma/client';
 import {
   IsDateString,
@@ -74,7 +74,10 @@ export class PreAlertPackageDto {
   @IsDateString()
   estimatedArrival?: string;
 
-  @ApiPropertyOptional({ enum: PackageCategory, example: PackageCategory.ELECTRONICS })
+  @ApiPropertyOptional({
+    enum: PackageCategory,
+    example: PackageCategory.ELECTRONICS,
+  })
   @IsOptional()
   @IsEnum(PackageCategory)
   category?: PackageCategory;

@@ -170,12 +170,12 @@ export default function NewShipmentPage() {
         <CardContent>
           <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label>Tipo</Label>
+              <Label htmlFor="shipment-type">Tipo</Label>
               <Select
                 value={type}
                 onValueChange={(v) => setType(v as ShipmentType)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="shipment-type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,7 +199,7 @@ export default function NewShipmentPage() {
             {/* Modo de entrega: se elige AQUÍ y no al descargar, porque es lo
                 que decide en qué montón va el bulto cuando llega a bodega. */}
             <div className="grid gap-2">
-              <Label>Modo de entrega</Label>
+              <Label htmlFor="delivery-mode">Modo de entrega</Label>
               <Select
                 value={deliveryMode}
                 onValueChange={(v) => {
@@ -210,7 +210,7 @@ export default function NewShipmentPage() {
                   if (v !== "BRANCH") setDeliveryWarehouseId("");
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger id="delivery-mode" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -226,12 +226,12 @@ export default function NewShipmentPage() {
             </div>
             {deliveryMode === "BRANCH" && (
               <div className="grid gap-2">
-                <Label>Sucursal de retiro *</Label>
+                <Label htmlFor="delivery-warehouse">Sucursal de retiro *</Label>
                 <Select
                   value={deliveryWarehouseId}
                   onValueChange={setDeliveryWarehouseId}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="delivery-warehouse" className="w-full">
                     <SelectValue placeholder="Elige la sucursal" />
                   </SelectTrigger>
                   <SelectContent>
@@ -285,9 +285,9 @@ export default function NewShipmentPage() {
                 no hay ninguna que ofrecer. */}
             {customerId && direcciones.length > 0 && (
               <div className="grid gap-2 sm:col-span-2">
-                <Label>Dirección guardada</Label>
+                <Label htmlFor="saved-address">Dirección guardada</Label>
                 <Select value={addressId} onValueChange={onElegirDireccion}>
-                  <SelectTrigger>
+                  <SelectTrigger id="saved-address" className="w-full">
                     <SelectValue placeholder="Escribir el destino a mano" />
                   </SelectTrigger>
                   <SelectContent>

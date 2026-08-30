@@ -41,10 +41,7 @@ export class DriversController {
   @Roles(Role.OWNER, Role.ADMIN, Role.OPERATOR)
   @Get()
   @ApiQuery({ name: 'status', enum: DriverStatus, required: false })
-  list(
-    @CurrentUser() user: AuthUser,
-    @Query('status') status?: DriverStatus,
-  ) {
+  list(@CurrentUser() user: AuthUser, @Query('status') status?: DriverStatus) {
     return this.drivers.list(user.tenantId, status);
   }
 
@@ -69,7 +66,10 @@ export class DriversController {
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
-  remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.drivers.remove(user.tenantId, id);
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, Suspense, useCallback, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -41,6 +41,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
+import { opcionDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
 
 /**
  * Bandeja de excepciones.
@@ -50,7 +56,21 @@ import {
  * de ayer no quede debajo de una diferencia de peso de hoy.
  */
 export default function ExceptionsPage() {
-  const [filtro, setFiltro] = useState<ExceptionStatus | "TODAS">("OPEN");
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <ExceptionsContent />
+    </Suspense>
+  );
+}
+
+function ExceptionsContent() {
+  const { searchParams, actualizar } = useUrlFilters();
+  const filtro = opcionDesdeUrl<ExceptionStatus | "TODAS">(
+    searchParams,
+    "status",
+    ["OPEN", "INVESTIGATING", "TODAS"],
+    "OPEN",
+  );
   const [cerrando, setCerrando] = useState<ExceptionRow | null>(null);
   const [resolucion, setResolucion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,13 +140,18 @@ export default function ExceptionsPage() {
         title="Excepciones"
         description="Diferencias detectadas al cotejar lo que llegó contra lo que venía declarado."
         actions={
-          <div className="flex gap-1">
+          <div className="grid w-full grid-cols-3 gap-1 sm:flex sm:w-auto">
           {(["OPEN", "INVESTIGATING", "TODAS"] as const).map((f) => (
             <Button
               key={f}
               size="sm"
               variant={filtro === f ? "default" : "outline"}
-              onClick={() => setFiltro(f)}
+              onClick={() =>
+                actualizar(
+                  { status: f === "OPEN" ? null : f, page: null },
+                  "push",
+                )
+              }
             >
               {f === "TODAS" ? "Todas" : EXCEPTION_STATUS_LABELS[f]}
             </Button>
@@ -158,20 +183,91 @@ export default function ExceptionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="text-base" aria-live="polite">
             {datos ? `${datos.total} excepción(es)` : "Cargando…"}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 md:p-6" aria-busy={!datos}>
           {!datos ? (
-            <Skeleton className="h-40 w-full" />
+            <Skeleton className="m-4 h-40 w-[calc(100%-2rem)] md:m-0 md:w-full" />
           ) : datos.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p role="status" className="p-4 text-sm text-muted-foreground md:p-0">
               Nada pendiente. Las diferencias del cotejo de manifiestos aparecen
               aquí automáticamente.
             </p>
           ) : (
-            <Table>
+            <>
+              <MobileList label="Excepciones">
+                {datos.items.map((x) => (
+                  <MobileListCard key={x.id}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {EXCEPTION_TYPE_LABELS[x.type]}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {x.description}
+                        </p>
+                      </div>
+                      <Badge className={severityBadgeClass(x.severity)}>
+                        {EXCEPTION_SEVERITY_LABELS[x.severity]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <Badge className={exceptionStatusBadgeClass(x.status)}>
+                        {EXCEPTION_STATUS_LABELS[x.status]}
+                      </Badge>
+                      <MobileListMeta label="Referencia">
+                        {x.shipment ? (
+                          <Link
+                            href={`/shipments/${x.shipment.id}`}
+                            className="font-mono underline underline-offset-2"
+                          >
+                            {x.shipment.trackingNumber}
+                          </Link>
+                        ) : x.manifest ? (
+                          <Link
+                            href={`/manifests/${x.manifest.id}`}
+                            className="underline underline-offset-2"
+                          >
+                            {x.manifest.number}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </MobileListMeta>
+                    </div>
+                    {(x.status === "OPEN" ||
+                      x.status === "INVESTIGATING") && (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {x.status === "OPEN" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="min-h-11"
+                            disabled={busy}
+                            onClick={() => cambiarEstado(x, "INVESTIGATING")}
+                          >
+                            Revisar
+                          </Button>
+                        ) : (
+                          <span />
+                        )}
+                        <Button
+                          size="sm"
+                          className="min-h-11"
+                          disabled={busy}
+                          onClick={() => cambiarEstado(x, "RESOLVED")}
+                        >
+                          Cerrar
+                        </Button>
+                      </div>
+                    )}
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Tipo</TableHead>
@@ -262,7 +358,9 @@ export default function ExceptionsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

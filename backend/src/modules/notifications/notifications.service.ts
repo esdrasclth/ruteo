@@ -11,11 +11,7 @@ import {
   NotificationStatus,
   Prisma,
 } from '@prisma/client';
-import {
-  Pagina,
-  PaginacionDto,
-  saltar,
-} from '../../common/dto/paginacion.dto';
+import { Pagina, PaginacionDto, saltar } from '../../common/dto/paginacion.dto';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import {

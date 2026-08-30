@@ -34,6 +34,8 @@ jobs:
       # El cliente de Prisma se genera desde el esquema; sin esto no compila
       # nada que lo importe.
       - run: npx prisma generate
+      - name: Lint
+        run: npx eslint "{src,apps,libs,test}/**/*.ts" --max-warnings=0
       - name: Comprobación de tipos
         run: npx tsc --noEmit -p tsconfig.json
       - name: Pruebas unitarias
@@ -125,6 +127,8 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
       - run: npm ci
+      - name: Lint
+        run: npx eslint . --max-warnings=0
       - name: Comprobación de tipos
         run: npx tsc --noEmit
       - name: Compilación

@@ -30,6 +30,8 @@ export function legStatusMessage(
   if (status === LegStatus.IN_PROGRESS) {
     return `Tu envío ${trackingNumber} inició su tramo ${mode}${route}${carrier}.`;
   }
-  const arrival = leg.destinationLabel ? ` llegando a ${leg.destinationLabel}` : '';
+  const arrival = leg.destinationLabel
+    ? ` llegando a ${leg.destinationLabel}`
+    : '';
   return `Tu envío ${trackingNumber} completó su tramo ${mode}${arrival}${carrier}.`;
 }

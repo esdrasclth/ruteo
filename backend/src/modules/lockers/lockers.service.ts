@@ -18,11 +18,7 @@ import { QueryPackagesDto } from './dto/query-packages.dto';
 import { UpdateLockerDto } from './dto/update-locker.dto';
 import { generateLockerCode } from './locker-code';
 import { packageReceivedMessage } from './package-message';
-import {
-  Pagina,
-  saltar,
-  TOPE_CATALOGO,
-} from '../../common/dto/paginacion.dto';
+import { Pagina, saltar, TOPE_CATALOGO } from '../../common/dto/paginacion.dto';
 import { coincideSinTildes, patronDe } from '../../common/sql/sin-tildes';
 
 /** Un bulto con el casillero al que pertenece. */

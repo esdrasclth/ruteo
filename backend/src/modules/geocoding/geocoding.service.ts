@@ -40,8 +40,8 @@ function etiquetaCorta(item: NominatimItem): string {
     dir.city ?? dir.town ?? dir.village ?? dir.municipality ?? dir.county;
   const pais = dir.country;
 
-  const partes = [principal, ciudad, pais].filter(
-    (p): p is string => Boolean(p && p.trim()),
+  const partes = [principal, ciudad, pais].filter((p): p is string =>
+    Boolean(p && p.trim()),
   );
   // Se quitan repetidos: en ciudades grandes el nombre principal ya es la ciudad.
   const unicas = [...new Set(partes)];
@@ -136,9 +136,7 @@ export class GeocodingService {
       }
 
       const cuerpo = (await res.json()) as NominatimItem[];
-      const resultados: GeocodeResult[] = (
-        Array.isArray(cuerpo) ? cuerpo : []
-      )
+      const resultados: GeocodeResult[] = (Array.isArray(cuerpo) ? cuerpo : [])
         .filter((r) => r.lat && r.lon && r.display_name)
         .map((r) => ({
           label: r.display_name!,

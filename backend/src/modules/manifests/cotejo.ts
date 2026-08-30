@@ -78,11 +78,9 @@ export function cotejar(
 
   let receivedPieces = 0;
   let receivedWeightKg = new Prisma.Decimal(0);
-  let declaredPieces = 0;
   let declaredWeightKg = new Prisma.Decimal(0);
 
   for (const linea of declaradas) {
-    declaredPieces += linea.pieces;
     declaredWeightKg = declaredWeightKg.plus(linea.weightKg);
 
     // Una guía que ni siquiera aparece en el conteo cuenta como cero recibido,
@@ -102,7 +100,8 @@ export function cotejar(
         type: ExceptionType.MISSING,
         // Que no llegue nada de una guía es peor que que falte un bulto de
         // tres: en el primer caso hay un cliente entero sin su compra.
-        severity: piezas === 0 ? ExceptionSeverity.HIGH : ExceptionSeverity.MEDIUM,
+        severity:
+          piezas === 0 ? ExceptionSeverity.HIGH : ExceptionSeverity.MEDIUM,
         description: `Faltan bultos de la guía ${linea.trackingNumber ?? linea.shipmentId}`,
         expectedValue: describir(linea.pieces, linea.weightKg),
         actualValue: describir(piezas, peso),
@@ -156,7 +155,10 @@ export function cotejar(
         severity: ExceptionSeverity.HIGH,
         description: 'Llegó un envío que no estaba manifestado',
         expectedValue: 'no manifestado',
-        actualValue: describir(contada.receivedPieces, contada.receivedWeightKg),
+        actualValue: describir(
+          contada.receivedPieces,
+          contada.receivedWeightKg,
+        ),
       });
     }
   }
@@ -193,6 +195,9 @@ export function diferenciaDeTotales(
     severity: ExceptionSeverity.HIGH,
     description: 'Lo recibido no cuadra con lo manifestado',
     expectedValue: describir(declaredPieces, declaredWeightKg),
-    actualValue: describir(resultado.receivedPieces, resultado.receivedWeightKg),
+    actualValue: describir(
+      resultado.receivedPieces,
+      resultado.receivedWeightKg,
+    ),
   };
 }

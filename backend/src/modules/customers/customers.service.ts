@@ -136,8 +136,10 @@ export class CustomersService {
         where: { id },
         data: {
           name: dto.name,
-          email: dto.email !== undefined ? dto.email?.trim() || null : undefined,
-          phone: dto.phone !== undefined ? dto.phone?.trim() || null : undefined,
+          email:
+            dto.email !== undefined ? dto.email?.trim() || null : undefined,
+          phone:
+            dto.phone !== undefined ? dto.phone?.trim() || null : undefined,
           documentId:
             dto.documentId !== undefined
               ? dto.documentId?.trim() || null

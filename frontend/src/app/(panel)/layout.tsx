@@ -1,6 +1,12 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import {
+  ReactNode,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,6 +28,18 @@ import { VerifyEmailBanner } from "@/components/verify-email-banner";
 // la navegación con el armazón de la página, que no tiene nada que ver.
 import { hayAlgoVisible, PanelNav } from "./nav";
 
+const MEDIA_ESCRITORIO = "(min-width: 1024px)";
+
+function suscribirEscritorio(onChange: () => void) {
+  const media = window.matchMedia(MEDIA_ESCRITORIO);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function esEscritorio() {
+  return window.matchMedia(MEDIA_ESCRITORIO).matches;
+}
+
 export default function PanelLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -41,6 +59,14 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
   );
   const { open: paletteOpen, setOpen: setPaletteOpen } = useCommandPalette();
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const menuRef = useRef<HTMLElement>(null);
+  const botonMenuRef = useRef<HTMLButtonElement>(null);
+  const escritorio = useSyncExternalStore(
+    suscribirEscritorio,
+    esEscritorio,
+    () => true,
+  );
+  const menuDisponible = escritorio || menuAbierto;
 
   // Al navegar se cierra solo. Sin esto, en el teléfono tocas una entrada y el
   // cajón se queda encima de la pantalla a la que acabas de ir.
@@ -55,15 +81,44 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
     if (menuAbierto) setMenuAbierto(false);
   }
 
-  // Escape cierra, como cualquier capa que tapa la pantalla.
+  // El cajón móvil se comporta como una capa modal: recibe el foco al abrir,
+  // Tab no se escapa detrás de él y al cerrar devuelve el foco al disparador.
   useEffect(() => {
-    if (!menuAbierto) return;
+    if (!menuAbierto || escritorio) return;
+    const selector =
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const enfocables = () =>
+      Array.from(
+        menuRef.current?.querySelectorAll<HTMLElement>(selector) ?? [],
+      ).filter((elemento) => !elemento.hasAttribute("inert"));
+    const botonMenu = botonMenuRef.current;
+
+    enfocables()[0]?.focus();
     const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuAbierto(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMenuAbierto(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const elementos = enfocables();
+      if (elementos.length === 0) return;
+      const primero = elementos[0];
+      const ultimo = elementos[elementos.length - 1];
+      if (e.shiftKey && document.activeElement === primero) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault();
+        primero.focus();
+      }
     };
     window.addEventListener("keydown", alTeclear);
-    return () => window.removeEventListener("keydown", alTeclear);
-  }, [menuAbierto]);
+    return () => {
+      window.removeEventListener("keydown", alTeclear);
+      botonMenu?.focus();
+    };
+  }, [escritorio, menuAbierto]);
 
   useEffect(() => {
     if (ready && !session) router.replace("/login");
@@ -94,7 +149,10 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
   // si es un fallo o si le falta un permiso.
   if (!hayAlgoVisible(session.role)) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
+      <main
+        id="main-content"
+        className="flex flex-1 items-center justify-center p-8"
+      >
         <div className="max-w-md text-center">
           <h1 className="text-lg font-semibold">Tu cuenta no usa el panel</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -111,7 +169,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -126,6 +184,12 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
     // `h-dvh` y no `h-screen`: en el móvil la barra de direcciones se recoge al
     // scrollear y `100vh` deja cortado justo lo de abajo del todo.
     <div className="flex h-dvh overflow-hidden">
+      <a
+        href="#main-content"
+        className="sr-only fixed left-4 top-4 z-[100] rounded-md bg-background px-4 py-2 text-sm font-medium text-foreground shadow-lg focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Saltar al contenido principal
+      </a>
       {/* Fondo del cajón. Solo existe por debajo de `lg` y con el menú abierto:
           a partir de ahí el menú es una columna más y no tapa nada. */}
       {menuAbierto ? (
@@ -150,7 +214,10 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           Se traslada en vez de desmontarse para que la transición exista y para
           que el menú no se reconstruya en cada apertura. */}
       <aside
+        ref={menuRef}
         id="menu-panel"
+        aria-hidden={!menuDisponible}
+        inert={!menuDisponible}
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-white/5 bg-sidebar text-sidebar-foreground transition-transform duration-200",
           "lg:static lg:z-auto lg:h-full lg:translate-x-0 lg:transition-none",
@@ -238,6 +305,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
         <header className="z-20 flex h-14 shrink-0 items-center gap-3 border-b border-black/5 bg-white/70 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           {/* Abre el menú. Desaparece desde `lg`, donde el menú ya está fijo. */}
           <button
+            ref={botonMenuRef}
             type="button"
             onClick={() => setMenuAbierto(true)}
             aria-label="Abrir el menú"
@@ -271,7 +339,11 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
             `visible` a `auto` solo. O sea que pedir scroll horizontal para las
             tablas anchas activaba también el vertical, y el documento seguía
             scrolleando por su cuenta. Ahora se declara entero y a propósito. */}
-        <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="min-w-0 flex-1 overflow-auto p-4 sm:p-6 lg:p-8"
+        >
           <VerifyEmailBanner />
           {children}
         </main>

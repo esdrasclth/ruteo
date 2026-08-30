@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Plus, Search, Upload, X } from "lucide-react";
 import {
   Paginated,
@@ -38,6 +37,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
+import {
+  opcionDesdeUrl,
+  paginaDesdeUrl,
+  useUrlFilters,
+  useUrlSearch,
+} from "@/lib/use-url-filters";
 
 const ALL = "ALL";
 const PAGE_SIZE = 20;
@@ -52,30 +62,30 @@ export default function ShipmentsPage() {
 }
 
 function ShipmentsContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const { searchParams, actualizar } = useUrlFilters();
   // El dashboard enlaza aqui con un estado ya aplicado (ej. ?status=DELIVERED),
   // de modo que un KPI lleve directo a la lista que lo explica.
-  const statusInicial = searchParams.get("status") ?? ALL;
+  const status = opcionDesdeUrl(
+    searchParams,
+    "status",
+    [ALL, ...Object.keys(STATUS_LABELS)],
+    ALL,
+  );
   // Lo mismo para el tipo, que el desglose «Por tipo» del inicio enlaza igual.
   // Sin esto el enlace navegaba hasta aquí pero no filtraba nada, que es peor
   // que no enlazar: parece que la lista está mal, no que falte el filtro.
-  const typeInicial = searchParams.get("type") ?? ALL;
-
-  const [status, setStatus] = useState<string>(statusInicial);
-  const [type, setType] = useState<string>(typeInicial);
-  const [search, setSearch] = useState("");
-  const [busqueda, setBusqueda] = useState("");
-  const [page, setPage] = useState(1);
-
-  // Debounce del buscador: sin esto se lanza una consulta por tecla.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setBusqueda(search.trim());
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [search]);
+  const type = opcionDesdeUrl(
+    searchParams,
+    "type",
+    [ALL, ...Object.keys(TYPE_LABELS)],
+    ALL,
+  );
+  const page = paginaDesdeUrl(searchParams);
+  const {
+    borrador: search,
+    setBorrador: setSearch,
+    aplicado: busqueda,
+  } = useUrlSearch();
 
   // La consulta se arma en el render, no dentro de la carga: ES la clave de
   // caché. Dos visitas con los mismos filtros son la misma clave, así que
@@ -153,10 +163,9 @@ function ShipmentsContent() {
         </div>
         <Select
           value={status}
-          onValueChange={(v) => {
-            setPage(1);
-            setStatus(v);
-          }}
+          onValueChange={(v) =>
+            actualizar({ status: v === ALL ? null : v, page: null }, "push")
+          }
         >
           <SelectTrigger className="w-52 bg-card">
             <SelectValue placeholder="Estado" />
@@ -172,10 +181,9 @@ function ShipmentsContent() {
         </Select>
         <Select
           value={type}
-          onValueChange={(v) => {
-            setPage(1);
-            setType(v);
-          }}
+          onValueChange={(v) =>
+            actualizar({ type: v === ALL ? null : v, page: null }, "push")
+          }
         >
           <SelectTrigger className="w-44 bg-card">
             <SelectValue placeholder="Tipo" />
@@ -192,7 +200,7 @@ function ShipmentsContent() {
       </div>
 
       <Card className="overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="p-0" aria-busy={!data}>
           {!data ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -218,10 +226,50 @@ function ShipmentsContent() {
               }
             />
           ) : (
-            <Table>
+            <>
+              <MobileList label="Envíos">
+                {data.items.map((s) => (
+                  <MobileListCard
+                    key={s.id}
+                    href={`/shipments/${s.id}`}
+                    label={`Abrir envío ${s.trackingNumber} de ${s.recipientName}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm font-medium">
+                          {s.trackingNumber}
+                        </p>
+                        <p className="mt-0.5 truncate text-sm">
+                          {s.recipientName}
+                        </p>
+                      </div>
+                      <Badge className={statusBadgeClass(s.status)}>
+                        {STATUS_LABELS[s.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <MobileListMeta label="Tipo">
+                        {TYPE_LABELS[s.type]}
+                      </MobileListMeta>
+                      <MobileListMeta label="Destino">
+                        <span className="max-w-48 truncate">
+                          {s.destinationLabel ?? "—"}
+                        </span>
+                      </MobileListMeta>
+                      {s.codAmount ? (
+                        <MobileListMeta label="Cobro contra entrega">
+                          {s.codAmount} {s.currency}
+                        </MobileListMeta>
+                      ) : null}
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tracking</TableHead>
+                  <TableHead>Guía</TableHead>
                   <TableHead>Destinatario</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Estado</TableHead>
@@ -232,13 +280,14 @@ function ShipmentsContent() {
               </TableHeader>
               <TableBody>
                 {data.items.map((s) => (
-                  <TableRow
-                    key={s.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/shipments/${s.id}`)}
-                  >
-                    <TableCell className="font-mono">
-                      {s.trackingNumber}
+                  <TableRow key={s.id}>
+                    <TableCell>
+                      <Link
+                        href={`/shipments/${s.id}`}
+                        className="font-mono font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {s.trackingNumber}
+                      </Link>
                     </TableCell>
                     <TableCell>{s.recipientName}</TableCell>
                     <TableCell>{TYPE_LABELS[s.type]}</TableCell>
@@ -259,7 +308,9 @@ function ShipmentsContent() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -269,7 +320,7 @@ function ShipmentsContent() {
           variant="outline"
           size="sm"
           disabled={page <= 1}
-          onClick={() => setPage((p) => p - 1)}
+          onClick={() => actualizar({ page: page - 1 }, "push")}
         >
           Anterior
         </Button>
@@ -280,7 +331,7 @@ function ShipmentsContent() {
           variant="outline"
           size="sm"
           disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => actualizar({ page: page + 1 }, "push")}
         >
           Siguiente
         </Button>

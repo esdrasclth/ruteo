@@ -64,7 +64,11 @@ export function pesoVolumetrico(
 
   // Tres decimales, que es la precisión de la columna. Sin redondear aquí, el
   // valor que se compara contra el peso real no sería el que se guarda.
-  return l.mul(w).mul(h).div(d).toDecimalPlaces(3, Prisma.Decimal.ROUND_HALF_UP);
+  return l
+    .mul(w)
+    .mul(h)
+    .div(d)
+    .toDecimalPlaces(3, Prisma.Decimal.ROUND_HALF_UP);
 }
 
 /**

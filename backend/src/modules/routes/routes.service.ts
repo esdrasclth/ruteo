@@ -128,7 +128,11 @@ export class RoutesService {
     // La evidencia se guarda como CLAVE y se firma al leer, nunca al guardar:
     // una URL firmada es un pase que funciona sin sesión, y guardarla sería
     // dejarlo escrito para siempre.
-    const stops = await firmarPodsDeParadas(this.storage, route.stops, tenantId);
+    const stops = await firmarPodsDeParadas(
+      this.storage,
+      route.stops,
+      tenantId,
+    );
     return {
       ...route,
       stops: await Promise.all(
@@ -368,7 +372,10 @@ export class RoutesService {
     // información: no se puede revisar, ni contar como categoría, ni ascender a
     // valor propio si resulta que se repite. Se exige aquí y no en el DTO
     // porque es una regla entre dos campos, no de uno solo.
-    if (dto.failureReason === DeliveryFailureReason.OTHER && !dto.notes?.trim()) {
+    if (
+      dto.failureReason === DeliveryFailureReason.OTHER &&
+      !dto.notes?.trim()
+    ) {
       throw new BadRequestException(
         'Explica en la nota qué pasó cuando el motivo es «Otro motivo».',
       );

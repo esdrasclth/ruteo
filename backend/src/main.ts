@@ -66,7 +66,10 @@ async function bootstrap() {
       // Las integraciones de las empresas no entran con sesión sino con llave,
       // y sin declararla aquí Swagger no ofrece dónde pegarla: la superficie
       // que de verdad consume un tercero quedaba sin poder probarse.
-      .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'x-api-key')
+      .addApiKey(
+        { type: 'apiKey', name: 'x-api-key', in: 'header' },
+        'x-api-key',
+      )
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('docs', app, document);

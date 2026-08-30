@@ -92,7 +92,9 @@ function Formulario() {
           />
         </div>
         <div className="grid gap-2.5">
-          <Label className="text-white/80">Código</Label>
+          <p className="text-sm font-medium leading-none text-white/80">
+            Código
+          </p>
           <OtpInput
             value={code}
             onChange={setCode}

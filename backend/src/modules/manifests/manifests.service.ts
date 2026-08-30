@@ -119,7 +119,10 @@ export class ManifestsService {
 
     if (dto.tripId) {
       const viaje = await this.prisma.withTenant(tenantId, (tx) =>
-        tx.trip.findUnique({ where: { id: dto.tripId! }, select: { id: true } }),
+        tx.trip.findUnique({
+          where: { id: dto.tripId! },
+          select: { id: true },
+        }),
       );
       if (!viaje) throw new NotFoundException('El viaje no existe');
     }
@@ -216,7 +219,10 @@ export class ManifestsService {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const manifiesto = await tx.manifest.findUnique({
         where: { id },
-        select: { status: true, items: { select: { pieces: true, weightKg: true } } },
+        select: {
+          status: true,
+          items: { select: { pieces: true, weightKg: true } },
+        },
       });
       if (!manifiesto) throw new NotFoundException('El manifiesto no existe');
       this.exigirBorrador(manifiesto.status);
@@ -234,7 +240,11 @@ export class ManifestsService {
 
       return tx.manifest.update({
         where: { id },
-        data: { status: ManifestStatus.TRANSMITTED, totalPieces, totalWeightKg },
+        data: {
+          status: ManifestStatus.TRANSMITTED,
+          totalPieces,
+          totalWeightKg,
+        },
         include: this.detalle,
       });
     });

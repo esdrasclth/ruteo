@@ -41,6 +41,33 @@ type TrackedShipment = Prisma.ShipmentGetPayload<{
 }>;
 type TrackedLeg = TrackedShipment['legs'][number];
 
+type LegForProgress = Pick<TrackedLeg, 'status' | 'sequence'>;
+type LegForEta = Pick<TrackedLeg, 'status' | 'sequence' | 'etaAt'>;
+
+/** El tramo operativo: primero el que avanza y, si aún no arrancó, el próximo. */
+export function resolveCurrentLeg<T extends LegForProgress>(
+  legs: T[],
+): T | null {
+  const ordenados = [...legs].sort((a, b) => a.sequence - b.sequence);
+  return (
+    ordenados.find((leg) => leg.status === LegStatus.IN_PROGRESS) ??
+    ordenados.find((leg) => leg.status === LegStatus.PENDING) ??
+    null
+  );
+}
+
+/**
+ * ETA de entrega, no ETA del siguiente transbordo.
+ *
+ * Solo el último tramo termina en el destino final. Si todavía no tiene ETA,
+ * enseñar la de Miami→aduana como “entrega estimada” sería una precisión falsa.
+ */
+export function resolveDeliveryEta(legs: LegForEta[]): Date | null {
+  const ultimo = [...legs].sort((a, b) => b.sequence - a.sequence)[0];
+  if (!ultimo || ultimo.status === LegStatus.COMPLETED) return null;
+  return ultimo.etaAt;
+}
+
 export interface MapPoint {
   label: string;
   lat: number;
@@ -75,11 +102,8 @@ export class TrackingService {
   // Public-safe projection: milestones + current leg + map path, without
   // exposing internal or sensitive fields (declared value, COD, phone, ids).
   private toPublicView(shipment: TrackedShipment) {
-    const currentLeg = this.resolveCurrentLeg(shipment.legs);
-    const nextEta = shipment.legs
-      .map((leg) => leg.etaAt)
-      .filter((eta): eta is Date => eta !== null)
-      .sort((a, b) => a.getTime() - b.getTime())[0];
+    const currentLeg = resolveCurrentLeg(shipment.legs);
+    const deliveryEta = resolveDeliveryEta(shipment.legs);
 
     return {
       trackingNumber: shipment.trackingNumber,
@@ -95,7 +119,7 @@ export class TrackingService {
         lat: shipment.destinationLat,
         lng: shipment.destinationLng,
       },
-      estimatedDelivery: nextEta ?? null,
+      estimatedDelivery: deliveryEta,
       currentLeg: currentLeg
         ? {
             sequence: currentLeg.sequence,
@@ -179,16 +203,5 @@ export class TrackingService {
       shipment.destinationLng,
     );
     return path;
-  }
-
-  private resolveCurrentLeg(legs: TrackedLeg[]) {
-    const inProgress = legs.find((leg) => leg.status === LegStatus.IN_PROGRESS);
-    if (inProgress) {
-      return inProgress;
-    }
-    const completed = [...legs]
-      .filter((leg) => leg.status === LegStatus.COMPLETED)
-      .sort((a, b) => b.sequence - a.sequence)[0];
-    return completed ?? legs[0] ?? null;
   }
 }

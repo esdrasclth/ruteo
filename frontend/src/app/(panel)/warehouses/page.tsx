@@ -297,7 +297,7 @@ export default function WarehousesPage() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={guardar} className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="code">Código *</Label>
                 <Input
@@ -331,14 +331,14 @@ export default function WarehousesPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label>Tipo *</Label>
+              <Label htmlFor="warehouse-type">Tipo *</Label>
               <Select
                 value={form.type}
                 onValueChange={(v) =>
                   setForm((f) => ({ ...f, type: v as WarehouseType }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="warehouse-type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -354,7 +354,7 @@ export default function WarehousesPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="country">País *</Label>
                 <Input

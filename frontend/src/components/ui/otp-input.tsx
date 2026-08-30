@@ -30,6 +30,7 @@ export function OtpInput({
   disabled,
   autoFocus,
   variant = "claro",
+  label = "Código de verificación",
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -37,6 +38,7 @@ export function OtpInput({
   disabled?: boolean;
   autoFocus?: boolean;
   variant?: "claro" | "oscuro";
+  label?: string;
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digitos = useMemo(
@@ -89,7 +91,12 @@ export function OtpInput({
   const oscuro = variant === "oscuro";
 
   return (
-    <div className="flex items-center gap-2 sm:gap-2.5" onPaste={alPegar}>
+    <div
+      role="group"
+      aria-label={label}
+      className="flex items-center gap-2 sm:gap-2.5"
+      onPaste={alPegar}
+    >
       {digitos.map((d, i) => (
         <input
           key={i}

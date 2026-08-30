@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Artefactos minificados copiados desde maplibre-gl en postinstall. No son
+    // código fuente del proyecto y sus miles de avisos ocultaban los reales.
+    "public/maplibre-gl-*.mjs",
   ]),
 ]);
 

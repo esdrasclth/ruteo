@@ -3,12 +3,16 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class QueryAuditDto {
-  @ApiPropertyOptional({ description: 'Filtra por acción (ej. payment.collected)' })
+  @ApiPropertyOptional({
+    description: 'Filtra por acción (ej. payment.collected)',
+  })
   @IsOptional()
   @IsString()
   action?: string;
 
-  @ApiPropertyOptional({ description: 'Filtra por tipo de entidad (ej. shipment)' })
+  @ApiPropertyOptional({
+    description: 'Filtra por tipo de entidad (ej. shipment)',
+  })
   @IsOptional()
   @IsString()
   entityType?: string;

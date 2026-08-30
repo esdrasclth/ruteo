@@ -632,7 +632,7 @@ export default function ShipmentDetailPage({
               }
             />
             <Field
-              label="Tracking del carrier"
+              label="Guía del transportista"
               value={shipment.carrierTrackingNumber ?? "—"}
             />
           </CardContent>

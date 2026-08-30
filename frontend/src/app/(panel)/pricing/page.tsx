@@ -247,7 +247,7 @@ export default function PricingPage() {
             </div>
           ) : zones.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">
-              Sin zonas. Crea zonas de cobertura para asignar tarifas y drivers.
+              Sin zonas. Crea zonas de cobertura para asignar tarifas y repartidores.
             </p>
           ) : (
             <Table>
@@ -507,7 +507,7 @@ export default function PricingPage() {
             <DialogTitle>Nueva zona</DialogTitle>
           </DialogHeader>
           <form onSubmit={onCreateZone} className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="zName">Nombre *</Label>
                 <Input
@@ -558,7 +558,7 @@ export default function PricingPage() {
               }
               hint="Solo fija las coordenadas del centro; no se guarda como texto."
             />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="grid gap-2">
                 <Label htmlFor="zLat">Lat centro</Label>
                 <Input
@@ -627,14 +627,14 @@ export default function PricingPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Zona</Label>
+              <Label htmlFor="rate-zone">Zona</Label>
               <Select
                 value={rateForm.zoneId}
                 onValueChange={(v) =>
                   setRateForm((f) => ({ ...f, zoneId: v }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="rate-zone" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -647,7 +647,7 @@ export default function PricingPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-2">
                 <Label htmlFor="rBase">Base</Label>
                 <Input

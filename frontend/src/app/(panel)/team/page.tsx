@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { KeyRound, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -52,6 +52,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { paginaDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
 
 const NONE = "none";
 const PAGE_SIZE = 20;
@@ -65,7 +66,16 @@ const emptyForm = {
 };
 
 export default function TeamPage() {
-  const [page, setPage] = useState(1);
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <TeamContent />
+    </Suspense>
+  );
+}
+
+function TeamContent() {
+  const { searchParams, actualizar } = useUrlFilters();
+  const page = paginaDesdeUrl(searchParams);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -163,8 +173,7 @@ export default function TeamPage() {
   }
 
   async function onStatusToggle(user: TeamUser) {
-    const status: UserStatus =
-      user.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+    const status: UserStatus = user.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
     try {
       await api(`/users/${user.id}`, {
         method: "PATCH",
@@ -208,147 +217,151 @@ export default function TeamPage() {
         title="Equipo"
         description={data ? `${data.total} miembros` : "Cargando…"}
         actions={
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="size-4" />
-              Nuevo usuario
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Nuevo usuario</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={onCreate} className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Correo *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, email: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="name">Nombre</Label>
-                <Input
-                  id="name"
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="size-4" />
+                Nuevo usuario
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Nuevo usuario</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={onCreate} className="grid gap-4">
                 <div className="grid gap-2">
-                  <Label>Rol</Label>
-                  <Select
-                    value={form.role}
-                    onValueChange={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        role: v as Role,
-                        driverId: undefined,
-                        customerId: undefined,
-                      }))
+                  <Label htmlFor="email">Correo *</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={form.email}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, email: e.target.value }))
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roleOptions.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </div>
-              </div>
-              {/* Ya no se pide contraseña: se manda una invitación y la elige
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Nombre</Label>
+                  <Input
+                    id="name"
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, name: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="team-role">Rol</Label>
+                    <Select
+                      value={form.role}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          role: v as Role,
+                          driverId: undefined,
+                          customerId: undefined,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="team-role" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roleOptions.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {ROLE_LABELS[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {/* Ya no se pide contraseña: se manda una invitación y la elige
                   quien entra. Que el administrador la pusiera significaba que
                   conocía la clave de su gente, y que la primera se compartía
                   por WhatsApp. */}
-              <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                Le enviaremos una invitación por correo para que elija su propia
-                contraseña. Su correo queda verificado al aceptarla.
-              </p>
-              {form.role === "DRIVER" ? (
-                <div className="grid gap-2">
-                  <Label>Vincular con driver (opcional)</Label>
-                  <Select
-                    value={form.driverId ?? NONE}
-                    onValueChange={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        driverId: v === NONE ? undefined : v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sin vincular" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Sin vincular</SelectItem>
-                      {linkables?.drivers.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                          {d.phone ? ` · ${d.phone}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {linkables && linkables.drivers.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No hay drivers sin cuenta para vincular.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              {form.role === "CUSTOMER" ? (
-                <div className="grid gap-2">
-                  <Label>Vincular con cliente (opcional)</Label>
-                  <Select
-                    value={form.customerId ?? NONE}
-                    onValueChange={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        customerId: v === NONE ? undefined : v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sin vincular" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Sin vincular</SelectItem>
-                      {linkables?.customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                          {c.email ? ` · ${c.email}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {linkables && linkables.customers.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No hay clientes sin cuenta para vincular.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              <DialogFooter>
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Creando…" : "Crear"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                  Le enviaremos una invitación por correo para que elija su
+                  propia contraseña. Su correo queda verificado al aceptarla.
+                </p>
+                {form.role === "DRIVER" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="team-driver">
+                      Vincular con repartidor (opcional)
+                    </Label>
+                    <Select
+                      value={form.driverId ?? NONE}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          driverId: v === NONE ? undefined : v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="team-driver" className="w-full">
+                        <SelectValue placeholder="Sin vincular" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Sin vincular</SelectItem>
+                        {linkables?.drivers.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                            {d.phone ? ` · ${d.phone}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {linkables && linkables.drivers.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No hay repartidores sin cuenta para vincular.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {form.role === "CUSTOMER" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="team-customer">
+                      Vincular con cliente (opcional)
+                    </Label>
+                    <Select
+                      value={form.customerId ?? NONE}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          customerId: v === NONE ? undefined : v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="team-customer" className="w-full">
+                        <SelectValue placeholder="Sin vincular" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Sin vincular</SelectItem>
+                        {linkables?.customers.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                            {c.email ? ` · ${c.email}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {linkables && linkables.customers.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        No hay clientes sin cuenta para vincular.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                <DialogFooter>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Creando…" : "Crear"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         }
       />
 
@@ -380,8 +393,7 @@ export default function TeamPage() {
                 {users.map((u) => {
                   const isSelf = u.id === myId;
                   // ADMINs cannot manage OWNER accounts.
-                  const canManage =
-                    !isSelf && (isOwner || u.role !== "OWNER");
+                  const canManage = !isSelf && (isOwner || u.role !== "OWNER");
                   const rowRoleOptions = roleOptions.includes(u.role)
                     ? roleOptions
                     : [u.role, ...roleOptions];
@@ -414,14 +426,12 @@ export default function TeamPage() {
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-sm">
-                            {ROLE_LABELS[u.role]}
-                          </span>
+                          <span className="text-sm">{ROLE_LABELS[u.role]}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {u.driver
-                          ? `Driver: ${u.driver.name}`
+                          ? `Repartidor: ${u.driver.name}`
                           : u.customer
                             ? `Cliente: ${u.customer.name}`
                             : "—"}
@@ -470,7 +480,7 @@ export default function TeamPage() {
           variant="outline"
           size="sm"
           disabled={page <= 1}
-          onClick={() => setPage((p) => p - 1)}
+          onClick={() => actualizar({ page: page - 1 }, "push")}
         >
           Anterior
         </Button>
@@ -481,7 +491,7 @@ export default function TeamPage() {
           variant="outline"
           size="sm"
           disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => actualizar({ page: page + 1 }, "push")}
         >
           Siguiente
         </Button>

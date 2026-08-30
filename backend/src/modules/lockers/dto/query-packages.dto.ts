@@ -5,7 +5,8 @@ import { PaginacionDto } from '../../../common/dto/paginacion.dto';
 
 export class QueryPackagesDto extends PaginacionDto {
   @ApiPropertyOptional({
-    description: 'Matches tracking, merchant, description, locker code or customer',
+    description:
+      'Matches tracking, merchant, description, locker code or customer',
   })
   @IsOptional()
   @IsString()

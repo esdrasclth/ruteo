@@ -325,8 +325,9 @@ export default function PublicTrackingPage({
               {data.currentLeg ? (
                 <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                   <span className="font-medium text-primary">
-                    Tramo {legModeLabel(data.currentLeg.mode).toLowerCase()} en
-                    curso
+                    {data.currentLeg.status === "IN_PROGRESS"
+                      ? `Tramo ${legModeLabel(data.currentLeg.mode).toLowerCase()} en curso`
+                      : `Próximo tramo ${legModeLabel(data.currentLeg.mode).toLowerCase()}`}
                   </span>
                   <span className="text-muted-foreground">
                     {data.currentLeg.originLabel ?? "—"} →{" "}

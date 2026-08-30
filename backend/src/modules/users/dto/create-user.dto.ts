@@ -7,7 +7,6 @@ import {
   IsString,
   IsUUID,
   MaxLength,
-
 } from 'class-validator';
 
 // Sin contraseña a propósito: la elige el invitado desde el correo. Que el
@@ -30,13 +29,14 @@ export class CreateUserDto {
   @IsEnum(Role)
   role: Role;
 
-
   @ApiPropertyOptional({ description: 'Link this user to an existing driver' })
   @IsOptional()
   @IsUUID()
   driverId?: string;
 
-  @ApiPropertyOptional({ description: 'Link this user to an existing customer' })
+  @ApiPropertyOptional({
+    description: 'Link this user to an existing customer',
+  })
   @IsOptional()
   @IsUUID()
   customerId?: string;

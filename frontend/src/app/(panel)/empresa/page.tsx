@@ -152,7 +152,7 @@ function Identidad({ perfil, guardando, guardar }: PropsFormulario) {
       </div>
 
       <div className="grid gap-2">
-        <Label>Plan</Label>
+        <p className="text-sm font-medium leading-none">Plan</p>
         <div className="flex items-center gap-2">
           <Badge className="bg-primary/10 text-primary">{perfil.plan}</Badge>
           <Link

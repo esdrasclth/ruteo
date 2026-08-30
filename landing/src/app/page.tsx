@@ -189,6 +189,7 @@ const PLANES: {
   envios: string;
   incluye: string[];
   destacado?: boolean;
+  ventas?: boolean;
 }[] = [
   {
     nombre: "Free",
@@ -229,6 +230,7 @@ const PLANES: {
     precio: "L 4,990",
     envios: "Envíos ilimitados",
     incluye: ["Los 17 módulos", "Soporte dedicado"],
+    ventas: true,
   },
 ];
 
@@ -728,10 +730,8 @@ export default function LandingPage() {
                   variant={plan.destacado ? "default" : "outline"}
                   className="mt-7 w-full"
                 >
-                  <a href={APP.register}>
-                    {plan.nombre === "Enterprise"
-                      ? "Hablemos"
-                      : "Empezar gratis"}
+                  <a href={plan.ventas ? APP.sales : APP.register}>
+                    {plan.ventas ? "Hablar con ventas" : "Empezar gratis"}
                   </a>
                 </Button>
               </div>

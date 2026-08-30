@@ -22,7 +22,13 @@ function esc(value: string): string {
 
 // Nested SVGs keep their own viewBox, so we can place a full bwip-js SVG at an
 // (x, y, w, h) box and it scales to fit.
-function embed(svg: string, x: number, y: number, w: number, h: number): string {
+function embed(
+  svg: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): string {
   const inner = svg.replace(/^<\?xml[^>]*\?>/, '');
   return `<svg x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
 }

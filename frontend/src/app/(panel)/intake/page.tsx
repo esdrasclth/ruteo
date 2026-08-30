@@ -40,6 +40,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
 import { FotosDelBulto } from "./fotos-del-bulto";
 
 const EMPTY = {
@@ -246,8 +251,17 @@ export default function IntakePage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={onIntake} className="grid gap-4">
-              <div className="grid gap-2">
-                <Label>Casillero *</Label>
+              <div
+                className="grid gap-2"
+                role="group"
+                aria-labelledby="intake-locker-label"
+              >
+                <span
+                  id="intake-locker-label"
+                  className="text-sm font-medium leading-none"
+                >
+                  Casillero *
+                </span>
                 {selected ? (
                   <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
                     <span className="text-sm">
@@ -268,6 +282,7 @@ export default function IntakePage() {
                     <div className="relative">
                       <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
                       <Input
+                        aria-label="Buscar casillero"
                         className="pl-8"
                         placeholder="Buscar por código o cliente…"
                         value={lockerQuery}
@@ -305,7 +320,9 @@ export default function IntakePage() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="externalTracking">Tracking del carrier</Label>
+                <Label htmlFor="externalTracking">
+                  Guía del transportista
+                </Label>
                 <Input
                   id="externalTracking"
                   placeholder="1Z999AA10123456784"
@@ -320,7 +337,7 @@ export default function IntakePage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
                   <Label htmlFor="merchant">Comercio</Label>
                   <Input
@@ -344,7 +361,7 @@ export default function IntakePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
                   <Label htmlFor="weightKg">Peso (kg)</Label>
                   <Input
@@ -376,7 +393,7 @@ export default function IntakePage() {
               {/* Medidas: las tres o ninguna. Con dos de tres no hay volumen
                   que calcular, y asumir la que falta produce un cobro
                   inventado. */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {(["lengthCm", "widthCm", "heightCm"] as const).map((campo, i) => (
                   <div key={campo} className="grid gap-2">
                     <Label htmlFor={campo}>
@@ -416,7 +433,7 @@ export default function IntakePage() {
                 </p>
               )}
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div className="grid gap-2">
                   <Label htmlFor="pieces">Bultos</Label>
                   <Input
@@ -518,7 +535,7 @@ export default function IntakePage() {
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
                         <span className="font-mono">
-                          {p.externalTracking ?? "sin tracking"}
+                          {p.externalTracking ?? "sin guía externa"}
                         </span>{" "}
                         · {p.locker.code} · {p.locker.customerName}
                       </p>
@@ -545,7 +562,7 @@ export default function IntakePage() {
         <CardHeader>
           <CardTitle className="text-base">Recibos recientes</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0" aria-busy={!recent}>
           {!recent ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -557,10 +574,57 @@ export default function IntakePage() {
               Aún no hay paquetes recibidos.
             </p>
           ) : (
-            <Table>
+            <>
+              <MobileList label="Recibos recientes">
+                {recent.map((p) => (
+                  <MobileListCard key={p.id}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm font-medium">
+                          {p.externalTracking ?? "Sin guía externa"}
+                        </p>
+                        <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                          {p.description ?? p.merchant ?? "Sin descripción"}
+                        </p>
+                      </div>
+                      <Badge className={cn(packageStatusBadgeClass(p.status))}>
+                        {PACKAGE_STATUS_LABELS[p.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <MobileListMeta label="Casillero">
+                        <Link
+                          href={`/lockers/${p.locker.id}`}
+                          className="font-mono underline underline-offset-2"
+                        >
+                          {p.locker.code}
+                        </Link>
+                      </MobileListMeta>
+                      <MobileListMeta label="Cliente">
+                        {p.locker.customerName}
+                      </MobileListMeta>
+                      <MobileListMeta label="Peso cobrable">
+                        {p.chargeableWeightKg ?? p.weightKg ?? "—"} kg
+                      </MobileListMeta>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full"
+                      onClick={() => setFotosDe(p)}
+                    >
+                      <Camera className="size-4" />
+                      Ver fotos
+                    </Button>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tracking</TableHead>
+                  <TableHead>Guía externa</TableHead>
                   <TableHead>Descripción</TableHead>
                   <TableHead>Casillero</TableHead>
                   <TableHead>Cliente</TableHead>
@@ -617,6 +681,7 @@ export default function IntakePage() {
                         type="button"
                         variant="ghost"
                         size="sm"
+                        aria-label={`Ver fotos de ${p.externalTracking ?? "este paquete"}`}
                         onClick={() => setFotosDe(p)}
                       >
                         <Camera className="size-4" />
@@ -625,7 +690,9 @@ export default function IntakePage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

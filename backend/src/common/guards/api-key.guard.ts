@@ -18,12 +18,17 @@ interface ApiKeyRow {
   scopes: ApiScope[];
 }
 
+interface ApiKeyRequest {
+  headers: Record<string, string | string[] | undefined>;
+  user?: AuthUser;
+}
+
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<ApiKeyRequest>();
     const raw = request.headers[API_KEY_HEADER];
     const apiKey = Array.isArray(raw) ? raw[0] : raw;
     if (typeof apiKey !== 'string' || !apiKey.startsWith('rk_')) {

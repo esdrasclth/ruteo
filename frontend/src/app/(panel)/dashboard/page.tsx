@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import {
   DriversAnalytics,
@@ -30,6 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { opcionDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
+
+const DIAS_PERMITIDOS = ["7", "30", "90"] as const;
 
 const RANGOS = [
   { dias: 7, label: "Últimos 7 días" },
@@ -129,7 +132,16 @@ function FilaDesglose({
 }
 
 export default function DashboardPage() {
-  const [dias, setDias] = useState("30");
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
+  const { searchParams, actualizar } = useUrlFilters();
+  const dias = opcionDesdeUrl(searchParams, "days", DIAS_PERMITIDOS, "30");
 
   // **El inicio se trunca a la hora en punto, y no es un detalle.**
   //
@@ -152,8 +164,14 @@ export default function DashboardPage() {
   const opciones = { mensajeDeError, keepPreviousData: true };
 
   const resumen = useApi<Overview>(`/analytics/overview${qs}`, opciones);
-  const envios = useApi<ShipmentsAnalytics>(`/analytics/shipments${qs}`, opciones);
-  const cobros = useApi<PaymentsAnalytics>(`/analytics/payments${qs}`, opciones);
+  const envios = useApi<ShipmentsAnalytics>(
+    `/analytics/shipments${qs}`,
+    opciones,
+  );
+  const cobros = useApi<PaymentsAnalytics>(
+    `/analytics/payments${qs}`,
+    opciones,
+  );
   const repartidores = useApi<DriversAnalytics>(
     `/analytics/drivers${qs}`,
     opciones,
@@ -238,7 +256,12 @@ export default function DashboardPage() {
             Volumen, cobros y notificaciones del rango elegido.
           </p>
         </div>
-        <Select value={dias} onValueChange={setDias}>
+        <Select
+          value={dias}
+          onValueChange={(valor) =>
+            actualizar({ days: valor === "30" ? null : valor }, "push")
+          }
+        >
           <SelectTrigger className="w-48" aria-label="Rango de fechas">
             <SelectValue />
           </SelectTrigger>
@@ -258,229 +281,229 @@ export default function DashboardPage() {
           <Skeleton className="esqueleto-brillo h-40 rounded-2xl" />
         </div>
       ) : (
-      // El atenuado al cambiar de rango envuelve SOLO esta mitad: la de arriba
-      // no se recarga, así que oscurecerla sugeriría que también está cambiando.
-      <div
-        className={cn(
-          "flex flex-col gap-4 transition-opacity duration-200",
-          recargando && "opacity-60",
-        )}
-      >
-        {/* Las cuatro cifras del período iban en cuatro tarjetas de vidrio del
+        // El atenuado al cambiar de rango envuelve SOLO esta mitad: la de arriba
+        // no se recarga, así que oscurecerla sugeriría que también está cambiando.
+        <div
+          className={cn(
+            "flex flex-col gap-4 transition-opacity duration-200",
+            recargando && "opacity-60",
+          )}
+        >
+          {/* Las cuatro cifras del período iban en cuatro tarjetas de vidrio del
             mismo tamaño que las de arriba. Aquí van como una fila de texto
             dentro del bloque de la gráfica, y no por ahorrar espacio: la
             franja de atención tiene que ser lo más fuerte de la pantalla, y
             cuatro tarjetas grandes compitiendo con ella la apagaban. Estas
             cifras se consultan, no se atienden. */}
-        <section
-          className="glass-panel aparece rounded-2xl p-5 sm:p-6"
-          style={{ "--retraso": "40ms" } as React.CSSProperties}
-        >
-          {/* Rejilla y no una fila pegada a la izquierda: en un panel de 1200px
+          <section
+            className="glass-panel aparece rounded-2xl p-5 sm:p-6"
+            style={{ "--retraso": "40ms" } as React.CSSProperties}
+          >
+            {/* Rejilla y no una fila pegada a la izquierda: en un panel de 1200px
               cuatro cifras amontonadas en el primer cuarto dejan el resto en
               blanco, y el bloque parece grande sin serlo. */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {/* Sin medidor, y es deliberado: la única proporción que se podría
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {/* Sin medidor, y es deliberado: la única proporción que se podría
                 dibujar aquí —entregados sobre el total— ES la tasa de entrega
                 de la casilla de al lado. Dos barras idénticas, una junto a
                 otra, diciendo el mismo 53%. Es el mismo error que ya se corrigió
                 en la mitad de arriba cuando los retenidos en aduana salían dos
                 veces: dos cifras iguales en una pantalla hacen dudar de las
                 dos. Un total no es parte de nada, así que no lleva barra. */}
-            <CifraPeriodo
-              etiqueta="Envíos"
-              valor={overview.shipments.total}
-              nota={`${overview.shipments.delivered} entregados`}
-              href="/shipments"
-            />
-            <CifraPeriodo
-              etiqueta="Tasa de entrega"
-              valor={overview.shipments.deliveryRate * 100}
-              formato={(n) => `${n.toFixed(1)}%`}
-              nota={`${overview.shipments.failed} fallidos`}
-              // La tasa YA es una proporción: aquí el medidor no divide nada,
-              // sólo dibuja el mismo número que hay encima.
-              proporcion={overview.shipments.deliveryRate}
-              href="/shipments?status=DELIVERED"
-              retraso={60}
-            />
-            <CifraPeriodo
-              etiqueta="COD cobrado"
-              valor={Number(overview.cod.collected)}
-              formato={comoDinero}
-              // Con el mismo formato que la cifra de arriba. Animar el cobrado
-              // obliga a pasarlo por número y a escribirlo con dos decimales;
-              // dejar el pendiente en crudo ponía «17352.00» encima de «38765»,
-              // y dos importes con distinta pinta se leen como dos magnitudes
-              // distintas.
-              nota={`${comoDinero(Number(overview.cod.pending))} pendiente`}
-              proporcion={reparto(
-                Number(overview.cod.collected),
-                Number(overview.cod.pending),
-              )}
-              href="/payments"
-              retraso={120}
-            />
-            <CifraPeriodo
-              etiqueta="Notificaciones"
-              valor={overview.notifications.sent}
-              nota={
-                overview.notifications.failed > 0
-                  ? `${overview.notifications.failed} fallidas`
-                  : undefined
-              }
-              proporcion={reparto(
-                overview.notifications.sent,
-                overview.notifications.failed,
-              )}
-              href="/notifications"
-              retraso={180}
-            />
-          </div>
-
-          <div className="mt-6 border-t pt-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-              <h3 className="text-sm font-semibold text-foreground/75">
-                Envíos por día
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                {totalRango} en el período · máximo {maxDaily} en un día
-              </p>
+              <CifraPeriodo
+                etiqueta="Envíos"
+                valor={overview.shipments.total}
+                nota={`${overview.shipments.delivered} entregados`}
+                href="/shipments"
+              />
+              <CifraPeriodo
+                etiqueta="Tasa de entrega"
+                valor={overview.shipments.deliveryRate * 100}
+                formato={(n) => `${n.toFixed(1)}%`}
+                nota={`${overview.shipments.failed} fallidos`}
+                // La tasa YA es una proporción: aquí el medidor no divide nada,
+                // sólo dibuja el mismo número que hay encima.
+                proporcion={overview.shipments.deliveryRate}
+                href="/shipments?status=DELIVERED"
+                retraso={60}
+              />
+              <CifraPeriodo
+                etiqueta="COD cobrado"
+                valor={Number(overview.cod.collected)}
+                formato={comoDinero}
+                // Con el mismo formato que la cifra de arriba. Animar el cobrado
+                // obliga a pasarlo por número y a escribirlo con dos decimales;
+                // dejar el pendiente en crudo ponía «17352.00» encima de «38765»,
+                // y dos importes con distinta pinta se leen como dos magnitudes
+                // distintas.
+                nota={`${comoDinero(Number(overview.cod.pending))} pendiente`}
+                proporcion={reparto(
+                  Number(overview.cod.collected),
+                  Number(overview.cod.pending),
+                )}
+                href="/payments"
+                retraso={120}
+              />
+              <CifraPeriodo
+                etiqueta="Notificaciones"
+                valor={overview.notifications.sent}
+                nota={
+                  overview.notifications.failed > 0
+                    ? `${overview.notifications.failed} fallidas`
+                    : undefined
+                }
+                proporcion={reparto(
+                  overview.notifications.sent,
+                  overview.notifications.failed,
+                )}
+                href="/notifications"
+                retraso={180}
+              />
             </div>
-            <div className="mt-4">
-              {shipments.daily.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Sin envíos en el rango.
+
+            <div className="mt-6 border-t pt-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h3 className="text-sm font-semibold text-foreground/75">
+                  Envíos por día
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {totalRango} en el período · máximo {maxDaily} en un día
                 </p>
-              ) : (
-                <DailyChart data={shipments.daily} label="envíos" />
-              )}
+              </div>
+              <div className="mt-4">
+                {shipments.daily.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Sin envíos en el rango.
+                  </p>
+                ) : (
+                  <DailyChart data={shipments.daily} label="envíos" />
+                )}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* Los tres desgloses eran tres tarjetas de vidrio sueltas. El dato no
+          {/* Los tres desgloses eran tres tarjetas de vidrio sueltas. El dato no
             sobra —nadie más lo da— pero cada uno son dos o tres líneas, y tres
             tarjetas para eso es envoltorio con más peso que el contenido. En
             tres columnas de un mismo bloque se leen igual y pesan una tercera
             parte. */}
-        <section
-          className="glass-card aparece rounded-2xl p-5 sm:p-6"
-          style={{ "--retraso": "120ms" } as React.CSSProperties}
-        >
-          <h3 className="text-sm font-semibold text-foreground/75">
-            Desglose del período
-          </h3>
-          <div className="mt-4 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Por tipo
-              </p>
-              <div className="mt-2 flex flex-col gap-2.5">
-                {shipments.byType.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sin datos.</p>
-                ) : (
-                  shipments.byType.map((row, i) => (
-                    <FilaDesglose
-                      key={row.type}
-                      proporcion={row.count / topeTipo}
-                      retraso={i * 50}
-                    >
-                      <Link
-                        href={`/shipments?type=${row.type}`}
-                        className="-mx-2 flex items-center justify-between rounded-lg px-2 py-0.5 text-sm transition-colors hover:bg-primary/5"
+          <section
+            className="glass-card aparece rounded-2xl p-5 sm:p-6"
+            style={{ "--retraso": "120ms" } as React.CSSProperties}
+          >
+            <h3 className="text-sm font-semibold text-foreground/75">
+              Desglose del período
+            </h3>
+            <div className="mt-4 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Por tipo
+                </p>
+                <div className="mt-2 flex flex-col gap-2.5">
+                  {shipments.byType.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sin datos.</p>
+                  ) : (
+                    shipments.byType.map((row, i) => (
+                      <FilaDesglose
+                        key={row.type}
+                        proporcion={row.count / topeTipo}
+                        retraso={i * 50}
                       >
-                        <span className="text-foreground/80">
-                          {TYPE_LABELS[row.type] ?? row.type}
-                        </span>
-                        <Numero
-                          valor={row.count}
-                          className="font-semibold tabular-nums text-primary"
-                        />
-                      </Link>
-                    </FilaDesglose>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Pagos
-              </p>
-              <div className="mt-2 flex flex-col gap-2.5">
-                {payments.breakdown.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Sin pagos en el rango.
-                  </p>
-                ) : (
-                  payments.breakdown.map((row, i) => (
-                    <FilaDesglose
-                      key={`${row.type}-${row.status}`}
-                      proporcion={Number(row.amount) / topePago}
-                      retraso={i * 50}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-foreground/80">
-                            {PAYMENT_TYPE_LABELS[row.type]}
+                        <Link
+                          href={`/shipments?type=${row.type}`}
+                          className="-mx-2 flex items-center justify-between rounded-lg px-2 py-0.5 text-sm transition-colors hover:bg-primary/5"
+                        >
+                          <span className="text-foreground/80">
+                            {TYPE_LABELS[row.type] ?? row.type}
                           </span>
-                          <Badge
-                            className={cn(
-                              "shrink-0 px-1.5 py-0 text-[10px]",
-                              paymentStatusBadgeClass(row.status),
-                            )}
-                          >
-                            {PAYMENT_STATUS_LABELS[row.status]}
-                          </Badge>
-                        </span>
-                        <Numero
-                          valor={Number(row.amount)}
-                          formato={comoDinero}
-                          className="shrink-0 font-semibold tabular-nums text-primary"
-                        />
-                      </div>
-                    </FilaDesglose>
-                  ))
-                )}
+                          <Numero
+                            valor={row.count}
+                            className="font-semibold tabular-nums text-primary"
+                          />
+                        </Link>
+                      </FilaDesglose>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                COD por repartidor
-              </p>
-              <div className="mt-2 flex flex-col gap-2.5">
-                {drivers.drivers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nadie registró cobros. El COD que se cobra solo al marcar
-                    entregado no queda asignado a un repartidor.
-                  </p>
-                ) : (
-                  repartidoresOrdenados.map((row, i) => (
-                    <FilaDesglose
-                      key={row.driverId ?? "sin-driver"}
-                      proporcion={Number(row.codAmount) / topeRepartidor}
-                      retraso={i * 50}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="truncate text-foreground/80">
-                          {row.name ?? "Sin nombre"}
-                        </span>
-                        <Numero
-                          valor={Number(row.codAmount)}
-                          formato={comoDinero}
-                          className="shrink-0 font-semibold tabular-nums text-primary"
-                        />
-                      </div>
-                    </FilaDesglose>
-                  ))
-                )}
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Pagos
+                </p>
+                <div className="mt-2 flex flex-col gap-2.5">
+                  {payments.breakdown.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Sin pagos en el rango.
+                    </p>
+                  ) : (
+                    payments.breakdown.map((row, i) => (
+                      <FilaDesglose
+                        key={`${row.type}-${row.status}`}
+                        proporcion={Number(row.amount) / topePago}
+                        retraso={i * 50}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-sm">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-foreground/80">
+                              {PAYMENT_TYPE_LABELS[row.type]}
+                            </span>
+                            <Badge
+                              className={cn(
+                                "shrink-0 px-1.5 py-0 text-[10px]",
+                                paymentStatusBadgeClass(row.status),
+                              )}
+                            >
+                              {PAYMENT_STATUS_LABELS[row.status]}
+                            </Badge>
+                          </span>
+                          <Numero
+                            valor={Number(row.amount)}
+                            formato={comoDinero}
+                            className="shrink-0 font-semibold tabular-nums text-primary"
+                          />
+                        </div>
+                      </FilaDesglose>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  COD por repartidor
+                </p>
+                <div className="mt-2 flex flex-col gap-2.5">
+                  {drivers.drivers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nadie registró cobros. El COD que se cobra solo al marcar
+                      entregado no queda asignado a un repartidor.
+                    </p>
+                  ) : (
+                    repartidoresOrdenados.map((row, i) => (
+                      <FilaDesglose
+                        key={row.driverId ?? "sin-driver"}
+                        proporcion={Number(row.codAmount) / topeRepartidor}
+                        retraso={i * 50}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-sm">
+                          <span className="truncate text-foreground/80">
+                            {row.name ?? "Sin nombre"}
+                          </span>
+                          <Numero
+                            valor={Number(row.codAmount)}
+                            formato={comoDinero}
+                            className="shrink-0 font-semibold tabular-nums text-primary"
+                          />
+                        </div>
+                      </FilaDesglose>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
-      </div>
+          </section>
+        </div>
       )}
     </div>
   );

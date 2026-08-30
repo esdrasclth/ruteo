@@ -25,7 +25,10 @@ describe('pesoVolumetrico', () => {
     // que negocia un cliente grande, así que tiene que salir del dato y no del
     // código.
     expect(
-      pesoVolumetrico({ lengthCm: 50, widthCm: 40, heightCm: 30 }, 6000)?.toString(),
+      pesoVolumetrico(
+        { lengthCm: 50, widthCm: 40, heightCm: 30 },
+        6000,
+      )?.toString(),
     ).toBe('10');
   });
 
@@ -48,8 +51,12 @@ describe('pesoVolumetrico', () => {
   });
 
   it('una medida en cero o negativa no es una medida', () => {
-    expect(pesoVolumetrico({ lengthCm: 0, widthCm: 40, heightCm: 30 })).toBeNull();
-    expect(pesoVolumetrico({ lengthCm: -5, widthCm: 40, heightCm: 30 })).toBeNull();
+    expect(
+      pesoVolumetrico({ lengthCm: 0, widthCm: 40, heightCm: 30 }),
+    ).toBeNull();
+    expect(
+      pesoVolumetrico({ lengthCm: -5, widthCm: 40, heightCm: 30 }),
+    ).toBeNull();
   });
 
   // Una configuración mala no debe convertirse en una factura mala.
@@ -59,10 +66,16 @@ describe('pesoVolumetrico', () => {
       DIVISOR_POR_DEFECTO,
     );
     expect(
-      pesoVolumetrico({ lengthCm: 50, widthCm: 40, heightCm: 30 }, 0)?.toString(),
+      pesoVolumetrico(
+        { lengthCm: 50, widthCm: 40, heightCm: 30 },
+        0,
+      )?.toString(),
     ).toBe(esperado?.toString());
     expect(
-      pesoVolumetrico({ lengthCm: 50, widthCm: 40, heightCm: 30 }, -1)?.toString(),
+      pesoVolumetrico(
+        { lengthCm: 50, widthCm: 40, heightCm: 30 },
+        -1,
+      )?.toString(),
     ).toBe(esperado?.toString());
   });
 });

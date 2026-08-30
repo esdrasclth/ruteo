@@ -14,6 +14,15 @@ import {
 import { API_KEY_HEADER } from './api-key.guard';
 import type { AuthUser } from '../decorators/current-user.decorator';
 
+interface RateLimitedRequest {
+  headers: Record<string, string | string[] | undefined>;
+  user?: AuthUser;
+}
+
+interface RateLimitResponse {
+  setHeader(nombre: string, valor: string | number): void;
+}
+
 // Fixed-window rate limiter scoped per tenant + caller identity. Runs after
 // the auth guard so `request.user` is populated. Fails open when Redis is
 // unavailable so a Redis outage never blocks the API.
@@ -33,8 +42,8 @@ export class RateLimitGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
-    const user = request.user as AuthUser | undefined;
+    const request = context.switchToHttp().getRequest<RateLimitedRequest>();
+    const user = request.user;
     if (!user) {
       return true;
     }
@@ -48,7 +57,7 @@ export class RateLimitGuard implements CanActivate {
       return true; // fail open
     }
 
-    const response = context.switchToHttp().getResponse();
+    const response = context.switchToHttp().getResponse<RateLimitResponse>();
     const remaining = Math.max(0, options.limit - count);
     response.setHeader('X-RateLimit-Limit', options.limit);
     response.setHeader('X-RateLimit-Remaining', remaining);
@@ -67,10 +76,7 @@ export class RateLimitGuard implements CanActivate {
     return true;
   }
 
-  private resolveIdentity(
-    request: { headers: Record<string, unknown> },
-    user: AuthUser,
-  ): string {
+  private resolveIdentity(request: RateLimitedRequest, user: AuthUser): string {
     const raw = request.headers[API_KEY_HEADER];
     const apiKey = Array.isArray(raw) ? raw[0] : raw;
     if (typeof apiKey === 'string' && apiKey.startsWith('rk_')) {

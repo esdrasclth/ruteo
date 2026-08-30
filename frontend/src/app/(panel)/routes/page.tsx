@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -14,7 +14,6 @@ import {
   RouteSummary,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { usePagina } from "@/lib/use-pagina";
 import {
   ROUTE_STATUS_LABELS,
   routeStatusBadgeClass,
@@ -49,6 +48,16 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
+import {
+  opcionDesdeUrl,
+  paginaDesdeUrl,
+  useUrlFilters,
+} from "@/lib/use-url-filters";
 
 const ALL = "ALL";
 const PAGE_SIZE = 20;
@@ -68,14 +77,17 @@ export default function RoutesPage() {
 
 function RoutesContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { searchParams, actualizar } = useUrlFilters();
   // Llega desde el listado de repartidores: "ver las rutas de este repartidor".
   const driverId = searchParams.get("driverId");
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [status, setStatus] = useState<string>(ALL);
-  // Cambiar de filtro con la página 3 puesta deja una lista vacía sin
-  // explicar por qué; `usePagina` vuelve al principio sin pasar por un efecto.
-  const [page, setPage] = usePagina(`${status}|${driverId}`);
+  const status = opcionDesdeUrl(
+    searchParams,
+    "status",
+    [ALL, ...Object.keys(ROUTE_STATUS_LABELS)],
+    ALL,
+  );
+  const page = paginaDesdeUrl(searchParams);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ driverId: "", scheduledDate: todayISO() });
@@ -106,7 +118,7 @@ function RoutesContent() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     if (!form.driverId) {
-      toast.error("Selecciona un driver");
+      toast.error("Selecciona un repartidor");
       return;
     }
     setSaving(true);
@@ -170,15 +182,15 @@ function RoutesContent() {
             </DialogHeader>
             <form onSubmit={onCreate} className="grid gap-4">
               <div className="grid gap-2">
-                <Label>Driver *</Label>
+                <Label htmlFor="route-driver">Repartidor *</Label>
                 <Select
                   value={form.driverId}
                   onValueChange={(v) =>
                     setForm((f) => ({ ...f, driverId: v }))
                   }
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un driver" />
+                  <SelectTrigger id="route-driver" className="w-full">
+                    <SelectValue placeholder="Selecciona un repartidor" />
                   </SelectTrigger>
                   <SelectContent>
                     {drivers.map((d) => (
@@ -190,7 +202,7 @@ function RoutesContent() {
                 </Select>
                 {drivers.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No hay drivers; crea uno primero en la sección Drivers.
+                    No hay repartidores; crea uno primero en la sección Repartidores.
                   </p>
                 ) : null}
               </div>
@@ -216,8 +228,16 @@ function RoutesContent() {
         </Dialog>
       </div>
 
-      <Select value={status} onValueChange={setStatus}>
-        <SelectTrigger className="w-52 bg-card">
+      <Select
+        value={status}
+        onValueChange={(v) =>
+          actualizar({ status: v === ALL ? null : v, page: null }, "push")
+        }
+      >
+        <SelectTrigger
+          aria-label="Filtrar rutas por estado"
+          className="w-full bg-card sm:w-52"
+        >
           <SelectValue placeholder="Estado" />
         </SelectTrigger>
         <SelectContent>
@@ -231,7 +251,7 @@ function RoutesContent() {
       </Select>
 
       <Card className="overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="p-0" aria-busy={!routes}>
           {!routes ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -243,11 +263,46 @@ function RoutesContent() {
               No hay rutas con ese filtro.
             </p>
           ) : (
-            <Table>
+            <>
+              <MobileList label="Rutas">
+                {routes.map((r) => (
+                  <MobileListCard
+                    key={r.id}
+                    href={`/routes/${r.id}`}
+                    label={`Abrir ruta ${r.code}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm font-medium">
+                          {r.code}
+                        </p>
+                        <p className="mt-0.5 truncate text-sm">
+                          {r.driver?.name ?? "Sin repartidor"}
+                        </p>
+                      </div>
+                      <Badge className={routeStatusBadgeClass(r.status)}>
+                        {ROUTE_STATUS_LABELS[r.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                      <MobileListMeta label="Fecha">
+                        {new Date(r.scheduledDate).toLocaleDateString("es-HN", {
+                          timeZone: "UTC",
+                        })}
+                      </MobileListMeta>
+                      <MobileListMeta label="Paradas">
+                        {r._count?.stops ?? 0} paradas
+                      </MobileListMeta>
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Código</TableHead>
-                  <TableHead>Driver</TableHead>
+                  <TableHead>Repartidor</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Paradas</TableHead>
@@ -255,13 +310,14 @@ function RoutesContent() {
               </TableHeader>
               <TableBody>
                 {routes.map((r) => (
-                  <TableRow
-                    key={r.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/routes/${r.id}`)}
-                  >
-                    <TableCell className="font-mono">
-                      {r.code}
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <Link
+                        href={`/routes/${r.id}`}
+                        className="font-mono font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {r.code}
+                      </Link>
                     </TableCell>
                     <TableCell>{r.driver?.name ?? "—"}</TableCell>
                     <TableCell>
@@ -280,7 +336,9 @@ function RoutesContent() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -290,7 +348,7 @@ function RoutesContent() {
           variant="outline"
           size="sm"
           disabled={page <= 1}
-          onClick={() => setPage((p) => p - 1)}
+          onClick={() => actualizar({ page: page - 1 }, "push")}
         >
           Anterior
         </Button>
@@ -301,7 +359,7 @@ function RoutesContent() {
           variant="outline"
           size="sm"
           disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => actualizar({ page: page + 1 }, "push")}
         >
           Siguiente
         </Button>

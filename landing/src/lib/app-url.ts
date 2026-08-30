@@ -18,4 +18,8 @@ export const APP = {
   track: appUrl("/track"),
   login: appUrl("/login"),
   register: appUrl("/register"),
+  // Enterprise necesita conversación comercial, no otra cuenta de prueba. El
+  // correo ya es el contacto operativo público del producto.
+  sales:
+    "mailto:soporte@brandsofts.com?subject=Quiero%20conocer%20Ruteo%20Enterprise",
 } as const;

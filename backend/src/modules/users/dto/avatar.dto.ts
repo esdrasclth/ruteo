@@ -26,7 +26,7 @@ export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 export class AvatarUploadUrlDto {
   @ApiProperty({ enum: TIPOS_DE_AVATAR, example: 'image/jpeg' })
-  @IsIn(TIPOS_DE_AVATAR as unknown as string[], {
+  @IsIn(TIPOS_DE_AVATAR, {
     message: 'La foto tiene que ser JPG, PNG o WebP.',
   })
   contentType!: string;

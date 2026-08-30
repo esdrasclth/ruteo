@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense } from "react";
 import { ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { AuditLog, Paginated } from "@/lib/api";
@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { paginaDesdeUrl, useUrlFilters } from "@/lib/use-url-filters";
 
 const TODOS = "TODOS";
 const PAGE_SIZE = 20;
@@ -67,14 +68,30 @@ function resumenMetadata(metadata: Record<string, unknown> | null): string {
   if (!metadata) return "—";
   const partes = Object.entries(metadata)
     .filter(([, v]) => v !== null && v !== undefined)
-    .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+    .map(
+      ([k, v]) =>
+        `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`,
+    );
   return partes.length > 0 ? partes.join(" · ") : "—";
 }
 
 export default function AuditPage() {
-  const [action, setAction] = useState<string>(TODOS);
-  const [entityType, setEntityType] = useState<string>(TODOS);
-  const [page, setPage] = useState(1);
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <AuditContent />
+    </Suspense>
+  );
+}
+
+function AuditContent() {
+  const { searchParams, actualizar } = useUrlFilters();
+  const actionParam = searchParams.get("action");
+  const entityParam = searchParams.get("entityType");
+  const action =
+    actionParam && ACCIONES.includes(actionParam) ? actionParam : TODOS;
+  const entityType =
+    entityParam && ENTIDADES.includes(entityParam) ? entityParam : TODOS;
+  const page = paginaDesdeUrl(searchParams);
 
   // La consulta se arma en el render porque ES la clave de caché.
   const params = new URLSearchParams({
@@ -90,16 +107,9 @@ export default function AuditPage() {
   });
   const data = datos ?? null;
 
-  // Cambiar un filtro debe devolver a la primera página: si no, se puede quedar
-  // en una página que ya no existe con el filtro nuevo.
-  function cambiarFiltro(set: (v: string) => void) {
-    return (v: string) => {
-      set(v);
-      setPage(1);
-    };
-  }
-
-  const totalPaginas = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  const totalPaginas = data
+    ? Math.max(1, Math.ceil(data.total / PAGE_SIZE))
+    : 1;
 
   return (
     <div className="space-y-6">
@@ -119,7 +129,15 @@ export default function AuditPage() {
             ) : null}
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Select value={action} onValueChange={cambiarFiltro(setAction)}>
+            <Select
+              value={action}
+              onValueChange={(valor) =>
+                actualizar(
+                  { action: valor === TODOS ? null : valor, page: null },
+                  "push",
+                )
+              }
+            >
               <SelectTrigger className="w-56" aria-label="Filtrar por acción">
                 <SelectValue />
               </SelectTrigger>
@@ -134,7 +152,12 @@ export default function AuditPage() {
             </Select>
             <Select
               value={entityType}
-              onValueChange={cambiarFiltro(setEntityType)}
+              onValueChange={(valor) =>
+                actualizar(
+                  { entityType: valor === TODOS ? null : valor, page: null },
+                  "push",
+                )
+              }
             >
               <SelectTrigger className="w-48" aria-label="Filtrar por entidad">
                 <SelectValue />
@@ -244,7 +267,7 @@ export default function AuditPage() {
                     variant="outline"
                     size="sm"
                     disabled={page <= 1}
-                    onClick={() => setPage((p) => p - 1)}
+                    onClick={() => actualizar({ page: page - 1 }, "push")}
                   >
                     <ChevronLeft className="size-4" />
                     Anterior
@@ -253,7 +276,7 @@ export default function AuditPage() {
                     variant="outline"
                     size="sm"
                     disabled={page >= totalPaginas}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => actualizar({ page: page + 1 }, "push")}
                   >
                     Siguiente
                     <ChevronRight className="size-4" />

@@ -24,6 +24,7 @@ export class ManualBillingProvider implements BillingProvider {
   startSubscription(
     _input: StartSubscriptionInput,
   ): Promise<StartSubscriptionResult> {
+    void _input;
     const now = new Date();
     const end = new Date(now.getTime() + PERIOD_DAYS * 24 * 60 * 60 * 1000);
     return Promise.resolve({

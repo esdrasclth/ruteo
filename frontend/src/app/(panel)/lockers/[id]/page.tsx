@@ -262,7 +262,7 @@ export default function LockerDetailPage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tracking externo</TableHead>
+                  <TableHead>Guía externa</TableHead>
                   <TableHead>Comercio</TableHead>
                   <TableHead>Descripción</TableHead>
                   <TableHead className="text-right">Peso (kg)</TableHead>
@@ -327,7 +327,7 @@ export default function LockerDetailPage({
           </DialogHeader>
           <form onSubmit={onPreAlert} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="externalTracking">Tracking del carrier</Label>
+              <Label htmlFor="externalTracking">Guía del transportista</Label>
               <Input
                 id="externalTracking"
                 placeholder="1Z999AA10123456784"
@@ -337,7 +337,7 @@ export default function LockerDetailPage({
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="merchant">Comercio</Label>
                 <Input
@@ -360,7 +360,7 @@ export default function LockerDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="weightKg">Peso (kg)</Label>
                 <Input
@@ -403,8 +403,10 @@ export default function LockerDetailPage({
             <DialogTitle>Consolidar en envío internacional</DialogTitle>
           </DialogHeader>
           <form onSubmit={onConsolidate} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label>Paquetes recibidos</Label>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-medium leading-none">
+                Paquetes recibidos
+              </legend>
               <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-md border p-2">
                 {received.map((p) => (
                   <label
@@ -433,7 +435,7 @@ export default function LockerDetailPage({
                   </label>
                 ))}
               </div>
-            </div>
+            </fieldset>
             <div className="grid gap-2">
               <Label htmlFor="recipientName">Destinatario en HN *</Label>
               <Input
@@ -448,7 +450,7 @@ export default function LockerDetailPage({
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="recipientPhone">Teléfono</Label>
                 <Input

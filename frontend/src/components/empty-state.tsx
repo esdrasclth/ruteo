@@ -20,7 +20,7 @@ export function EmptyState({
           <Icon className="size-5" />
         </span>
       ) : null}
-      <div className="space-y-1">
+      <div role="status" className="space-y-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
         {description ? (
           <p className="mx-auto max-w-sm text-sm text-muted-foreground">

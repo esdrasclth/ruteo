@@ -34,7 +34,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const endpoint = `${req.method} ${req.route?.path ?? req.path}`;
+    const endpoint = `${req.method} ${req.path}`;
     const begin = await this.store.begin(tenantId, key, endpoint);
 
     if (begin.state === 'replay') {
@@ -53,11 +53,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     return next.handle().pipe(
-      concatMap(async (body) => {
+      concatMap(async (body: unknown) => {
         await this.store.complete(tenantId, key, res.statusCode, body);
         return body;
       }),
-      catchError((err) =>
+      catchError((err: unknown) =>
         from(this.store.release(tenantId, key)).pipe(
           concatMap(() => throwError(() => err)),
         ),

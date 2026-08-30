@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Check, Loader2, Search, X } from "lucide-react";
 import { useApi } from "@/lib/use-api";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,9 @@ export function BuscadorRemoto<T extends { id: string }>({
   const [abierto, setAbierto] = useState(false);
   const [activo, setActivo] = useState(0);
   const caja = useRef<HTMLDivElement>(null);
+  const generado = useId();
+  const inputId = id ?? `buscador-${generado}`;
+  const listboxId = `${inputId}-opciones`;
 
   // Debounce: sin esto se lanza una consulta por tecla. El `setState` vive
   // dentro del temporizador, no en el cuerpo del efecto.
@@ -119,7 +122,13 @@ export function BuscadorRemoto<T extends { id: string }>({
   // y lo tecleado no cambiaría la selección de verdad.
   if (elegido) {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
+      <button
+        id={inputId}
+        type="button"
+        onClick={() => onElegir(null)}
+        aria-label={`${etiqueta(elegido)} seleccionado. Quitar selección`}
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <span className="min-w-0">
           <span className="block truncate text-sm">{etiqueta(elegido)}</span>
           {detalle?.(elegido) ? (
@@ -128,15 +137,10 @@ export function BuscadorRemoto<T extends { id: string }>({
             </span>
           ) : null}
         </span>
-        <button
-          type="button"
-          onClick={() => onElegir(null)}
-          aria-label="Quitar la selección"
-          className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
+        <span className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground">
           <X className="size-3.5" />
-        </button>
-      </div>
+        </span>
+      </button>
     );
   }
 
@@ -145,7 +149,7 @@ export function BuscadorRemoto<T extends { id: string }>({
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
-          id={id}
+          id={inputId}
           value={termino}
           required={requerido}
           onChange={(e) => {
@@ -158,6 +162,12 @@ export function BuscadorRemoto<T extends { id: string }>({
           autoComplete="off"
           role="combobox"
           aria-expanded={abierto}
+          aria-controls={listboxId}
+          aria-activedescendant={
+            abierto && opciones.length > 0
+              ? `${listboxId}-opcion-${activo}`
+              : undefined
+          }
           aria-autocomplete="list"
           className="h-9 w-full rounded-md border border-border bg-transparent pl-9 pr-8 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-primary/40"
         />
@@ -169,20 +179,34 @@ export function BuscadorRemoto<T extends { id: string }>({
       {abierto ? (
         // `absolute` y no en flujo: en un formulario en rejilla, empujar el
         // contenido movería los campos de al lado cada vez que se teclea.
-        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="Resultados de búsqueda"
+          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
+        >
           {debounced.length < minimo ? (
-            <p className="px-3 py-3 text-center text-xs text-muted-foreground">
+            <p
+              role="presentation"
+              className="px-3 py-3 text-center text-xs text-muted-foreground"
+            >
               Escribe al menos {minimo} caracteres.
             </p>
           ) : opciones.length === 0 && !cargando ? (
-            <p className="px-3 py-3 text-center text-xs text-muted-foreground">
+            <p
+              role="presentation"
+              className="px-3 py-3 text-center text-xs text-muted-foreground"
+            >
               Nada coincide con «{debounced}». La búsqueda ignora las tildes.
             </p>
           ) : (
             opciones.map((item, i) => (
               <button
                 key={item.id}
+                id={`${listboxId}-opcion-${i}`}
                 type="button"
+                role="option"
+                aria-selected={i === activo}
                 onMouseEnter={() => setActivo(i)}
                 onClick={() => elegir(item)}
                 className={cn(
@@ -208,6 +232,15 @@ export function BuscadorRemoto<T extends { id: string }>({
           )}
         </div>
       ) : null}
+      <p className="sr-only" role="status" aria-live="polite">
+        {cargando
+          ? "Buscando"
+          : abierto && debounced.length < minimo
+            ? `Escribe al menos ${minimo} caracteres`
+            : buscando
+            ? `${opciones.length} resultado${opciones.length === 1 ? "" : "s"}`
+            : ""}
+      </p>
     </div>
   );
 }

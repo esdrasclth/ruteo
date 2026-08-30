@@ -11,7 +11,9 @@ import {
 } from 'class-validator';
 
 export class ConsolidateDto {
-  @ApiProperty({ description: 'Locker whose received packages are consolidated' })
+  @ApiProperty({
+    description: 'Locker whose received packages are consolidated',
+  })
   @IsUUID()
   lockerId: string;
 

@@ -42,7 +42,10 @@ export function Fallo({
   const esSesion = error instanceof ApiError && error.status === 401;
 
   return (
-    <div className="flex min-h-64 flex-1 items-center justify-center p-6">
+    <div
+      role="alert"
+      className="flex min-h-64 flex-1 items-center justify-center p-6"
+    >
       <div className="flex max-w-md flex-col items-center gap-4 text-center">
         <span className="flex size-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive ring-1 ring-destructive/15">
           <TriangleAlert className="size-5" />

@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Contact, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -12,7 +13,6 @@ import {
   Paginated,
 } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { usePagina } from "@/lib/use-pagina";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Paginacion } from "@/components/paginacion";
@@ -37,6 +37,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  MobileList,
+  MobileListCard,
+  MobileListMeta,
+} from "@/components/responsive-list";
+import {
+  paginaDesdeUrl,
+  useUrlFilters,
+  useUrlSearch,
+} from "@/lib/use-url-filters";
 
 const EMPTY_FORM = {
   name: "",
@@ -47,23 +57,26 @@ const EMPTY_FORM = {
 };
 
 export default function CustomersPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <CustomersContent />
+    </Suspense>
+  );
+}
+
+function CustomersContent() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
+  const { searchParams, actualizar } = useUrlFilters();
+  const {
+    borrador: search,
+    setBorrador: setSearch,
+    aplicado: busqueda,
+  } = useUrlSearch();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  // El `setState` va dentro del temporizador, no en el cuerpo del efecto: eso
-  // es sincronizar con algo de fuera y no un render en cascada.
-  const [busqueda, setBusqueda] = useState("");
-  useEffect(() => {
-    const t = setTimeout(() => setBusqueda(search.trim()), 250);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  // Al cambiar la búsqueda se vuelve a la página 1: quedarse en la 3 de un
-  // término nuevo enseña una lista vacía sin explicar por qué.
-  const [page, setPage] = usePagina(busqueda);
+  const page = paginaDesdeUrl(searchParams);
 
   const params = new URLSearchParams({ page: String(page), pageSize: "20" });
   if (busqueda) params.set("search", busqueda);
@@ -138,7 +151,7 @@ export default function CustomersPage() {
                   onChange={set("name")}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
                   <Label htmlFor="email">Correo</Label>
                   <Input
@@ -188,6 +201,7 @@ export default function CustomersPage() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
+          aria-label="Buscar clientes"
           className="pl-9"
           placeholder="Buscar por nombre, correo, teléfono o documento"
           value={search}
@@ -196,7 +210,7 @@ export default function CustomersPage() {
       </div>
 
       <Card className="overflow-hidden py-0">
-        <CardContent className="p-0">
+        <CardContent className="p-0" aria-busy={!customers}>
           {!customers ? (
             <div className="flex flex-col gap-2 p-4">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -222,7 +236,31 @@ export default function CustomersPage() {
               }
             />
           ) : (
-            <Table>
+            <>
+              <MobileList label="Clientes">
+                {customers.map((c) => (
+                  <MobileListCard
+                    key={c.id}
+                    href={`/customers/${c.id}`}
+                    label={`Abrir cliente ${c.name}`}
+                  >
+                    <p className="truncate text-sm font-medium">{c.name}</p>
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                      {c.email ?? c.phone ?? "Sin datos de contacto"}
+                    </p>
+                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                      <MobileListMeta label="Casilleros">
+                        {c._count.lockers} casilleros
+                      </MobileListMeta>
+                      <MobileListMeta label="Envíos">
+                        {c._count.shipments} envíos
+                      </MobileListMeta>
+                    </div>
+                  </MobileListCard>
+                ))}
+              </MobileList>
+              <div className="hidden md:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
@@ -234,12 +272,15 @@ export default function CustomersPage() {
               </TableHeader>
               <TableBody>
                 {customers.map((c) => (
-                  <TableRow
-                    key={c.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/customers/${c.id}`)}
-                  >
-                    <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableRow key={c.id}>
+                    <TableCell>
+                      <Link
+                        href={`/customers/${c.id}`}
+                        className="font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {c.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {c.email ?? c.phone ?? "—"}
                     </TableCell>
@@ -255,7 +296,9 @@ export default function CustomersPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -265,7 +308,7 @@ export default function CustomersPage() {
           page={datos.page}
           pageSize={datos.pageSize}
           total={datos.total}
-          onPage={setPage}
+          onPage={(siguiente) => actualizar({ page: siguiente }, "push")}
           etiqueta="clientes"
         />
       ) : null}

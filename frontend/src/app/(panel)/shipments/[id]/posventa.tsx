@@ -252,14 +252,14 @@ export function Posventa({
           </DialogHeader>
           <form onSubmit={onCrearReclamo} className="space-y-4">
             <div className="space-y-2">
-              <Label>Motivo</Label>
+              <Label htmlFor="claim-type">Motivo</Label>
               <Select
                 value={reclamo.type}
                 onValueChange={(v) =>
                   setReclamo((r) => ({ ...r, type: v as ClaimType }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="claim-type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -319,14 +319,14 @@ export function Posventa({
           </DialogHeader>
           <form onSubmit={onCrearDevolucion} className="space-y-4">
             <div className="space-y-2">
-              <Label>A dónde vuelve</Label>
+              <Label htmlFor="return-destination">A dónde vuelve</Label>
               <Select
                 value={devo.destination}
                 onValueChange={(v) =>
                   setDevo((d) => ({ ...d, destination: v as ReturnDestination }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="return-destination" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -344,14 +344,14 @@ export function Posventa({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Por qué</Label>
+              <Label htmlFor="return-reason">Por qué</Label>
               <Select
                 value={devo.reason}
                 onValueChange={(v) =>
                   setDevo((d) => ({ ...d, reason: v as ReturnReason }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="return-reason" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

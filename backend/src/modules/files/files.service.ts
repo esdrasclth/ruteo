@@ -97,7 +97,10 @@ export class FilesService {
   /** URL firmada para ver un archivo ya registrado. */
   async urlDeDescarga(tenantId: string, fileId: string): Promise<string> {
     const archivo = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.fileObject.findUnique({ where: { id: fileId }, select: { key: true } }),
+      tx.fileObject.findUnique({
+        where: { id: fileId },
+        select: { key: true },
+      }),
     );
     if (!archivo) {
       throw new NotFoundException('El archivo no existe');
