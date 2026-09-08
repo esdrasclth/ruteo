@@ -5,10 +5,18 @@ recepción en bodega, consolidación, aduana, rutas de reparto, prueba de entreg
 cobro — con cada empresa aislada en la misma base de datos.
 
 [![CI](https://github.com/esdrasclth/ruteo/actions/workflows/ci.yml/badge.svg)](https://github.com/esdrasclth/ruteo/actions/workflows/ci.yml)
+[![Licencia propietaria](https://img.shields.io/badge/licencia-propietaria-1f4b3f)](LICENSE)
+[![Node 20](https://img.shields.io/badge/node-20-1f4b3f)](https://nodejs.org/)
+
+**[ruteo.brandsofts.com](https://ruteo.brandsofts.com/)** · panel en
+[panel.ruteo.brandsofts.com](https://panel.ruteo.brandsofts.com/login) · API en
+[api.ruteo.brandsofts.com](https://api.ruteo.brandsofts.com/api/health/ready)
 
 > Repositorio privado. No contiene secretos —`backend/.env` está en `.gitignore`—
 > pero sí el esquema completo, las políticas de aislamiento y los archivos de
 > despliegue.
+
+![Portada de Ruteo](docs/capturas/landing.png)
 
 ---
 
@@ -33,6 +41,22 @@ cuándo, dónde, con qué evidencia y con qué cargos.
 | **Rutas** | Optimización por cercanía, ruteo real por carretera (OSRM) |
 | **Entrega** | Un intento por visita, con motivo tipificado, firma y foto |
 | **Excepciones** | Faltantes, daños y retenciones como entidad, no como nota suelta |
+
+---
+
+## Cómo se ve
+
+El panel de operación: arriba lo que hay que atender ahora, abajo cómo fue el
+período. Cada cifra enlaza a la lista que la explica.
+
+![Panel de operación](docs/capturas/panel.png)
+
+| | |
+| --- | --- |
+| ![Entrada al panel](docs/capturas/login.png) | ![Rastreo público](docs/capturas/rastreo.png) |
+| **Entrada al panel** — cada empresa por su subdominio | **Rastreo público** — el cliente consulta su guía sin cuenta |
+| ![Alta de empresa](docs/capturas/registro.png) | ![Sitio público](docs/capturas/landing-producto.png) |
+| **Alta de empresa** — se registra desde el propio panel | **Sitio público** — el relato de producto |
 
 ---
 
@@ -194,3 +218,23 @@ reciente: `scripts/respaldo-db.sh`.
 Las decisiones de diseño no viven sólo aquí: el esquema de Prisma y los servicios
 llevan comentarios que explican **por qué** algo es como es, sobre todo donde la
 opción evidente era la equivocada.
+
+---
+
+## Contribuir
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) reúne el arranque del entorno, las cinco
+reglas que sostienen el diseño —RLS por tabla, claves de archivo por empresa,
+credenciales fuera, purga por suite, migración con respaldo—, lo que ejecuta el
+CI y el estilo de commits.
+
+Una vulnerabilidad no se reporta en un issue: escribe a
+<Esdras.Clother@outlook.com>.
+
+---
+
+## Licencia
+
+Software propietario. Copyright (c) 2026 Esdras Clother / Brandsofts. Todos los
+derechos reservados; el acceso a este repositorio no otorga licencia de uso.
+Ver [`LICENSE`](LICENSE).
