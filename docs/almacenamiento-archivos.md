@@ -1,7 +1,7 @@
 # Almacenamiento de archivos (MinIO)
 
 Fotos de bodega, facturas, declaraciones, firmas de entrega y evidencia de
-reclamos. Es la fase 0 de `docs/plan-courier.md`: sin esto, seis de los módulos
+reclamos. Es la base de la evidencia documental: sin esto, seis de los módulos
 que faltan no se pueden construir, porque serían tablas de metadatos apuntando
 a la nada.
 

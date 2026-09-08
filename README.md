@@ -12,9 +12,9 @@ cobro — con cada empresa aislada en la misma base de datos.
 [panel.ruteo.brandsofts.com](https://panel.ruteo.brandsofts.com/login) · API en
 [api.ruteo.brandsofts.com](https://api.ruteo.brandsofts.com/api/health/ready)
 
-> Repositorio privado. No contiene secretos —`backend/.env` está en `.gitignore`—
-> pero sí el esquema completo, las políticas de aislamiento y los archivos de
-> despliegue.
+> Código fuente publicado bajo licencia propietaria: se puede leer y estudiar,
+> no usar ni redistribuir. Ver [`LICENSE`](LICENSE). El plan de producto y el
+> análisis de mercado no forman parte de este repositorio.
 
 ![Portada de Ruteo](docs/capturas/landing.png)
 
@@ -206,8 +206,7 @@ reciente: `scripts/respaldo-db.sh`.
 
 | Documento | De qué trata |
 | --- | --- |
-| [`plan-courier.md`](docs/plan-courier.md) | El plan por fases y su estado. Empieza por aquí |
-| [`funcionalidades-ruteo.md`](docs/funcionalidades-ruteo.md) | Catálogo funcional |
+| [`funcionalidades-ruteo.md`](docs/funcionalidades-ruteo.md) | Catálogo funcional. Empieza por aquí |
 | [`api-para-empresas.md`](docs/api-para-empresas.md) | Llaves de API y sus permisos: integrar la web de una empresa |
 | [`almacenamiento-archivos.md`](docs/almacenamiento-archivos.md) | Cómo se guardan y se firman los archivos |
 | [`decision-auth-zitadel.md`](docs/decision-auth-zitadel.md) | Por qué las credenciales están fuera |

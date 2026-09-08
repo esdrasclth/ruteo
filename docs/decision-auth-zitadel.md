@@ -60,7 +60,7 @@ más caro.
 **Sinergia con la API.** `ApiKey` no tiene scopes: una llave da acceso completo a los envíos del
 tenant (`JwtOrApiKeyGuard`, aplicado solo en `shipments`). `client_credentials` con scopes lo
 resuelve con un estándar que cualquier comercio ya sabe integrar. **No hacerlo en el mismo paso**,
-pero es la salida natural de ese hueco. Ver [análisis de competencia](analisis-competencia.md).
+pero es la salida natural de ese hueco. Es el hueco que dejan las plataformas del sector.
 
 ## `password` grant NO está disponible
 

@@ -1,10 +1,11 @@
 # Contribuir a Ruteo
 
-Repositorio privado. Esta guía es para quien tiene acceso: qué hay que saber
-antes de tocar el código y qué se espera de un cambio.
+El código es público pero no es de uso libre: la licencia es propietaria y las
+contribuciones se ceden a su titular (ver [`LICENSE`](LICENSE)). Esta guía es
+para quien vaya a proponer un cambio.
 
-Lee primero [`docs/plan-courier.md`](docs/plan-courier.md), que dice en qué fase
-está el producto y qué toca a continuación.
+Para situarte, [`docs/funcionalidades-ruteo.md`](docs/funcionalidades-ruteo.md)
+recoge el catálogo funcional.
 
 ---
 
