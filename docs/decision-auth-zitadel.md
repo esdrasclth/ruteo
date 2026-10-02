@@ -1,5 +1,9 @@
 # Decisión: mover la autenticación a ZITADEL
 
+> **Revertida el 2026-10-01.** Las contraseñas volvieron a Postgres; ver
+> [`decision-auth-local.md`](decision-auth-local.md). Este documento queda como
+> historia de por qué se probó y qué se aprendió.
+
 **Estado:** **implementada y verificada contra la instancia real** el 2026-08-08. Puntos 1, 2 y 3
 cerrados. No queda ruta de contraseñas local.
 

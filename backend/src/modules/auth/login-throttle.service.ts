@@ -4,13 +4,8 @@ import { RedisService } from '../../redis/redis.service';
 
 // Bloqueo temporal de la cuenta tras varios fallos seguidos.
 //
-// Se implementa AQUÍ y no con la política de ZITADEL por una razón concreta:
-// la política de bloqueo es un ajuste de instancia, y `auth.brandsofts.com`
-// está compartido con otros proyectos de Brandsofts —activarla les cambiaría
-// el comportamiento a ellos—. Comprobado el 2026-08-08: la instancia la tiene
-// desactivada, así que hoy NO hay ningún bloqueo del lado de ZITADEL.
-//
-// Hacerlo en Ruteo además permite dar un mensaje que explique qué pasa y cómo
+// Las contraseñas se comprueban en Ruteo (`contrasenas.ts`), así que este es el
+// único bloqueo por cuenta que existe. Hacerlo aquí además permite dar un mensaje que explique qué pasa y cómo
 // salir; con el 401 genérico, el usuario sigue probando su contraseña buena sin
 // entender por qué falla y acaba llamando a soporte.
 

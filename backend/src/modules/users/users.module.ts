@@ -3,7 +3,6 @@ import { VerifiedEmailGuard } from '../../common/guards/verified-email.guard';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { FilesModule } from '../files/files.module';
-import { ZitadelService } from '../auth/zitadel/zitadel.service';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -14,7 +13,7 @@ import { UsersService } from './users.service';
   // `StorageModule` es global, asi que no hace falta importarlo.
   imports: [AuditModule, AuthModule, FilesModule],
   controllers: [UsersController],
-  providers: [UsersService, ZitadelService, VerifiedEmailGuard],
+  providers: [UsersService, VerifiedEmailGuard],
   exports: [UsersService],
 })
 export class UsersModule {}

@@ -219,10 +219,8 @@ de las tres imágenes; y validación de `docker-compose.prod.yml`.
 
 Dos cosas a saber:
 
-- **Los e2e solo corren si existe el secreto `ZITADEL_SERVICE_TOKEN`** (más
-  `ZITADEL_ISSUER` y `ZITADEL_PROJECT_ID`). Dan de alta usuarios en ZITADEL de
-  verdad, así que sin credenciales se saltan con un aviso en vez de fallar: un
-  rojo permanente enseña a ignorar el CI.
+- **Los e2e no necesitan secretos**: levantan su propio Postgres y Redis y
+  corren en cada push y PR.
 - **El lint NO está en el CI, a propósito.** El repo arrastra unos 46 errores de
   `eslint` previos —casi todos de formato y `no-unsafe-*` en archivos que nadie
   ha tocado— así que añadirlo lo dejaría en rojo desde el primer día. Verlos:

@@ -39,7 +39,7 @@ export class TenantsService {
    *
    * Devuelve CANDIDATOS, no accesos: el correo puede estar dado de alta en
    * varias empresas y aquí no se ha comprobado ninguna contraseña todavía. Lo
-   * que autoriza es la verificación contra ZITADEL que hace `AuthService`
+   * que autoriza es la comprobación de contraseña que hace `AuthService`
    * después, una por candidato.
    *
    * Tampoco se filtra por estado del tenant: entrar por el subdominio de una

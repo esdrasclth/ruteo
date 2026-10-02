@@ -1,15 +1,12 @@
-import {
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { AuthService, EmpresasDeAcceso } from './auth.service';
-import { nombreDeUsuario } from './zitadel/zitadel.service';
 
 // El login desde el panel raíz: sin slug, la empresa se averigua por el correo.
 //
 // Lo que se prueba aquí es que quitar el slug del cuerpo NO quita ninguna
-// comprobación. La contraseña se verifica contra CADA empresa candidata —en
-// ZITADEL son usuarios distintos, `slug:correo`—, y lo que sale son vales de
+// comprobación. La contraseña se verifica contra CADA empresa candidata —son
+// usuarios distintos, cada uno con su hash—, y lo que sale son vales de
 // traspaso, nunca tokens: la sesión tiene que nacer en el origen de la empresa.
 
 const PLANTILLA = 'https://{slug}.ruteo.brandsofts.com';
@@ -17,12 +14,12 @@ const PLANTILLA = 'https://{slug}.ruteo.brandsofts.com';
 interface Cuenta {
   slug: string;
   nombre: string;
-  /** Contraseña que vale EN ESA empresa. */
-  contrasena: string;
+  /** Contraseña que vale EN ESA empresa; `null` = cuenta sin contraseña. */
+  contrasena: string | null;
   estado?: string;
 }
 
-function montar(cuentas: Cuenta[], opciones: { zitadelCaido?: boolean } = {}) {
+function montar(cuentas: Cuenta[]) {
   const fallosAnotados: string[] = [];
   const limpiezas: string[] = [];
   const valesEmitidos: { tenantId: string; userId: string }[] = [];
@@ -41,23 +38,22 @@ function montar(cuentas: Cuenta[], opciones: { zitadelCaido?: boolean } = {}) {
     ),
   };
 
-  const zitadel = {
-    verificarCredenciales: jest.fn((loginName: string, contrasena: string) => {
-      if (opciones.zitadelCaido) {
-        return Promise.reject(
-          new ServiceUnavailableException('El proveedor no responde'),
-        );
-      }
-      const cuenta = cuentas.find(
-        (c) => nombreDeUsuario(c.slug, 'jefe@correo.com') === loginName,
-      );
-      if (!cuenta || cuenta.contrasena !== contrasena) {
-        return Promise.reject(
-          new UnauthorizedException('Credenciales inválidas'),
-        );
-      }
-      return Promise.resolve({ zitadelUserId: 'z1', organizationId: null });
-    }),
+  // Coste 4 y no 12: aquí se prueba la lógica del login, no la lentitud de
+  // bcrypt. `compare` lee el coste del propio hash, así que da igual.
+  const hashes = cuentas.map((c) =>
+    c.contrasena === null ? null : bcrypt.hashSync(c.contrasena, 4),
+  );
+  const tx = {
+    user: {
+      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({
+          passwordHash: hashes[Number(where.id.replace('user-', ''))],
+        }),
+      ),
+    },
+  };
+  const prisma = {
+    withTenant: (_t: string, fn: (t: typeof tx) => unknown) => fn(tx),
   };
 
   const throttle = {
@@ -80,11 +76,10 @@ function montar(cuentas: Cuenta[], opciones: { zitadelCaido?: boolean } = {}) {
   };
 
   const servicio = new AuthService(
-    {} as never,
+    prisma as never,
     tenants as never,
     {} as never,
     { get: () => PLANTILLA } as never,
-    zitadel as never,
     {} as never,
     throttle as never,
     handoff as never,
@@ -92,7 +87,7 @@ function montar(cuentas: Cuenta[], opciones: { zitadelCaido?: boolean } = {}) {
 
   return {
     servicio,
-    zitadel,
+    tx,
     throttle,
     fallosAnotados,
     limpiezas,
@@ -144,7 +139,7 @@ describe('login sin slug (panel raíz)', () => {
   });
 
   // El caso que justifica probar una por una: el mismo correo en dos empresas
-  // son dos usuarios distintos en ZITADEL, y pueden tener contraseñas distintas.
+  // son dos usuarios distintos, y pueden tener contraseñas distintas.
   it('solo devuelve las empresas donde ESA contraseña vale', async () => {
     const { servicio } = montar([
       { slug: 'enviospress', nombre: 'Envios Press', contrasena: 'buena123' },
@@ -183,18 +178,19 @@ describe('login sin slug (panel raíz)', () => {
     ).rejects.toThrow('Invalid credentials');
   });
 
-  // Si el proveedor está caído, decirle al usuario "credenciales inválidas" lo
-  // manda a cambiar una contraseña que estaba bien.
-  it('con ZITADEL caído se propaga la avería y no se cuenta como fallo', async () => {
-    const { servicio, fallosAnotados } = montar(
-      [{ slug: 'enviospress', nombre: 'Envios Press', contrasena: 'buena123' }],
-      { zitadelCaido: true },
-    );
+  // Invitado que no aceptó, o cuenta anterior a las contraseñas locales: no
+  // tiene hash, y eso tiene que fallar CERRADO con cualquier contraseña.
+  it('una cuenta sin contraseña no entra con ninguna', async () => {
+    const { servicio } = montar([
+      { slug: 'enviospress', nombre: 'Envios Press', contrasena: null },
+    ]);
 
     await expect(
+      servicio.login({ email: CORREO, password: '' }),
+    ).rejects.toThrow('Invalid credentials');
+    await expect(
       servicio.login({ email: CORREO, password: 'buena123' }),
-    ).rejects.toThrow(ServiceUnavailableException);
-    expect(fallosAnotados).toEqual([]);
+    ).rejects.toThrow('Invalid credentials');
   });
 
   it('la cuenta desactivada lo dice, en vez de fingir que la contraseña está mal', async () => {
@@ -222,21 +218,21 @@ describe('login sin slug (panel raíz)', () => {
   });
 
   // Sin tope, un correo dado de alta en cincuenta empresas convertiría cada
-  // intento de login en cincuenta peticiones de red a ZITADEL.
+  // intento de login en cincuenta comparaciones bcrypt.
   it('no prueba más de cinco empresas por intento', async () => {
     const muchas = Array.from({ length: 9 }, (_, i) => ({
       slug: `empresa-${i}`,
       nombre: `Empresa ${i}`,
       contrasena: 'buena123',
     }));
-    const { servicio, zitadel } = montar(muchas);
+    const { servicio, tx } = montar(muchas);
 
     const res = (await servicio.login({
       email: CORREO,
       password: 'buena123',
     })) as EmpresasDeAcceso;
 
-    expect(zitadel.verificarCredenciales).toHaveBeenCalledTimes(5);
+    expect(tx.user.findUnique).toHaveBeenCalledTimes(5);
     expect(res.empresas).toHaveLength(5);
   });
 });

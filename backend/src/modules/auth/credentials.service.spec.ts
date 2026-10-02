@@ -3,10 +3,8 @@ import { CredentialTokenType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CredentialsService } from './credentials.service';
 
-// Lo que se prueba aquí es la parte que Ruteo NO puede delegar: la custodia y
-// validación del código. ZITADEL no vale para esto —con token de cuenta de
-// servicio acepta cualquier `verificationCode`, comprobado el 2026-08-08—, así
-// que si estas reglas se rompen, el restablecimiento queda abierto de par en par.
+// Lo que se prueba aquí es la custodia y validación del código: si estas reglas
+// se rompen, el restablecimiento queda abierto de par en par.
 
 type Fila = {
   id: string;
@@ -24,12 +22,29 @@ function montar(opciones: { usuario?: unknown; filas?: Fila[] } = {}) {
   const enviados: { recipient: string; title: string | null; body: string }[] =
     [];
   const notificacionesGuardadas: Record<string, unknown>[] = [];
-  const contrasenasFijadas: { userId: string; nueva: string }[] = [];
+  // Lo que acaba escrito en `users.password_hash`, en el orden en que llegó.
+  const contrasenasFijadas: { userId: string; hash: string }[] = [];
 
   const tx = {
     user: {
       findUnique: jest.fn(async () => opciones.usuario ?? null),
-      update: jest.fn(async () => ({})),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: string };
+          data: { passwordHash?: string };
+        }) => {
+          if (data.passwordHash) {
+            contrasenasFijadas.push({
+              userId: where.id,
+              hash: data.passwordHash,
+            });
+          }
+          return {};
+        },
+      ),
     },
     credentialToken: {
       deleteMany: jest.fn(async () => {
@@ -65,12 +80,6 @@ function montar(opciones: { usuario?: unknown; filas?: Fila[] } = {}) {
       withTenant: async (_t: string, fn: (t: typeof tx) => unknown) => fn(tx),
     } as never,
     { resolveIdBySlug: async () => 'tenant-1' } as never,
-    {
-      establecerContrasena: jest.fn(async (userId: string, nueva: string) => {
-        contrasenasFijadas.push({ userId, nueva });
-      }),
-      marcarCorreoVerificado: jest.fn(async () => undefined),
-    } as never,
     { get: () => undefined } as never,
     {
       name: 'prueba',
@@ -93,7 +102,6 @@ function montar(opciones: { usuario?: unknown; filas?: Fila[] } = {}) {
 
 const USUARIO = {
   id: 'user-1',
-  externalId: 'zit-1',
   email: 'ana@x.hn',
   emailVerified: true,
 };
@@ -179,7 +187,7 @@ describe('CredentialsService', () => {
       return montar({ usuario: USUARIO, filas: [fila] });
     }
 
-    it('con el código correcto fija la contraseña en ZITADEL', async () => {
+    it('con el código correcto guarda el hash de la nueva, nunca en claro', async () => {
       const { servicio, contrasenasFijadas } = await conCodigo('123456');
 
       await servicio.restablecer(
@@ -189,9 +197,12 @@ describe('CredentialsService', () => {
         'Nueva-2026!',
       );
 
-      expect(contrasenasFijadas).toEqual([
-        { userId: 'zit-1', nueva: 'Nueva-2026!' },
-      ]);
+      expect(contrasenasFijadas).toHaveLength(1);
+      expect(contrasenasFijadas[0].userId).toBe('user-1');
+      expect(contrasenasFijadas[0].hash).not.toContain('Nueva-2026!');
+      await expect(
+        bcrypt.compare('Nueva-2026!', contrasenasFijadas[0].hash),
+      ).resolves.toBe(true);
     });
 
     it('corta las sesiones vivas al restablecer', async () => {
@@ -206,9 +217,9 @@ describe('CredentialsService', () => {
         'Nueva-2026!',
       );
 
-      expect(tx.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { refreshTokenHash: null } }),
-      );
+      expect(tx.user.update.mock.calls[0][0].data).toMatchObject({
+        refreshTokenHash: null,
+      });
     });
 
     it('rechaza un código equivocado y NO toca la contraseña', async () => {
@@ -301,7 +312,7 @@ describe('CredentialsService', () => {
   });
 
   describe('verificarCorreo', () => {
-    it('con el código correcto lo marca verificado en ZITADEL', async () => {
+    it('con el código correcto lo marca verificado', async () => {
       const fila: Fila = {
         id: 't',
         userId: 'user-1',

@@ -7,17 +7,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, Role, UserStatus } from '@prisma/client';
-import { randomUUID } from 'crypto';
 import { saltar } from '../../common/dto/paginacion.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CATEGORIAS, prefijoDe } from '../../storage/claves';
 import { StorageService } from '../../storage/storage.service';
 import { FilesService } from '../files/files.service';
 import { CredentialsService } from '../auth/credentials.service';
-import {
-  nombreDeUsuario,
-  ZitadelService,
-} from '../auth/zitadel/zitadel.service';
+import { contrasenaCorrecta, hashearContrasena } from '../auth/contrasenas';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { AuditService } from '../audit/audit.service';
 import { AvatarUploadUrlDto, FijarAvatarDto } from './dto/avatar.dto';
@@ -57,21 +53,10 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly zitadel: ZitadelService,
     private readonly credenciales: CredentialsService,
     private readonly storage: StorageService,
     private readonly files: FilesService,
   ) {}
-
-  // El nombre de usuario en ZITADEL lleva el slug del tenant delante, así que
-  // casi toda operación de credencial necesita resolverlo.
-  private async slugDe(tenantId: string): Promise<string> {
-    const t = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }),
-    );
-    if (!t) throw new NotFoundException('Tenant not found');
-    return t.slug;
-  }
 
   async me(tenantId: string, userId: string) {
     const usuario = await this.prisma.withTenant(tenantId, (tx) =>
@@ -270,23 +255,9 @@ export class UsersService {
   async create(actor: AuthUser, dto: CreateUserDto) {
     this.assertCanTargetRole(actor.role, dto.role);
 
-    // Igual que en el registro: primero ZITADEL. Si el alta local falla se
-    // compensa borrando allí, para no dejar una cuenta que además bloquearía
-    // reintentar con el mismo correo (el nombre es único en la instancia).
-    const slug = await this.slugDe(actor.tenantId);
-    // La cuenta nace con una contraseña aleatoria que NADIE ve —ni el admin ni
-    // el invitado—: existe solo porque ZITADEL exige una al crear el usuario.
-    // La real la elige el invitado al aceptar la invitación.
-    const externalId = await this.zitadel.crearUsuario({
-      loginName: nombreDeUsuario(slug, dto.email),
-      email: dto.email.toLowerCase(),
-      // Un UUID (122 bits de entropía) más lo justo para cumplir la política de
-      // complejidad. NO se concatenan dos: ZITADEL aplica el tope de 72 bytes
-      // de bcrypt y con dos se pasa —devuelve 500 y el alta falla entera.
-      password: `${randomUUID()}Aa1!`,
-      nombre: dto.name ?? undefined,
-    });
-
+    // La cuenta nace SIN contraseña (`passwordHash` nulo), y sin ella no entra
+    // con ninguna. La elige el invitado al aceptar la invitación: ni el admin
+    // la conoce nunca.
     try {
       const user = await this.prisma.withTenant(actor.tenantId, async (tx) => {
         const created = await tx.user.create({
@@ -295,7 +266,6 @@ export class UsersService {
             email: dto.email.toLowerCase(),
             name: dto.name ?? null,
             role: dto.role,
-            externalId,
           },
           select: PUBLIC_SELECT,
         });
@@ -310,8 +280,7 @@ export class UsersService {
       });
 
       // La invitación se manda sin bloquear el alta: si el correo falla, la
-      // cuenta ya existe y se puede reenviar desde el panel. Cortar el alta
-      // dejaría un usuario en ZITADEL con el nombre cogido y sin fila local.
+      // cuenta ya existe y se puede reenviar desde el panel.
       void this.credenciales
         .enviarInvitacion(actor.tenantId, user.id, dto.email.toLowerCase())
         .catch(() => undefined);
@@ -393,22 +362,6 @@ export class UsersService {
     return updated;
   }
 
-  private async externalIdDe(
-    tenantId: string,
-    userId: string,
-  ): Promise<string> {
-    const u = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.user.findUnique({
-        where: { id: userId },
-        select: { externalId: true },
-      }),
-    );
-    if (!u?.externalId) {
-      throw new NotFoundException('User has no identity provider account');
-    }
-    return u.externalId;
-  }
-
   async resetPassword(
     actor: AuthUser,
     targetId: string,
@@ -422,15 +375,13 @@ export class UsersService {
     // Restablecimiento por un administrador: aquí NO se pide la contraseña
     // anterior a propósito, que es el sentido de la operación. El control es de
     // permisos (la comprobación de OWNER de arriba), no de credencial.
-    const externo = await this.externalIdDe(actor.tenantId, targetId);
-    await this.zitadel.establecerContrasena(externo, dto.newPassword);
-
     // La sesión abierta del usuario se corta: si le restablecen la contraseña,
     // el refresh que tuviera en marcha no debe seguir sirviendo.
+    const passwordHash = await hashearContrasena(dto.newPassword);
     await this.prisma.withTenant(actor.tenantId, (tx) =>
       tx.user.update({
         where: { id: targetId },
-        data: { refreshTokenHash: null },
+        data: { passwordHash, refreshTokenHash: null },
       }),
     );
 
@@ -448,32 +399,17 @@ export class UsersService {
     const user = await this.prisma.withTenant(actor.tenantId, (tx) =>
       tx.user.findUnique({
         where: { id: userId },
-        select: { email: true, externalId: true },
+        select: { passwordHash: true },
       }),
     );
-    if (!user?.externalId) {
+    if (!(await contrasenaCorrecta(dto.currentPassword, user?.passwordHash))) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    // La contraseña actual se comprueba AQUÍ, con la Session API, y no se
-    // delega en `verification.currentPassword` de ZITADEL.
-    //
-    // Motivo, comprobado contra la instancia el 2026-08-08: llamando al
-    // endpoint de contraseña con el token de la cuenta de servicio, ZITADEL
-    // ignora esa verificación —acepta el cambio con la actual equivocada y
-    // devuelve 200—. Delegarla habría dejado cambiar la contraseña sin conocer
-    // la anterior, con la comprobación aparentando funcionar.
-    const slug = await this.slugDe(actor.tenantId);
-    try {
-      await this.zitadel.verificarCredenciales(
-        nombreDeUsuario(slug, user.email),
-        dto.currentPassword,
-      );
-    } catch {
-      throw new UnauthorizedException('Current password is incorrect');
-    }
-
-    await this.zitadel.establecerContrasena(user.externalId, dto.newPassword);
+    const passwordHash = await hashearContrasena(dto.newPassword);
+    await this.prisma.withTenant(actor.tenantId, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { passwordHash } }),
+    );
 
     this.audit.dispatch(actor.tenantId, {
       action: 'user.password_changed',

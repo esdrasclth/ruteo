@@ -71,8 +71,7 @@ Tres aplicaciones sobre una infraestructura común:
    landing (Next.js)   │   (NestJS)   │──▶ Redis + BullMQ (colas)
                        │              │──▶ S3 / MinIO (evidencia)
    app del repartidor ─▶              │──▶ OSRM + Nominatim (rutas)
-        (pendiente)    └──────┬───────┘
-                              └────────▶ ZITADEL (credenciales)
+        (pendiente)    └──────────────┘
 ```
 
 | Componente | Tecnología | Puerto (local) |
@@ -102,10 +101,9 @@ Dos consecuencias que conviene conocer antes de tocar el esquema:
 
 ### Autenticación
 
-Las credenciales viven en **ZITADEL**; Ruteo emite sus propios tokens de sesión.
-Los códigos de un solo uso (restablecer contraseña, verificar correo) los custodia
-Ruteo a propósito — el motivo está documentado en
-[`docs/decision-auth-zitadel.md`](docs/decision-auth-zitadel.md).
+Las contraseñas viven en Postgres como hash bcrypt y Ruteo emite sus propios
+tokens de sesión; no hay proveedor de identidad externo. Ver
+[`docs/decision-auth-local.md`](docs/decision-auth-local.md).
 
 Cada empresa entra por su propio subdominio; ver
 [`docs/acceso-por-subdominio.md`](docs/acceso-por-subdominio.md).
@@ -209,7 +207,7 @@ reciente: `scripts/respaldo-db.sh`.
 | [`funcionalidades-ruteo.md`](docs/funcionalidades-ruteo.md) | Catálogo funcional. Empieza por aquí |
 | [`api-para-empresas.md`](docs/api-para-empresas.md) | Llaves de API y sus permisos: integrar la web de una empresa |
 | [`almacenamiento-archivos.md`](docs/almacenamiento-archivos.md) | Cómo se guardan y se firman los archivos |
-| [`decision-auth-zitadel.md`](docs/decision-auth-zitadel.md) | Por qué las credenciales están fuera |
+| [`decision-auth-local.md`](docs/decision-auth-local.md) | Contraseñas en Postgres, y cómo se recupera una cuenta |
 | [`acceso-por-subdominio.md`](docs/acceso-por-subdominio.md) | Un panel por empresa |
 | [`datos-de-prueba.md`](docs/datos-de-prueba.md) | Guion de pruebas del panel |
 | [`despliegue-dokploy.md`](docs/despliegue-dokploy.md) · [`despliegue-vps.md`](docs/despliegue-vps.md) | Puesta en producción |

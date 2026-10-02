@@ -9,8 +9,8 @@ import { Injectable } from '@nestjs/common';
  * la API es lo correcto. Para el login no: los tres frenos de autenticación
  * —cupo por IP de `login`, `register` y `forgot-password`, y el bloqueo por
  * cuenta de `LoginThrottleService`— viven todos en Redis, así que caían juntos.
- * Con ZITADEL sin política de bloqueo (ver `login-throttle.service.ts`), un
- * Redis apagado dejaba la fuerza bruta completamente libre, y bastaba con que
+ * Sin otro bloqueo por debajo (ver `login-throttle.service.ts`), un Redis
+ * apagado dejaba la fuerza bruta completamente libre, y bastaba con que
  * Redis tardara en levantar más que el backend para abrir esa ventana sin que
  * nadie hiciera nada.
  *

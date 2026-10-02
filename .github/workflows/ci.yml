@@ -46,10 +46,6 @@ jobs:
   e2e:
     name: Backend — end to end
     runs-on: ubuntu-latest
-    # Los e2e dan de alta usuarios en ZITADEL de verdad, así que necesitan sus
-    # credenciales. Sin ellas el job se salta en vez de fallar: en un fork o en
-    # un PR sin acceso a los secretos, un rojo permanente enseña a ignorar el CI.
-    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     defaults:
       run:
         working-directory: backend
@@ -84,30 +80,17 @@ jobs:
       JWT_REFRESH_TTL: 7d
       REDIS_HOST: localhost
       REDIS_PORT: '6379'
-      ZITADEL_ISSUER: ${{ secrets.ZITADEL_ISSUER }}
-      ZITADEL_SERVICE_TOKEN: ${{ secrets.ZITADEL_SERVICE_TOKEN }}
-      ZITADEL_PROJECT_ID: ${{ secrets.ZITADEL_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
-      - name: ¿Hay credenciales de ZITADEL?
-        id: zitadel
-        run: echo "hay=${{ secrets.ZITADEL_SERVICE_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
-        if: steps.zitadel.outputs.hay == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: backend/package-lock.json
-      - if: steps.zitadel.outputs.hay == 'true'
-        run: npm ci
-      - if: steps.zitadel.outputs.hay == 'true'
-        run: npx prisma migrate deploy
+      - run: npm ci
+      - run: npx prisma migrate deploy
       - name: Pruebas end to end
-        if: steps.zitadel.outputs.hay == 'true'
         run: npm run test:e2e
-      - name: Aviso si se saltaron
-        if: steps.zitadel.outputs.hay != 'true'
-        run: echo "::warning::Sin ZITADEL_SERVICE_TOKEN; los e2e no se ejecutaron."
 
   web:
     name: ${{ matrix.app }} — tipos y compilación
@@ -246,5 +229,3 @@ jobs:
           S3_ENDPOINT: https://s3.ejemplo.invalid
           S3_ACCESS_KEY: relleno
           S3_SECRET_KEY: relleno
-          ZITADEL_ISSUER: https://zitadel.ejemplo.invalid
-          ZITADEL_SERVICE_TOKEN: relleno

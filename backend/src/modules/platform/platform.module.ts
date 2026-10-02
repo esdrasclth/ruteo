@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthModule } from '../auth/auth.module';
 import { LoginThrottleService } from '../auth/login-throttle.service';
-import { ZitadelService } from '../auth/zitadel/zitadel.service';
 import { PublicRateLimitGuard } from '../../common/guards/public-rate-limit.guard';
 import { StorageModule } from '../../storage/storage.module';
 import { PlatformAuthGuard } from './platform-auth.guard';
@@ -27,7 +26,6 @@ import { PlatformService } from './platform.service';
     PlatformAuthService,
     PlatformAuthGuard,
     PublicRateLimitGuard,
-    ZitadelService,
     LoginThrottleService,
   ],
 })

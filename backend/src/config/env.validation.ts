@@ -57,26 +57,6 @@ class EnvironmentVariables {
   @IsNotEmpty()
   PLATFORM_JWT_SECRET: string;
 
-  // --- Identidad (ZITADEL) --------------------------------------------------
-  // Las credenciales viven en ZITADEL; este backend sigue emitiendo su token de
-  // sesión con `tid`, que es de lo que depende el RLS. No hay ruta alternativa:
-  // sin estos valores la aplicación no puede autenticar a nadie, así que se
-  // exigen al arrancar en vez de fallar en el primer login.
-  @IsString()
-  @IsNotEmpty()
-  ZITADEL_ISSUER: string;
-
-  // Cuenta de servicio con permisos de Management API: crea sesiones, verifica
-  // contraseñas y da de alta usuarios.
-  @IsString()
-  @IsNotEmpty()
-  ZITADEL_SERVICE_TOKEN: string;
-
-  // Proyecto cuyos roles se mapean a los `Role` de Ruteo.
-  @IsOptional()
-  @IsString()
-  ZITADEL_PROJECT_ID: string = '';
-
   // --- Correo saliente ------------------------------------------------------
   // Con clave, los códigos de restablecimiento y verificación se envían de
   // verdad por Resend. Sin clave se registran en el log, que permite probar el

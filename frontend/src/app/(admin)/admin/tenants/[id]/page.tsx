@@ -85,7 +85,7 @@ export default function AdminTenantDetallePage({
         `Empresa «${r.borrada}» borrada: ${r.destruido.envios} envíos y ${r.archivos} archivos.`,
       );
       // Lo que no se pudo limpiar se dice en voz alta y sin caducar solo: son
-      // archivos o cuentas que quedaron por ahí y que alguien tiene que rematar
+      // archivos que quedaron por ahí y que alguien tiene que rematar
       // a mano, y un aviso que se desvanece en tres segundos no sirve.
       if (r.problemas.length > 0) {
         toast.warning(

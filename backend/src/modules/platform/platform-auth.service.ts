@@ -3,12 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { UserStatus } from '@prisma/client';
 import { LoginThrottleService } from '../auth/login-throttle.service';
-import { ZitadelService } from '../auth/zitadel/zitadel.service';
+import { contrasenaCorrecta } from '../auth/contrasenas';
 import { PlatformPrismaService } from './platform-prisma.service';
 
-// Prefijo del nombre de usuario en ZITADEL. Los de tenant son `{slug}:{correo}`,
-// así que este espacio no puede colisionar con ninguna empresa: no existe un
-// slug llamado "plataforma" porque el registro no permite los dos puntos.
+// Cubo propio del freno de intentos. No puede colisionar con el de ninguna
+// empresa: el registro no admite este slug.
 const PREFIJO = 'plataforma';
 
 export interface PlatformJwtPayload {
@@ -26,15 +25,10 @@ export class PlatformAuthService {
 
   constructor(
     private readonly db: PlatformPrismaService,
-    private readonly zitadel: ZitadelService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly throttle: LoginThrottleService,
   ) {}
-
-  static nombreDeUsuario(email: string) {
-    return `${PREFIJO}:${email.toLowerCase()}`;
-  }
 
   async login(
     email: string,
@@ -46,23 +40,12 @@ export class PlatformAuthService {
       where: { email: email.toLowerCase() },
     });
 
-    // Igual que en el login de tenant: la fila local decide quién existe,
-    // ZITADEL solo dice si la credencial es correcta.
-    if (!admin || admin.status !== UserStatus.ACTIVE) {
+    // Se compara aunque no haya fila (contra un hash de relleno), para que el
+    // tiempo de respuesta no diga qué correos son de superadmin.
+    const correcta = await contrasenaCorrecta(password, admin?.passwordHash);
+    if (!admin || admin.status !== UserStatus.ACTIVE || !correcta) {
       await this.throttle.registrarFallo(PREFIJO, email);
       throw new UnauthorizedException('Credenciales inválidas');
-    }
-
-    try {
-      await this.zitadel.verificarCredenciales(
-        PlatformAuthService.nombreDeUsuario(email),
-        password,
-      );
-    } catch (e) {
-      if (e instanceof UnauthorizedException) {
-        await this.throttle.registrarFallo(PREFIJO, email);
-      }
-      throw e;
     }
 
     await this.throttle.limpiar(PREFIJO, email);

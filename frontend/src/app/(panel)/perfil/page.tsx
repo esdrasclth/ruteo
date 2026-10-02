@@ -33,7 +33,7 @@ import { FotoDePerfil } from "./foto";
  *
  * **Lo editable es sólo el nombre**, y el resto se enseña en gris a propósito.
  * El rol no se cambia uno mismo —sería ascenderse—, y el correo es la
- * credencial: vive en ZITADEL y cambiarlo es re-verificarlo y decidir qué pasa
+ * credencial: cambiarlo es re-verificarlo y decidir qué pasa
  * con la sesión abierta, o sea un flujo con su propia pantalla. Enseñarlos
  * bloqueados en vez de esconderlos responde la pregunta «¿con qué cuenta estoy
  * dentro?» sin obligar a buscarla.

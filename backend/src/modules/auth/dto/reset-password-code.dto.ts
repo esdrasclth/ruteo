@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { ContrasenaNueva } from '../contrasenas';
 
 export class ResetPasswordCodeDto {
   @ApiProperty({ example: 'encomiendas-catracha' })
@@ -17,7 +18,6 @@ export class ResetPasswordCodeDto {
   code: string;
 
   @ApiProperty({ minLength: 8 })
-  @IsString()
-  @MinLength(8)
+  @ContrasenaNueva()
   newPassword: string;
 }

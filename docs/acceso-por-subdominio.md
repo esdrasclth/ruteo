@@ -26,15 +26,15 @@ que de verdad no tiene empresa todavía.
 - **Con slug**: camino de siempre, devuelve los tokens.
 - **Sin slug**: se resuelve en qué empresas existe ese correo
   (`tenants_by_user_email`, SECURITY DEFINER, igual que `tenant_id_by_slug`) y
-  se comprueba la contraseña **contra cada una** —en ZITADEL son usuarios
-  distintos, `slug:correo`, y pueden tener contraseñas distintas—. Se responde
+  se comprueba la contraseña **contra cada una** —son usuarios distintos y
+  pueden tener contraseñas distintas—. Se responde
   con la lista de empresas donde la credencial es buena.
 
 Que falte el slug no relaja ninguna comprobación: se hacen las mismas, N veces.
 Con la contraseña mal, la respuesta es el mismo 401 genérico exista el correo o
 no. Como tope hay cinco empresas por intento (`MAX_CANDIDATAS`), para que un
 correo dado de alta en muchas no convierta cada login en una ráfaga de
-peticiones a ZITADEL.
+comparaciones bcrypt.
 
 El freno por cuenta usa **un solo cubo** para el login sin slug (`CUBO_SIN_SLUG`,
 un slug imposible). Repartirlo por empresa daría cinco veces los intentos antes
@@ -92,7 +92,7 @@ casos.
 **El subdominio no autentica nada.** El slug sigue viajando en el cuerpo de la
 petición y cualquiera puede mandar otro con `curl` —o no mandar ninguno—. Lo que
 decide de verdad a qué empresa se entra es lo de siempre: la contraseña
-comprobada contra ZITADEL, el `tid` del JWT y el RLS de Postgres. El subdominio
+comprobada, el `tid` del JWT y el RLS de Postgres. El subdominio
 solo evita que el usuario tenga que teclear el identificador.
 
 Lo que sí gana en seguridad es el **aislamiento de origen**: hasta ahora todos

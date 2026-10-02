@@ -10,10 +10,8 @@ import {
 // Entrega de correo por la API HTTP de Resend.
 //
 // Se usa la API y no SMTP para no arrastrar una dependencia de transporte
-// (nodemailer) por un solo POST. La instancia de ZITADEL ya envía por Resend,
-// así que la cuenta existe; aquí hace falta su clave de API para que Ruteo
-// mande sus propios correos —los códigos de restablecimiento los custodia
-// Ruteo, ver `CredentialToken`—.
+// (nodemailer) por un solo POST. Lleva los códigos de restablecimiento,
+// invitación y verificación (ver `CredentialToken`).
 //
 // Solo cubre EMAIL. SMS, push y WhatsApp siguen sin proveedor real: para esos
 // canales delega en el de registro para no fingir una entrega que no ocurre.

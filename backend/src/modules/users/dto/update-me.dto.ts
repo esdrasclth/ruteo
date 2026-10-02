@@ -11,9 +11,9 @@ import { IsOptional, IsString, Length } from 'class-validator';
  * está abierto a todos los roles porque cambiarse el nombre lo hace cualquiera,
  * y esa apertura es justo lo que hace peligroso compartir el DTO.
  *
- * **El correo no está y no es un olvido.** Las credenciales viven en ZITADEL
- * (`docs/decision-auth-zitadel.md`), así que cambiarlo es cambiarlo allí,
- * volver a verificarlo y decidir qué pasa con la sesión abierta mientras tanto.
+ * **El correo no está y no es un olvido.** Es el identificador con el que se
+ * entra, así que cambiarlo es volver a verificarlo y decidir qué pasa con la
+ * sesión abierta mientras tanto.
  * Es una funcionalidad con su propio flujo, no un campo más de este formulario.
  */
 export class UpdateMeDto {

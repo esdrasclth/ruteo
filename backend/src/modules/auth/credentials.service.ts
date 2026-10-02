@@ -8,21 +8,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NOTIFICATION_PROVIDER } from '../notifications/notification-provider';
 import type { NotificationProvider } from '../notifications/notification-provider';
 import { TenantsService } from '../tenants/tenants.service';
-import { ZitadelService } from './zitadel/zitadel.service';
+import { hashearContrasena } from './contrasenas';
 import { Inject } from '@nestjs/common';
 
-// Restablecimiento de contraseña y verificación de correo.
+// Restablecimiento de contraseña, invitaciones y verificación de correo.
 //
-// **Los códigos los custodia Ruteo, no ZITADEL, y no es una preferencia.**
-// Comprobado contra la instancia el 2026-08-08: llamando a
-// `POST /v2/users/{id}/password` con el token de la cuenta de servicio, ZITADEL
-// **no valida** `verification.verificationCode`. Se le puede fijar la contraseña
-// a cualquier usuario con un código inventado, sin haber pedido restablecimiento
-// —probado, y la contraseña cambia de verdad—. Reenviarle el código que teclea
-// el usuario habría dejado que cualquiera restableciera la de cualquiera.
-//
-// Así que el código se genera aquí, se guarda hasheado, y se valida aquí. A
-// ZITADEL solo se le pide fijar la contraseña una vez comprobado.
+// El código se genera aquí, se guarda hasheado y se valida aquí. Solo una vez
+// comprobado se toca la contraseña.
 
 const VIGENCIA_MIN = 30;
 // Seis dígitos es lo que la gente puede teclear desde el móvil sin equivocarse.
@@ -38,7 +30,6 @@ export class CredentialsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenants: TenantsService,
-    private readonly zitadel: ZitadelService,
     private readonly config: ConfigService,
     @Inject(NOTIFICATION_PROVIDER)
     private readonly notificador: NotificationProvider,
@@ -145,7 +136,7 @@ ${enlace}
     );
   }
 
-  /** Consume el código y fija la nueva contraseña en ZITADEL. */
+  /** Consume el código y fija la nueva contraseña. */
   async restablecer(
     slug: string,
     email: string,
@@ -157,7 +148,7 @@ ${enlace}
     // confirma si la cuenta existe ni por qué falla. Nunca debería llegarse
     // aquí —sin verificar no se emite código—, pero si alguien apunta directo
     // al endpoint, el control tiene que estar en los dos sitios.
-    if (!usuario?.externalId || !usuario.emailVerified) {
+    if (!usuario?.emailVerified) {
       throw new BadRequestException('Código inválido o caducado');
     }
 
@@ -168,14 +159,13 @@ ${enlace}
       codigo,
     );
 
-    await this.zitadel.establecerContrasena(usuario.externalId, nueva);
-
     // Cualquier sesión viva deja de servir: si alguien restablece porque le
     // robaron la cuenta, dejar el refresh del intruso en pie no arregla nada.
+    const passwordHash = await hashearContrasena(nueva);
     await this.prisma.withTenant(usuario.tenantId, (tx) =>
       tx.user.update({
         where: { id: usuario.id },
-        data: { refreshTokenHash: null },
+        data: { passwordHash, refreshTokenHash: null },
       }),
     );
   }
@@ -250,7 +240,7 @@ ${enlace}
     contrasena: string,
   ): Promise<void> {
     const usuario = await this.buscarUsuario(slug, email);
-    if (!usuario?.externalId) {
+    if (!usuario) {
       throw new BadRequestException('Invitación inválida o caducada');
     }
 
@@ -265,12 +255,11 @@ ${enlace}
       throw new BadRequestException('Invitación inválida o caducada');
     }
 
-    await this.zitadel.establecerContrasena(usuario.externalId, contrasena);
-    await this.zitadel.marcarCorreoVerificado(usuario.externalId, email);
+    const passwordHash = await hashearContrasena(contrasena);
     await this.prisma.withTenant(usuario.tenantId, (tx) =>
       tx.user.update({
         where: { id: usuario.id },
-        data: { emailVerified: true },
+        data: { passwordHash, emailVerified: true },
       }),
     );
   }
@@ -332,7 +321,7 @@ ${enlace}
     );
   }
 
-  /** Marca el correo como verificado en ZITADEL tras comprobar el código. */
+  /** Marca el correo como verificado tras comprobar el código. */
   async verificarCorreo(
     tenantId: string,
     userId: string,
@@ -345,21 +334,6 @@ ${enlace}
       codigo,
     );
 
-    const usuario = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.user.findUnique({
-        where: { id: userId },
-        select: { externalId: true, email: true },
-      }),
-    );
-    if (usuario?.externalId) {
-      await this.zitadel.marcarCorreoVerificado(
-        usuario.externalId,
-        usuario.email,
-      );
-    }
-
-    // El espejo local se actualiza DESPUÉS de que ZITADEL lo confirme: al revés
-    // el panel diría "verificado" con el proveedor sin enterarse.
     await this.prisma.withTenant(tenantId, (tx) =>
       tx.user.update({ where: { id: userId }, data: { emailVerified: true } }),
     );
@@ -389,7 +363,7 @@ ${enlace}
     const user = await this.prisma.withTenant(tenantId, (tx) =>
       tx.user.findUnique({
         where: { tenantId_email: { tenantId, email: email.toLowerCase() } },
-        select: { id: true, externalId: true, emailVerified: true },
+        select: { id: true, emailVerified: true },
       }),
     );
     return user ? { ...user, tenantId } : null;

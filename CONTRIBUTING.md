@@ -63,12 +63,12 @@ El almacenamiento de objetos no tiene RLS. Por eso toda clave es
 `t/{tenantId}/...` y las URLs se firman al leer, con vigencia corta. **Nunca se
 guarda una URL firmada** en base de datos ni se devuelve una sin caducidad.
 
-### 3. Las credenciales viven en ZITADEL
+### 3. Las contraseñas se tocan solo desde `contrasenas.ts`
 
-Ruteo emite sus propios tokens de sesión y custodia a propósito los códigos de un
-solo uso. El porqué está en
-[`docs/decision-auth-zitadel.md`](docs/decision-auth-zitadel.md); léelo antes de
-mover nada de autenticación.
+Hash, comprobación y política de contraseña nueva viven en
+`backend/src/modules/auth/contrasenas.ts`. Una cuenta sin hash no entra con
+ninguna contraseña. Lee [`docs/decision-auth-local.md`](docs/decision-auth-local.md)
+antes de mover nada de autenticación.
 
 ### 4. Las suites e2e purgan sólo su propio grupo
 
@@ -103,9 +103,8 @@ npm run build
 npm run budget        # presupuesto de rendimiento
 ```
 
-Si tocaste lógica de negocio del backend, corre además `npm run test:e2e`. Esa
-suite da de alta usuarios en ZITADEL de verdad, así que necesita credenciales; en
-el CI se salta cuando no las hay, en lugar de fallar.
+Si tocaste lógica de negocio del backend, corre además `npm run test:e2e`
+(necesita Postgres y Redis levantados).
 
 Si tocaste el panel, hay Playwright en `frontend/e2e`.
 

@@ -133,10 +133,6 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900s}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
 
-      ZITADEL_ISSUER: ${ZITADEL_ISSUER:?define ZITADEL_ISSUER en el Environment de Dokploy}
-      ZITADEL_SERVICE_TOKEN: ${ZITADEL_SERVICE_TOKEN:?define ZITADEL_SERVICE_TOKEN en el Environment de Dokploy}
-      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID:-}
-
       REDIS_HOST: redis
       REDIS_PORT: '6379'
       # Sale de la MISMA variable que configura el contenedor de Redis. Tenerla

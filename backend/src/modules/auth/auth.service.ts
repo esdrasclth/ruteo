@@ -24,7 +24,7 @@ import { JwtPayload } from './strategies/jwt.strategy';
 import { CredentialsService } from './credentials.service';
 import { LoginThrottleService } from './login-throttle.service';
 import { SessionHandoffService } from './session-handoff.service';
-import { nombreDeUsuario, ZitadelService } from './zitadel/zitadel.service';
+import { contrasenaCorrecta, hashearContrasena } from './contrasenas';
 
 export interface Tokens {
   accessToken: string;
@@ -51,9 +51,9 @@ export interface EmpresasDeAcceso {
 /**
  * Cuántas empresas se prueban como mucho al entrar sin slug.
  *
- * Cada candidata cuesta una verificación contra ZITADEL, así que sin tope un
+ * Cada candidata cuesta una comparación bcrypt (~250 ms), así que sin tope un
  * correo dado de alta en cincuenta empresas convertiría cada intento de login
- * en cincuenta peticiones de red. Que alguien trabaje en más de cinco empresas
+ * en más de diez segundos de CPU. Que alguien trabaje en más de cinco empresas
  * a la vez no se ha visto; si pasa, esa persona entra por el subdominio de la
  * suya, que no tiene este límite.
  */
@@ -105,7 +105,6 @@ export class AuthService {
     private readonly tenants: TenantsService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-    private readonly zitadel: ZitadelService,
     private readonly credenciales: CredentialsService,
     private readonly throttle: LoginThrottleService,
     private readonly handoff: SessionHandoffService,
@@ -117,16 +116,9 @@ export class AuthService {
     // evaluated against the SELECT policy) satisfy `id = current_tenant_id()`.
     const tenantId = randomUUID();
 
-    // El alta ocurre PRIMERO en ZITADEL. Si falla, no se ha escrito nada local
-    // y se puede reintentar sin dejar basura. El orden inverso —crear el tenant
-    // y luego el usuario remoto— dejaría tenants sin nadie que pueda entrar,
-    // que es peor de limpiar que una cuenta huérfana en ZITADEL.
-    const externalId = await this.zitadel.crearUsuario({
-      loginName: nombreDeUsuario(dto.slug, dto.email),
-      email: dto.email.toLowerCase(),
-      password: dto.password,
-      nombre: dto.tenantName,
-    });
+    // Fuera de la transacción: bcrypt tarda ~250 ms y no hay por qué tener la
+    // conexión abierta mientras tanto.
+    const passwordHash = await hashearContrasena(dto.password);
 
     // El plan elegido en el alta NO activa nada cobrable. Con uno de pago se
     // abre una PRUEBA con fecha de fin, y alguien de la casa la convierte —o no—
@@ -180,19 +172,13 @@ export class AuthService {
           data: {
             tenantId,
             email: dto.email.toLowerCase(),
-            externalId,
+            passwordHash,
             role: Role.OWNER,
           },
           select: { id: true, role: true },
         });
       });
     } catch (error) {
-      // Compensación: el usuario ya existe en ZITADEL pero el tenant local no
-      // se pudo crear. Sin esto queda una cuenta huérfana que, por ser el
-      // nombre único en toda la instancia, impediría reintentar el registro con
-      // el mismo slug y correo.
-      await this.zitadel.borrarUsuario(externalId).catch(() => undefined);
-
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
@@ -204,8 +190,8 @@ export class AuthService {
 
     // El correo del alta se manda sin bloquear el registro: si el envío falla,
     // la cuenta ya existe y se puede reintentar desde el panel. Cortar el alta
-    // por un fallo de correo dejaría al usuario sin cuenta y sin poder repetir
-    // (el nombre ya estaría cogido en ZITADEL).
+    // por un fallo de correo dejaría al usuario sin cuenta por algo que no es
+    // suyo.
     void this.credenciales
       .enviarVerificacion(tenantId, user.id, dto.email.toLowerCase())
       .catch((e) =>
@@ -253,30 +239,17 @@ export class AuthService {
     const user = await this.prisma.withTenant(tenantId, (tx) =>
       tx.user.findUnique({
         where: { tenantId_email: { tenantId, email: dto.email.toLowerCase() } },
-        select: { id: true, role: true, status: true },
+        select: { id: true, role: true, status: true, passwordHash: true },
       }),
     );
 
-    // La fila local manda sobre quién existe y con qué rol; ZITADEL solo dice
-    // si la credencial es correcta.
-    if (!user) {
+    // Se compara también cuando no hay usuario (contra un hash de relleno):
+    // así tarda lo mismo exista o no la cuenta, y el tiempo de respuesta no
+    // dice qué correos están dados de alta.
+    const correcta = await contrasenaCorrecta(dto.password, user?.passwordHash);
+    if (!user || !correcta) {
       await this.throttle.registrarFallo(dto.slug, dto.email);
       throw new UnauthorizedException('Invalid credentials');
-    }
-
-    try {
-      await this.zitadel.verificarCredenciales(
-        nombreDeUsuario(dto.slug, dto.email),
-        dto.password,
-      );
-    } catch (e) {
-      // Solo cuentan los fallos de CREDENCIAL. Si ZITADEL está caído
-      // (`ServiceUnavailable`), sumarlo bloquearía a usuarios legítimos por una
-      // avería que no es suya.
-      if (e instanceof UnauthorizedException) {
-        await this.throttle.registrarFallo(dto.slug, dto.email);
-      }
-      throw e;
     }
 
     if (user.status !== UserStatus.ACTIVE) {
@@ -315,22 +288,16 @@ export class AuthService {
     let hayDeshabilitada = false;
 
     for (const candidata of candidatas) {
-      try {
-        await this.zitadel.verificarCredenciales(
-          nombreDeUsuario(candidata.slug, correo),
-          contrasena,
-        );
-      } catch (e) {
-        // Contraseña mala en ESTA empresa: se pasa a la siguiente. El mismo
-        // correo puede tener contraseñas distintas en cada una —en ZITADEL son
-        // usuarios distintos, `slug:correo`—, así que un fallo aquí no dice
-        // nada de las demás.
-        if (e instanceof UnauthorizedException) continue;
-        // ZITADEL caído: se corta. Seguir probando lo dejaría en "credenciales
-        // inválidas" cuando lo que pasa es que el proveedor no responde, y el
-        // usuario cambiaría una contraseña que estaba bien.
-        throw e;
-      }
+      const fila = await this.prisma.withTenant(candidata.tenantId, (tx) =>
+        tx.user.findUnique({
+          where: { id: candidata.userId },
+          select: { passwordHash: true },
+        }),
+      );
+      // Contraseña mala en ESTA empresa: se pasa a la siguiente. El mismo
+      // correo puede tener contraseñas distintas en cada una —son usuarios
+      // distintos—, así que un fallo aquí no dice nada de las demás.
+      if (!(await contrasenaCorrecta(contrasena, fila?.passwordHash))) continue;
 
       if (candidata.userStatus !== UserStatus.ACTIVE) {
         hayDeshabilitada = true;

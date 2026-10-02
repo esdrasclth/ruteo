@@ -26,9 +26,9 @@ import { VentanaMemoria } from '../ventana-memoria';
  * Redis no responde, sigue contando en memoria del proceso. El otro guard puede
  * permitirse dejar pasar —lo peor que ocurre es que alguien consuma API de más
  * durante una avería—; aquí lo que se cae es el único freno que hay contra la
- * fuerza bruta de contraseñas, porque la instancia de ZITADEL tampoco tiene
- * política de bloqueo (ver `login-throttle.service.ts`). Los detalles y los
- * límites del respaldo están en `VentanaMemoria`.
+ * fuerza bruta de contraseñas junto con el bloqueo por cuenta (ver
+ * `login-throttle.service.ts`). Los detalles y los límites del respaldo están
+ * en `VentanaMemoria`.
  */
 @Injectable()
 export class PublicRateLimitGuard implements CanActivate {

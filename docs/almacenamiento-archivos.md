@@ -130,5 +130,6 @@ módulo queda dormido y se puede trabajar en local sin levantar un MinIO.
 `ruteo.s3.brandsofts.com`, que no existe, y el error que sale es de DNS y no
 señala a esta opción.
 
-La clave secreta MinIO solo se muestra una vez, al crearla. Vive en Infisical,
-no en el repositorio.
+La clave secreta MinIO solo se muestra una vez, al crearla. Vive en el
+Environment de Dokploy (con una copia en un gestor de contraseñas), no en el
+repositorio.

@@ -93,55 +93,6 @@ export async function purgeTestTenants(
   await admin.tenant.deleteMany({
     where: { slug: { startsWith: `${TEST_SLUG_PREFIX}${grupo}-` } },
   });
-  await purgarUsuariosZitadel(grupo);
-}
-
-// El registro crea usuarios REALES en la instancia de identidad. Borrar solo la
-// fila local dejaría basura acumulándose ahí corrida tras corrida, y como el
-// nombre de usuario es único en toda la instancia, esa basura acabaría haciendo
-// fallar registros futuros con 409.
-//
-// El nombre de usuario es `{slug}:{correo}` y los slugs de prueba empiezan por
-// `test-iso-{grupo}-`, así que se puede acotar la purga igual que en la base.
-export async function purgarUsuariosZitadel(grupo: string): Promise<void> {
-  const issuer = (process.env.ZITADEL_ISSUER ?? '').replace(/\/+$/, '');
-  const token = process.env.ZITADEL_SERVICE_TOKEN ?? '';
-  if (!issuer || !token) return;
-
-  const cabeceras = {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-
-  try {
-    const res = await fetch(`${issuer}/v2/users`, {
-      method: 'POST',
-      headers: cabeceras,
-      body: JSON.stringify({
-        queries: [
-          {
-            userNameQuery: {
-              userName: `${TEST_SLUG_PREFIX}${grupo}-`,
-              method: 'TEXT_QUERY_METHOD_STARTS_WITH',
-            },
-          },
-        ],
-      }),
-    });
-    if (!res.ok) return;
-
-    const datos = (await res.json()) as { result?: { userId?: string }[] };
-    for (const u of datos.result ?? []) {
-      if (!u.userId) continue;
-      await fetch(`${issuer}/v2/users/${u.userId}`, {
-        method: 'DELETE',
-        headers: cabeceras,
-      });
-    }
-  } catch {
-    // La limpieza es de mejor esfuerzo: que la instancia no responda no debe
-    // tumbar la suite, que es lo que de verdad se quiere ejecutar.
-  }
 }
 
 export interface SeededTenant {
@@ -191,8 +142,8 @@ export async function seedTenant(
       data: {
         tenantId,
         email,
-        // Sin `externalId`: este sembrado no pasa por ZITADEL ni se usa para
-        // login (de eso se encarga el e2e de API, que registra vía HTTP).
+        // Sin contraseña: este sembrado no se usa para login (de eso se
+        // encarga el e2e de API, que registra vía HTTP).
         role: Role.OWNER,
       },
     });

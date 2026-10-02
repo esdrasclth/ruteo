@@ -88,9 +88,9 @@ describe('LoginThrottleService', () => {
   describe('con Redis caído', () => {
     // Antes se dejaba de contar, con el argumento de que fallar cerrado
     // convertiría una avería en "nadie puede entrar". El argumento es bueno; la
-    // conclusión no lo era. Como el cupo por IP también fallaba abierto y la
-    // instancia de ZITADEL no tiene política de bloqueo, una caída de Redis
-    // dejaba la fuerza bruta sin ningún freno. Contar en memoria conserva lo
+    // conclusión no lo era. Como el cupo por IP también fallaba abierto y no
+    // hay otro bloqueo por debajo, una caída de Redis dejaba la fuerza bruta
+    // sin ningún freno. Contar en memoria conserva lo
     // que se quería —nadie queda fuera por una avería— sin regalar el freno.
     const redisCaido = () => ({
       ...redisFalso(),

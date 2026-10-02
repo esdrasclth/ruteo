@@ -486,8 +486,8 @@ model PlatformAdmin {
   id         String     @id @default(uuid()) @db.Uuid
   email      String     @unique
   name       String?
-  /// Id en ZITADEL. Las credenciales viven allí, igual que las de tenant.
-  externalId String?    @unique @map("external_id")
+  /// Hash bcrypt. Nulo = no puede entrar (ver `modules/auth/contrasenas.ts`).
+  passwordHash String?  @map("password_hash")
   status     UserStatus @default(ACTIVE)
   lastLoginAt DateTime? @map("last_login_at")
   createdAt  DateTime   @default(now()) @map("created_at")
@@ -673,13 +673,10 @@ model User {
   tenantId         String     @map("tenant_id") @db.Uuid
   email            String
   name             String?
-  // Id del usuario en ZITADEL, que es donde viven las credenciales. Nulo solo
-  // en filas sembradas por pruebas que no pasan por el alta real.
-  // `refreshTokenHash` NO desaparece: el token de sesión lo sigue emitiendo
-  // Ruteo, y ese hash es suyo, no una contraseña.
-  externalId       String?    @unique @map("external_id")
-  /// Espejo del estado en ZITADEL, para no consultarlo en cada carga del panel.
-  /// La fuente de verdad sigue siendo ZITADEL; esto es caché.
+  /// Hash bcrypt de la contraseña. Nulo mientras la cuenta no tenga una —un
+  /// invitado que no ha aceptado, o una cuenta migrada desde ZITADEL que aún no
+  /// la restableció—, y una cuenta sin hash no entra con ninguna contraseña.
+  passwordHash     String?    @map("password_hash")
   emailVerified    Boolean    @default(false) @map("email_verified")
   role             Role       @default(OPERATOR)
   status           UserStatus @default(ACTIVE)
@@ -705,12 +702,8 @@ model User {
 
 /// Códigos de un solo uso para restablecer contraseña y verificar correo.
 ///
-/// Los custodia RUTEO y no ZITADEL, y no es por gusto: comprobado el 2026-08-08,
-/// llamando con el token de la cuenta de servicio ZITADEL **no valida**
-/// `verification.verificationCode` —se le puede fijar la contraseña a cualquier
-/// usuario con un código inventado, sin haber pedido restablecimiento—. Reenviar
-/// el código que teclea el usuario habría dejado que cualquiera restableciera la
-/// contraseña de cualquiera.
+/// Solo el hash del código, con vigencia corta, uso único y tope de intentos
+/// (ver `CredentialsService`).
 model CredentialToken {
   id        String              @id @default(uuid()) @db.Uuid
   tenantId  String              @map("tenant_id") @db.Uuid

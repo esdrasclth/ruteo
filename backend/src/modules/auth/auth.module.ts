@@ -11,7 +11,6 @@ import { LoginThrottleService } from './login-throttle.service';
 import { SessionHandoffService } from './session-handoff.service';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { ZitadelService } from './zitadel/zitadel.service';
 
 @Module({
   imports: [
@@ -30,7 +29,6 @@ import { ZitadelService } from './zitadel/zitadel.service';
     PublicRateLimitGuard,
     JwtStrategy,
     JwtRefreshStrategy,
-    ZitadelService,
   ],
 })
 export class AuthModule {}

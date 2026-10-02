@@ -1,10 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { ContrasenaNueva } from '../../auth/contrasenas';
 
 export class ResetPasswordDto {
   @ApiProperty({ example: 'N3wSecret!' })
-  @IsString()
-  @MinLength(8)
-  @MaxLength(72)
+  @ContrasenaNueva()
   newPassword: string;
 }

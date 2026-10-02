@@ -13,6 +13,7 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 import { esSlugReservado } from '../../../common/tenant-host';
+import { ContrasenaNueva } from '../contrasenas';
 
 @ValidatorConstraint({ name: 'slugNoReservado' })
 class SlugNoReservado implements ValidatorConstraintInterface {
@@ -51,8 +52,8 @@ export class RegisterDto {
   })
   @Validate(SlugNoReservado)
   @MinLength(2)
-  // 40 y no 63 (el máximo de una etiqueta DNS) porque el slug también prefija
-  // el `loginName` en ZITADEL, y ahí compite por espacio con el correo.
+  // 40 y no 63 (el máximo de una etiqueta DNS): deja margen en el subdominio
+  // y en todo lo que se arma con el slug delante.
   @MaxLength(40)
   slug: string;
 
@@ -61,9 +62,7 @@ export class RegisterDto {
   email: string;
 
   @ApiProperty({ example: 'Sup3rSecret!' })
-  @IsString()
-  @MinLength(8)
-  @MaxLength(72)
+  @ContrasenaNueva()
   password: string;
 
   // Se pide en el alta —y es el ÚNICO campo que se añadió— porque un plan de
