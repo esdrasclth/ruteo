@@ -74,6 +74,8 @@ export class AvisosPruebaService {
   }
 
   private async buscarPendientes(): Promise<PruebaPorAvisar[]> {
+    // Prisma manda los números de JS como bigint y la función pide integer:
+    // sin el ::int Postgres no la encuentra y nunca se avisa a nadie.
     const filas = await this.prisma.$queryRaw<
       {
         out_tenant_id: string;
@@ -83,7 +85,7 @@ export class AvisosPruebaService {
         out_period_end: Date;
         out_email: string | null;
       }[]
-    >`SELECT * FROM pruebas_por_avisar(${DIAS_DE_ANTELACION})`;
+    >`SELECT * FROM pruebas_por_avisar(${DIAS_DE_ANTELACION}::int)`;
 
     return filas.map((f) => ({
       tenantId: f.out_tenant_id,
